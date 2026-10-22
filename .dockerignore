@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+relay.db
+relay.db-*
+.git
+.gitignore
+Dockerfile
+docker-compose*.yml

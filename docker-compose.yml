@@ -1,0 +1,43 @@
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: relay-automation:latest
+    restart: unless-stopped
+    init: true
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to your public HTTPS origin}
+      DATABASE_PATH: /app/data/relay.db
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:?Set TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:?Set TWILIO_AUTH_TOKEN}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:?Set TWILIO_PHONE_NUMBER in E.164 format}
+      HVAC_COMPANY_NAME: ${HVAC_COMPANY_NAME:?Set HVAC_COMPANY_NAME}
+      DISPATCHER_PHONE_NUMBER: ${DISPATCHER_PHONE_NUMBER:?Set DISPATCHER_PHONE_NUMBER in E.164 format}
+      LEADS_API_TOKEN: ${LEADS_API_TOKEN:?Set a strong LEADS_API_TOKEN}
+    volumes:
+      - relay-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  relay-data:

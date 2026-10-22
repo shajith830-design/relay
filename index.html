@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Relay Automation helps independent HVAC contractors respond to missed calls, collect service details, and alert their team." />
+    <meta name="theme-color" content="#FFFFFF" />
+    <title>Relay Automation | Missed-call recovery for HVAC</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root { color-scheme: light; --paper:#FFFFFF; --surface:#FAFAFA; --ink:#09090B; --muted:#71717A; --line:#E4E4E7; --blue:#0284C7; }
+      * { box-sizing: border-box; }
+      html { scroll-behavior:smooth; scroll-padding-top:7rem; }
+      body { margin:0; background:var(--paper); color:var(--ink); font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased; }
+      .text-zinc-700,.text-zinc-600,.text-zinc-500 { color:var(--muted)!important; }
+      .text-zinc-950,.text-zinc-900 { color:var(--ink)!important; } .bg-zinc-50 { background-color:var(--surface)!important; }
+      .border-zinc-200 { border-color:var(--line)!important; } .text-sky-700,.text-sky-600 { color:var(--blue)!important; }
+      .bg-sky-600,.bg-sky-700 { background-color:var(--blue)!important; }
+      .shell { width:min(100% - 2.5rem,1160px); margin-inline:auto; }
+      .site-header { position:sticky; top:0; z-index:30; border-bottom:1px solid var(--line); background:rgb(255 255 255 / 96%); backdrop-filter:blur(14px); }
+      .head-row { min-height:70px; display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+      .brand { display:inline-flex; align-items:center; gap:.7rem; color:var(--ink); text-decoration:none; }
+      .brand-logo { display:block; width:48px; height:48px; border:1px solid var(--line); border-radius:50%; background:#fff; object-fit:contain; object-position:center; box-shadow:0 3px 10px rgb(9 9 11 / 7%); transition:transform .25s ease,box-shadow .25s ease; }
+      .brand-name { font-size:12px; font-weight:800; letter-spacing:.16em; line-height:1; }
+      .brand-sub { margin-top:5px; color:var(--muted); font-size:8px; font-weight:700; letter-spacing:.2em; }
+      .main-nav { display:flex; align-items:center; gap:1.6rem; }
+      .main-nav a { color:var(--muted); font-size:13px; font-weight:600; text-decoration:none; transition:color .2s ease; }
+      .main-nav a:hover,.main-nav a[aria-current="page"] { color:var(--ink); }
+      .button { display:inline-flex; min-height:44px; align-items:center; justify-content:center; gap:.55rem; border:1px solid transparent; border-radius:9px; padding:.7rem 1.05rem; background:var(--blue); color:white; font-size:13px; font-weight:700; text-align:center; text-decoration:none; box-shadow:0 3px 9px rgb(2 132 199 / 15%); transition:transform .22s ease,box-shadow .22s ease,background .22s ease; }
+      .button { position:relative; isolation:isolate; overflow:hidden; }
+      .button::after { position:absolute; z-index:0; inset:-30% auto -30% -45%; width:28%; background:linear-gradient(90deg,transparent,rgb(255 255 255 / 35%),transparent); content:""; pointer-events:none; transform:translateX(-170%) skewX(-18deg); transition:transform .65s ease; }
+      .button > * { position:relative; z-index:1; }
+      .button:hover { transform:translateY(-2px); background:#0277B5; box-shadow:0 9px 19px rgb(2 132 199 / 23%); }
+      .button:hover::after { transform:translateX(650%) skewX(-18deg); }
+      .scroll-progress { position:fixed; inset:0 auto auto 0; z-index:60; width:100%; height:3px; background:var(--blue); box-shadow:0 0 12px rgb(2 132 199 / 35%); transform:scaleX(0); transform-origin:left; pointer-events:none; }
+      a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible { outline:3px solid rgb(2 132 199 / 35%); outline-offset:3px; }
+      .mobile-nav { display:none; }
+      .fade-in { animation:fade-up .7s cubic-bezier(.2,.7,.2,1) both; }
+      .fade-delay { animation:fade-up .85s .12s cubic-bezier(.2,.7,.2,1) both; }
+      @keyframes fade-up { from { opacity:0; translate:0 13px; } to { opacity:1; translate:0 0; } }
+      .lift-card { transition:all .3s ease; }
+      .lift-card:hover { transform:translateY(-4px); box-shadow:0 20px 40px -28px rgb(9 9 11 / 27%),0 5px 12px rgb(9 9 11 / 4%); }
+      .lift-card { background-image:radial-gradient(260px circle at var(--pointer-x,50%) var(--pointer-y,50%),rgb(2 132 199 / 7%),transparent 72%); }
+      .motion-ready.pointer-tilt .lift-card.is-visible:hover { transform:translateY(-4px) perspective(900px) rotateX(var(--tilt-y,0deg)) rotateY(var(--tilt-x,0deg)); }
+      .lift-card > span:first-child { transition:transform .25s ease,box-shadow .25s ease; }
+      .lift-card:hover > span:first-child { transform:translateY(-2px) scale(1.06); box-shadow:0 5px 12px rgb(2 132 199 / 12%); }
+      .brand:hover .brand-logo { transform:scale(1.06); box-shadow:0 5px 14px rgb(2 132 199 / 15%); }
+      .main-nav a { position:relative; }
+      .main-nav a::after { position:absolute; right:0; bottom:-7px; left:0; height:2px; border-radius:2px; background:var(--blue); content:""; transform:scaleX(0); transform-origin:left; transition:transform .22s ease; }
+      .main-nav a:hover::after,.main-nav a[aria-current="page"]::after { transform:scaleX(1); }
+      .hero-glow { background:radial-gradient(ellipse at 74% 12%,rgb(2 132 199 / 10%),transparent 42%),linear-gradient(180deg,#fff,#fff); }
+      .hero-glow { background-size:130% 130%; animation:glow-drift 16s ease-in-out infinite alternate; }
+      @keyframes glow-drift { from { background-position:0% 0%; } to { background-position:100% 45%; } }
+      .motion-ready .motion-item { opacity:0; transform:translateY(14px); transition:opacity .65s ease var(--reveal-delay,0ms),transform .65s cubic-bezier(.2,.7,.2,1) var(--reveal-delay,0ms); }
+      .motion-ready .motion-item.is-visible { opacity:1; transform:translateY(0); }
+      .motion-ready .lift-card.is-visible:hover { transform:translateY(-4px); }
+      .live-dot { animation:pulse-dot 1.8s ease-in-out infinite; }
+      @keyframes pulse-dot { 0%,100% { box-shadow:0 0 0 0 rgb(2 132 199 / 35%); } 50% { box-shadow:0 0 0 6px rgb(2 132 199 / 0%); } }
+      @media(prefers-reduced-motion:reduce) { .motion-ready .motion-item,.motion-ready .motion-item.is-visible { opacity:1!important; transform:none!important; } }
+      .step-line { height:1px; flex:1; background:var(--line); }
+      .site-footer { border-top:1px solid var(--line); background:#fff; }
+      .site-footer .brand-logo { width:42px; height:42px; }
+      @media(max-width:760px) { .shell { width:min(100% - 2rem,1160px); } .head-row { min-height:64px; } .main-nav { display:none; } .mobile-nav { display:flex; gap:1.35rem; overflow:auto; padding:0 0 12px; } .mobile-nav a { flex:none; color:var(--muted); font-size:12px; font-weight:600; text-decoration:none; } .mobile-nav a[aria-current="page"] { color:var(--ink); } }
+      @media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation-duration:.01ms!important; transition-duration:.01ms!important; } }
+      @media(hover:none),(max-width:760px) { .motion-ready.pointer-tilt .lift-card.is-visible:hover { transform:translateY(-4px); } }
+    </style>
+  </head>
+  <body>
+    <div class="scroll-progress" aria-hidden="true"></div>
+    <header class="site-header">
+      <div class="shell head-row">
+        <a class="brand" href="index.html" aria-label="Relay Automation home"><img class="brand-logo" src="assets/logo-mark.png" alt=""><span><span class="brand-name">RELAY</span><span class="brand-sub block">AUTOMATION</span></span></a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="index.html" aria-current="page">Home</a><a href="about.html">About</a><a href="pricing.html">Pricing</a><a href="demo.html">Demo</a>
+        </nav>
+        <a class="button" href="demo.html">Get Started <span aria-hidden="true">→</span></a>
+      </div>
+      <nav class="shell mobile-nav" aria-label="Mobile navigation">
+        <a href="index.html" aria-current="page">Home</a><a href="about.html">About</a><a href="pricing.html">Pricing</a><a href="demo.html">Demo</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero-glow overflow-hidden">
+        <div class="shell grid items-center gap-12 py-16 md:grid-cols-2 md:py-24">
+          <div class="fade-in max-w-2xl">
+            <p class="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-xs font-semibold text-zinc-700"><span class="text-sky-700" aria-hidden="true">⚡</span>Instant Missed-Call Recovery for Independent US HVAC Contractors</p>
+            <h1 class="mt-7 text-4xl font-semibold leading-[1.08] tracking-[-.055em] text-zinc-950 sm:text-6xl">Never lose an emergency repair job to a missed call.</h1>
+            <p class="mt-6 max-w-xl text-base leading-7 text-zinc-600 sm:text-lg sm:leading-8">When your technicians are on roofs or driving between service calls, unanswered inbound calls represent immediate revenue leaks. Relay Automation detects missed calls instantly, engages prospective customers via text in under 5 seconds with a warm human assistant tone, and hands qualified leads directly to your dispatch team before they call a competitor.</p>
+            <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+              <a class="button" href="demo.html">Request Custom Demo <span aria-hidden="true">→</span></a>
+              <a class="inline-flex min-h-11 items-center justify-center rounded-lg border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50" href="pricing.html">View Transparent Pricing</a>
+            </div>
+            <p class="mt-5 text-xs font-medium text-zinc-500">A managed service for independent US HVAC teams. Keep your existing business number.</p>
+          </div>
+          <div class="fade-delay relative mx-auto w-full max-w-[490px]">
+            <div class="absolute -inset-6 -z-10 rounded-full bg-sky-100/70 blur-3xl" aria-hidden="true"></div>
+            <div class="lift-card overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_25px_70px_-42px_rgba(9,9,11,0.32)]">
+              <div class="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
+                <div><p class="text-sm font-semibold text-zinc-950">Missed-call message flow</p><p class="mt-1 text-xs text-zinc-500">Illustrative conversation</p></div>
+                <span class="inline-flex items-center gap-2 rounded-full bg-zinc-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-600"><i class="live-dot size-1.5 rounded-full bg-sky-600"></i>Live flow</span>
+              </div>
+              <div class="space-y-4 bg-zinc-50 p-5 sm:p-6">
+                <div class="text-center text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Missed call · 2:14 PM</div>
+                <div class="ml-auto max-w-[88%] rounded-2xl rounded-br-sm bg-sky-600 p-4 text-sm leading-6 text-white"><p class="mb-1 text-[10px] font-semibold uppercase tracking-wider">Relay · sent in 4 sec</p>Hi! This is Relay on behalf of your HVAC team. Sorry we missed your call. How can we help today?</div>
+                <div class="max-w-[78%] rounded-2xl rounded-bl-sm border border-zinc-200 bg-white p-3.5 text-sm leading-6 text-zinc-600">My AC stopped working. I’m in 78704.</div>
+                <div class="ml-auto max-w-[88%] rounded-2xl rounded-br-sm bg-sky-600 p-4 text-sm leading-6 text-white">Thanks for letting us know. I’ve passed this to the team so someone can follow up.</div>
+                <div class="rounded-xl border border-zinc-200 bg-white p-3.5"><p class="text-xs font-semibold text-zinc-950">Dispatcher alert</p><p class="mt-1 text-xs leading-5 text-zinc-500">AC not cooling · ZIP 78704 · Callback requested</p></div>
+              </div>
+              <div class="border-t border-zinc-200 px-5 py-3 text-[11px] text-zinc-500">Your staff receives the details and takes it from here.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="Service metrics" class="border-y border-zinc-200 bg-white py-10">
+        <div class="shell">
+          <div class="grid divide-y divide-zinc-200 rounded-2xl border border-zinc-200 bg-zinc-50 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            <article class="lift-card px-5 py-6 text-center"><p class="text-3xl font-semibold tracking-tight text-zinc-950">&lt; 5 Seconds Response</p><p class="mt-2 text-sm leading-6 text-zinc-600">Average automated text-back trigger speed ensures leads are caught while their intent is highest. Carrier timing may vary.</p></article>
+            <article class="lift-card px-5 py-6 text-center"><p class="text-3xl font-semibold tracking-tight text-zinc-950">82% Industry Stat</p><p class="mt-2 text-sm leading-6 text-zinc-600">Of homeowners hang up on an unanswered call and immediately dial the next contractor on Google.</p></article>
+            <article class="lift-card px-5 py-6 text-center"><p class="text-3xl font-semibold tracking-tight text-zinc-950">1 Saved Repair Job</p><p class="mt-2 text-sm leading-6 text-zinc-600">A recovered job may cover your monthly service investment; job value and recovery results vary.</p></article>
+          </div>
+          <p class="mt-3 text-center text-[11px] leading-5 text-zinc-500">The 82% figure is an industry estimate; verify its source before using it in advertising. Job values and recovery results vary. The monthly service is $99; a saved job does not guarantee a particular return or cover a full quarter.</p>
+        </div>
+      </section>
+
+      <section id="features" class="shell scroll-mt-24 py-20 sm:py-24">
+        <div class="mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.14em] text-sky-700">A practical safety net</p><h2 class="mt-4 text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">Useful details, delivered to the right people.</h2><p class="mt-4 text-base leading-7 text-zinc-600">A focused managed service to close the gap between a missed call and a human follow-up.</p></div>
+        <div class="mt-11 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">01</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">Instant Call Event Detection</h3><p class="mt-2 text-sm leading-6 text-zinc-600">When configured with a compatible phone system, call-event integrations can identify missed, busy, or unanswered calls for a timely follow-up.</p></article>
+          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">02</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">5-Second Branded SMS Trigger</h3><p class="mt-2 text-sm leading-6 text-zinc-600">A registered, friendly text can acknowledge the missed call while your crew is on a job site. Actual timing and delivery depend on carrier and service availability.</p></article>
+          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">03</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">Natural 2-Way Intent Gathering</h3><p class="mt-2 text-sm leading-6 text-zinc-600">A short, controlled conversation gathers the customer's equipment issue and ZIP code so your team can decide what to do next.</p></article>
+          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">04</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">Immediate Staff &amp; Tech Alerts</h3><p class="mt-2 text-sm leading-6 text-zinc-600">SMS and email notifications can route caller details to your dispatcher or on-call technician for a personal callback.</p></article>
+          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">05</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">A2P 10DLC Registration Support</h3><p class="mt-2 text-sm leading-6 text-zinc-600">We assist with US carrier brand and campaign registration and opt-out setup. Approval is determined by carriers; no registration can guarantee messages are never filtered.</p></article>
+          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">06</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">Works With Your Existing Setup</h3><p class="mt-2 text-sm leading-6 text-zinc-600">Relay is designed to work alongside common phone providers and CRMs such as RingCentral, Verizon, Housecall Pro, and Jobber, subject to compatibility and call routing.</p></article>
+        </div>
+      </section>
+
+      <section id="how-it-works" class="border-y border-zinc-200 bg-zinc-50 py-20">
+        <div class="shell"><div class="mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.14em] text-sky-700">Three simple steps</p><h2 class="mt-4 text-3xl font-semibold tracking-tight text-zinc-950">From missed call to staff handoff.</h2></div>
+          <div class="mt-12 grid gap-6 md:grid-cols-3">
+            <article class="lift-card rounded-2xl border border-zinc-200 bg-white p-6"><span class="grid size-11 place-items-center rounded-full border border-zinc-200 bg-zinc-50 text-sm font-bold text-sky-700">01</span><h3 class="mt-4 text-lg font-semibold text-zinc-950">The Missed Call Occurs</h3><p class="mt-2 text-sm leading-6 text-zinc-600">Your office line rings out because technicians are deployed in the field and staff are occupied.</p></article>
+            <article class="lift-card rounded-2xl border border-zinc-200 bg-white p-6"><span class="grid size-11 place-items-center rounded-full border border-zinc-200 bg-zinc-50 text-sm font-bold text-sky-700">02</span><h3 class="mt-4 text-lg font-semibold text-zinc-950">Instant Automated Text-Back</h3><p class="mt-2 text-sm leading-6 text-zinc-600">When carrier and service conditions allow, the customer receives a soft, professional text about their heating or cooling issue.</p></article>
+            <article class="lift-card rounded-2xl border border-zinc-200 bg-white p-6"><span class="grid size-11 place-items-center rounded-full border border-zinc-200 bg-zinc-50 text-sm font-bold text-sky-700">03</span><h3 class="mt-4 text-lg font-semibold text-zinc-950">Handoff &amp; Dispatch</h3><p class="mt-2 text-sm leading-6 text-zinc-600">The customer can reply with their address and issue, triggering an alert so your team can call them back.</p></article>
+          </div>
+        </div>
+      </section>
+      <section class="shell py-16"><div class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-8 text-center sm:p-12"><h2 class="text-2xl font-semibold tracking-tight text-zinc-950">Stop letting missed calls fund your local competitors.</h2><p class="mx-auto mt-3 max-w-xl text-sm leading-6 text-zinc-600">Get set up in 24 hours, subject to phone-system configuration and carrier registration approvals.</p><a class="button mt-6" href="demo.html">Request Custom Demo <span aria-hidden="true">→</span></a></div></section>
+    </main>
+
+    <footer class="site-footer"><div class="shell flex flex-col gap-5 py-7 sm:flex-row sm:items-end sm:justify-between"><a class="brand" href="index.html" aria-label="Relay Automation home"><img class="brand-logo" src="assets/logo-mark.png" alt=""><span><span class="brand-name">RELAY</span><span class="brand-sub block">AUTOMATION</span></span></a><div class="max-w-2xl text-xs leading-5 text-zinc-500 sm:text-right"><nav aria-label="Footer navigation" class="mb-3 flex flex-wrap gap-4 sm:justify-end"><a class="transition hover:text-zinc-950" href="index.html">Home</a><a class="transition hover:text-zinc-950" href="about.html">About</a><a class="transition hover:text-zinc-950" href="pricing.html">Pricing</a><a class="transition hover:text-zinc-950" href="demo.html">Demo</a></nav><p>© 2026 Relay Automation. All rights reserved.</p><p class="mt-2">US business texting requires applicable A2P 10DLC registration and carrier approval. Message delivery, timing, and service availability depend on carrier rules; delivery is not guaranteed.</p></div></div></footer>
+    <script>
+      if ("IntersectionObserver" in window && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        document.documentElement.classList.add("motion-ready");
+        const revealObserver = new IntersectionObserver((entries, observer) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-visible");
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.12, rootMargin: "0px 0px -24px 0px" });
+        document.querySelectorAll("main > section, .lift-card").forEach((element, index) => {
+          element.classList.add("motion-item");
+          element.style.setProperty("--reveal-delay", `${(index % 4) * 75}ms`);
+          revealObserver.observe(element);
+        });
+      }
+
+        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          const progress = document.querySelector(".scroll-progress");
+          let ticking = false;
+          const updateProgress = () => {
+            const range = document.documentElement.scrollHeight - window.innerHeight;
+            progress.style.transform = `scaleX(${range > 0 ? window.scrollY / range : 0})`;
+            ticking = false;
+          };
+          window.addEventListener("scroll", () => {
+            if (!ticking) {
+              window.requestAnimationFrame(updateProgress);
+              ticking = true;
+            }
+          }, { passive: true });
+          updateProgress();
+        }
+
+        if (window.matchMedia("(hover: hover) and (pointer: fine)").matches
+          && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          document.documentElement.classList.add("pointer-tilt");
+          document.querySelectorAll(".lift-card").forEach((card) => {
+            card.addEventListener("pointermove", (event) => {
+              const bounds = card.getBoundingClientRect();
+              const x = (event.clientX - bounds.left) / bounds.width;
+              const y = (event.clientY - bounds.top) / bounds.height;
+              card.style.setProperty("--pointer-x", `${x * 100}%`);
+              card.style.setProperty("--pointer-y", `${y * 100}%`);
+              card.style.setProperty("--tilt-x", `${(x - 0.5) * 2}deg`);
+              card.style.setProperty("--tilt-y", `${(0.5 - y) * 2}deg`);
+            });
+            card.addEventListener("pointerleave", () => {
+              card.style.setProperty("--tilt-x", "0deg");
+              card.style.setProperty("--tilt-y", "0deg");
+            });
+          });
+        }
+    </script>
+  </body>
+</html>
