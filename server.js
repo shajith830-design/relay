@@ -125,7 +125,7 @@ app.get("/leads", (req, res) => {
   }
 });
 
-app.get("/healthz", (_req, res) => {
+app.get(["/health", "/healthz"], (_req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
