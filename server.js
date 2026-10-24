@@ -96,31 +96,20 @@ app.post("/api/leads", asyncRoute(async (req, res) => {
 }));
 
 app.get("/leads", (req, res) => {
-  const remoteAddress = req.socket.remoteAddress || "";
-  const isLoopback = remoteAddress === "::1"
-    || remoteAddress === "127.0.0.1"
-    || remoteAddress.startsWith("::ffff:127.");
-  const isLocalRequest = !isProduction
-    && isLoopback
-    && ["localhost", "127.0.0.1", "::1"].includes(req.hostname)
-    && !req.get("CF-Ray");
+  if (!config.leadsApiToken) {
+    console.error("Rejected leads API request: LEADS_API_TOKEN is not configured.");
+    return res.status(503).json({ success: false, error: "Leads API is not configured" });
+  }
 
-  if (!isLocalRequest) {
-    if (!config.leadsApiToken) {
-      console.error("Rejected leads API request: LEADS_API_TOKEN is not configured.");
-      return res.status(503).json({ success: false, error: "Leads API is not configured" });
-    }
+  const authorization = req.get("Authorization") || "";
+  const providedToken = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] || "";
+  const expected = Buffer.from(config.leadsApiToken);
+  const provided = Buffer.from(providedToken);
+  const validToken = expected.length === provided.length
+    && timingSafeEqual(expected, provided);
 
-    const authorization = req.get("Authorization") || "";
-    const providedToken = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] || "";
-    const expected = Buffer.from(config.leadsApiToken);
-    const provided = Buffer.from(providedToken);
-    const validToken = expected.length === provided.length
-      && timingSafeEqual(expected, provided);
-
-    if (!validToken) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
+  if (!validToken) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
   }
 
   try {
