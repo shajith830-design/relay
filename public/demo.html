@@ -117,14 +117,16 @@
         status.textContent = "Sending your request...";
 
         try {
-          const response = await fetch("https://service.relay.com/api/leads", {
+          const apiBase = "https://relay-jexj.onrender.com";
+          const payload = {
+            name: formData.get("name"),
+            phone: formData.get("phone"),
+            message
+          };
+          const response = await fetch(`${apiBase}/api/leads`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: formData.get("name"),
-              phone: formData.get("phone"),
-              message
-            })
+            body: JSON.stringify(payload)
           });
           let result;
           try {
