@@ -45,9 +45,6 @@
     }
     .brand { display: inline-flex; align-items: center; gap: .65rem; color: var(--ink); text-decoration: none; }
     .brand-logo { width: 96px; height: 66px; flex: 0 0 auto; object-fit: contain; }
-    .brand > span { display: none; }
-    .brand-name { font-size: 12px; font-weight: 800; letter-spacing: .16em; line-height: 1; }
-    .brand-sub { display: block; margin-top: 5px; color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .2em; }
     .links { display: flex; gap: .25rem; }
     .links a { padding: .5rem .8rem; border-radius: 999px; color: var(--muted); font-size: 12px; font-weight: 600; text-decoration: none; transition: .2s; }
     .links a:hover, .links a[aria-current="page"] { background: var(--surface); color: var(--ink); }
@@ -79,7 +76,6 @@
     <div class="nav">
       <a class="brand" href="index.html" aria-label="Relay Automation home">
         <img class="brand-logo" src="assets/relay-wordmark.png" alt="Relay Automation">
-        <span><span class="brand-name">RELAY</span><span class="brand-sub">AUTOMATION</span></span>
       </a>
       <nav class="links" aria-label="Main navigation">
         <a href="index.html">Home</a>
@@ -168,7 +164,9 @@
 
   <footer class="site-footer mt-8">
     <div class="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-      <span class="font-semibold tracking-[.12em] text-slate-700">RELAY AUTOMATION</span>
+      <a class="brand" href="index.html" aria-label="Relay Automation home">
+        <img class="brand-logo" src="assets/relay-wordmark.png" alt="Relay Automation">
+      </a>
       <nav class="flex flex-wrap gap-4" aria-label="Footer navigation">
         <a href="index.html">Home</a>
         <a href="about.html">About</a>
