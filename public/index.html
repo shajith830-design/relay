@@ -1,211 +1,194 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Relay Automation helps independent HVAC contractors respond to missed calls, collect service details, and alert their team." />
-    <meta name="theme-color" content="#FFFFFF" />
-    <title>Relay Automation | Missed-call recovery for HVAC</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      :root { color-scheme: light; --paper:#FFFFFF; --surface:#FAFAFA; --ink:#09090B; --muted:#71717A; --line:#E4E4E7; --blue:#0284C7; }
-      * { box-sizing: border-box; }
-      html { scroll-behavior:smooth; scroll-padding-top:7rem; }
-      body { margin:0; background:var(--paper); color:var(--ink); font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased; }
-      .text-zinc-700,.text-zinc-600,.text-zinc-500 { color:var(--muted)!important; }
-      .text-zinc-950,.text-zinc-900 { color:var(--ink)!important; } .bg-zinc-50 { background-color:var(--surface)!important; }
-      .border-zinc-200 { border-color:var(--line)!important; } .text-sky-700,.text-sky-600 { color:var(--blue)!important; }
-      .bg-sky-600,.bg-sky-700 { background-color:var(--blue)!important; }
-      .shell { width:min(100% - 2.5rem,1160px); margin-inline:auto; }
-      .site-header { position:sticky; top:0; z-index:30; border-bottom:1px solid var(--line); background:rgb(255 255 255 / 96%); backdrop-filter:blur(14px); }
-      .head-row { min-height:70px; display:flex; align-items:center; justify-content:space-between; gap:1rem; }
-      .brand { display:inline-flex; align-items:center; gap:.7rem; color:var(--ink); text-decoration:none; }
-      .brand-logo { display:block; width:48px; height:48px; border:1px solid var(--line); border-radius:50%; background:#fff; object-fit:contain; object-position:center; box-shadow:0 3px 10px rgb(9 9 11 / 7%); transition:transform .25s ease,box-shadow .25s ease; }
-      .brand-name { font-size:12px; font-weight:800; letter-spacing:.16em; line-height:1; }
-      .brand-sub { margin-top:5px; color:var(--muted); font-size:8px; font-weight:700; letter-spacing:.2em; }
-      .main-nav { display:flex; align-items:center; gap:1.6rem; }
-      .main-nav a { color:var(--muted); font-size:13px; font-weight:600; text-decoration:none; transition:color .2s ease; }
-      .main-nav a:hover,.main-nav a[aria-current="page"] { color:var(--ink); }
-      .button { display:inline-flex; min-height:44px; align-items:center; justify-content:center; gap:.55rem; border:1px solid transparent; border-radius:9px; padding:.7rem 1.05rem; background:var(--blue); color:white; font-size:13px; font-weight:700; text-align:center; text-decoration:none; box-shadow:0 3px 9px rgb(2 132 199 / 15%); transition:transform .22s ease,box-shadow .22s ease,background .22s ease; }
-      .button { position:relative; isolation:isolate; overflow:hidden; }
-      .button::after { position:absolute; z-index:0; inset:-30% auto -30% -45%; width:28%; background:linear-gradient(90deg,transparent,rgb(255 255 255 / 35%),transparent); content:""; pointer-events:none; transform:translateX(-170%) skewX(-18deg); transition:transform .65s ease; }
-      .button > * { position:relative; z-index:1; }
-      .button:hover { transform:translateY(-2px); background:#0277B5; box-shadow:0 9px 19px rgb(2 132 199 / 23%); }
-      .button:hover::after { transform:translateX(650%) skewX(-18deg); }
-      .scroll-progress { position:fixed; inset:0 auto auto 0; z-index:60; width:100%; height:3px; background:var(--blue); box-shadow:0 0 12px rgb(2 132 199 / 35%); transform:scaleX(0); transform-origin:left; pointer-events:none; }
-      a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible { outline:3px solid rgb(2 132 199 / 35%); outline-offset:3px; }
-      .mobile-nav { display:none; }
-      .fade-in { animation:fade-up .7s cubic-bezier(.2,.7,.2,1) both; }
-      .fade-delay { animation:fade-up .85s .12s cubic-bezier(.2,.7,.2,1) both; }
-      @keyframes fade-up { from { opacity:0; translate:0 13px; } to { opacity:1; translate:0 0; } }
-      .lift-card { transition:all .3s ease; }
-      .lift-card:hover { transform:translateY(-4px); box-shadow:0 20px 40px -28px rgb(9 9 11 / 27%),0 5px 12px rgb(9 9 11 / 4%); }
-      .lift-card { background-image:radial-gradient(260px circle at var(--pointer-x,50%) var(--pointer-y,50%),rgb(2 132 199 / 7%),transparent 72%); }
-      .motion-ready.pointer-tilt .lift-card.is-visible:hover { transform:translateY(-4px) perspective(900px) rotateX(var(--tilt-y,0deg)) rotateY(var(--tilt-x,0deg)); }
-      .lift-card > span:first-child { transition:transform .25s ease,box-shadow .25s ease; }
-      .lift-card:hover > span:first-child { transform:translateY(-2px) scale(1.06); box-shadow:0 5px 12px rgb(2 132 199 / 12%); }
-      .brand:hover .brand-logo { transform:scale(1.06); box-shadow:0 5px 14px rgb(2 132 199 / 15%); }
-      .main-nav a { position:relative; }
-      .main-nav a::after { position:absolute; right:0; bottom:-7px; left:0; height:2px; border-radius:2px; background:var(--blue); content:""; transform:scaleX(0); transform-origin:left; transition:transform .22s ease; }
-      .main-nav a:hover::after,.main-nav a[aria-current="page"]::after { transform:scaleX(1); }
-      .hero-glow { background:radial-gradient(ellipse at 74% 12%,rgb(2 132 199 / 10%),transparent 42%),linear-gradient(180deg,#fff,#fff); }
-      .hero-glow { background-size:130% 130%; animation:glow-drift 16s ease-in-out infinite alternate; }
-      @keyframes glow-drift { from { background-position:0% 0%; } to { background-position:100% 45%; } }
-      .motion-ready .motion-item { opacity:0; transform:translateY(14px); transition:opacity .65s ease var(--reveal-delay,0ms),transform .65s cubic-bezier(.2,.7,.2,1) var(--reveal-delay,0ms); }
-      .motion-ready .motion-item.is-visible { opacity:1; transform:translateY(0); }
-      .motion-ready .lift-card.is-visible:hover { transform:translateY(-4px); }
-      .live-dot { animation:pulse-dot 1.8s ease-in-out infinite; }
-      @keyframes pulse-dot { 0%,100% { box-shadow:0 0 0 0 rgb(2 132 199 / 35%); } 50% { box-shadow:0 0 0 6px rgb(2 132 199 / 0%); } }
-      @media(prefers-reduced-motion:reduce) { .motion-ready .motion-item,.motion-ready .motion-item.is-visible { opacity:1!important; transform:none!important; } }
-      .step-line { height:1px; flex:1; background:var(--line); }
-      .site-footer { border-top:1px solid var(--line); background:#fff; }
-      .site-footer .brand-logo { width:42px; height:42px; }
-      @media(max-width:760px) { .shell { width:min(100% - 2rem,1160px); } .head-row { min-height:64px; } .main-nav { display:none; } .mobile-nav { display:flex; gap:1.35rem; overflow:auto; padding:0 0 12px; } .mobile-nav a { flex:none; color:var(--muted); font-size:12px; font-weight:600; text-decoration:none; } .mobile-nav a[aria-current="page"] { color:var(--ink); } }
-      @media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation-duration:.01ms!important; transition-duration:.01ms!important; } }
-      @media(hover:none),(max-width:760px) { .motion-ready.pointer-tilt .lift-card.is-visible:hover { transform:translateY(-4px); } }
-    </style>
-  </head>
-  <body>
-    <div class="scroll-progress" aria-hidden="true"></div>
-    <header class="site-header">
-      <div class="shell head-row">
-        <a class="brand" href="index.html" aria-label="Relay Automation home"><img class="brand-logo" src="assets/logo-mark.png" alt=""><span><span class="brand-name">RELAY</span><span class="brand-sub block">AUTOMATION</span></span></a>
-        <nav class="main-nav" aria-label="Main navigation">
-          <a href="index.html" aria-current="page">Home</a><a href="about.html">About</a><a href="pricing.html">Pricing</a><a href="demo.html">Demo</a>
-        </nav>
-        <a class="button" href="demo.html">Get Started <span aria-hidden="true">→</span></a>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="description" content="Relay Automation helps independent HVAC contractors respond to missed calls, collect service details, and alert their team." />
+<meta name="theme-color" content="#FFFFFF" />
+<title>Relay Automation | Missed-call recovery for HVAC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{color-scheme:light;--paper:#fff;--surface:#FAFAFA;--ink:#09090B;--muted:#71717A;--line:#E4E4E7;--blue:#0284C7;}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:6rem}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.text-zinc-700,.text-zinc-600,.text-zinc-500{color:var(--muted)!important}.text-zinc-950,.text-zinc-900{color:var(--ink)!important}.bg-zinc-50{background-color:var(--surface)!important}.border-zinc-200{border-color:var(--line)!important}.text-sky-700,.text-sky-600{color:var(--blue)!important}.bg-sky-600,.bg-sky-700{background-color:var(--blue)!important}
+.shell{width:min(100% - 2.5rem,1160px);margin-inline:auto}
+a:focus-visible,button:focus-visible{outline:3px solid rgb(2 132 199/35%);outline-offset:3px}
+.progress{position:fixed;inset:0 auto auto 0;width:100%;height:3px;z-index:60;background:var(--blue);transform:scaleX(0);transform-origin:left;pointer-events:none}
+
+/* nav */
+.nav-wrap{position:sticky;top:0;z-index:40;padding:14px 0;pointer-events:none}
+.nav{pointer-events:auto;display:flex;align-items:center;justify-content:space-between;gap:1rem;width:min(100% - 1.5rem,1060px);margin-inline:auto;padding:8px 10px 8px 14px;border:1px solid var(--line);border-radius:999px;background:rgb(255 255 255/82%);backdrop-filter:blur(16px);box-shadow:0 10px 30px -18px rgb(9 9 11/30%);transition:box-shadow .3s}
+.brand{display:inline-flex;align-items:center;gap:.65rem;color:var(--ink);text-decoration:none}
+.brand-logo{width:40px;height:40px;border:1px solid var(--line);border-radius:50%;background:#fff;object-fit:contain}
+.brand-name{font-size:12px;font-weight:800;letter-spacing:.16em;line-height:1}.brand-sub{display:block;margin-top:5px;color:var(--muted);font-size:8px;font-weight:700;letter-spacing:.2em}
+.links{display:flex;gap:.25rem}.links a{padding:.5rem .95rem;border-radius:999px;color:var(--muted);font-size:13px;font-weight:600;text-decoration:none;transition:.2s}
+.links a:hover{color:var(--ink);background:var(--surface)}.links a[aria-current=page]{color:var(--ink);background:#F1F5F9}
+.button{position:relative;isolation:isolate;overflow:hidden;display:inline-flex;min-height:44px;align-items:center;justify-content:center;gap:.55rem;border:1px solid transparent;border-radius:999px;padding:.7rem 1.25rem;background:var(--blue);color:#fff;font-size:13px;font-weight:700;text-align:center;text-decoration:none;box-shadow:0 6px 16px -4px rgb(2 132 199/40%);transition:transform .22s,box-shadow .22s,background .22s;will-change:transform}
+.button::after{content:"";position:absolute;inset:-30% auto -30% -45%;width:28%;background:linear-gradient(90deg,transparent,rgb(255 255 255/40%),transparent);transform:translateX(-170%) skewX(-18deg);transition:transform .65s;pointer-events:none}
+.button:hover::after{transform:translateX(650%) skewX(-18deg)}.button:hover{transform:translateY(-2px);background:#0277B5;box-shadow:0 14px 26px -8px rgb(2 132 199/50%)}.button:active{transform:scale(.98)}
+.button.ghost{background:#fff;color:#3f3f46;border-color:var(--line);box-shadow:0 2px 6px rgb(9 9 11/5%)}.button.ghost:hover{background:var(--surface);box-shadow:0 10px 20px -10px rgb(9 9 11/25%)}
+.button span[aria-hidden]{transition:transform .25s}.button:hover span[aria-hidden]{transform:translateX(4px)}
+.ripple{position:absolute;z-index:0;border-radius:50%;background:rgb(255 255 255/45%);transform:scale(0);animation:rp .65s ease-out forwards;pointer-events:none}@keyframes rp{to{transform:scale(4);opacity:0}}
+
+/* hero */
+.hero{position:relative;overflow:hidden;background:#fff}
+.hero::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 60% 60% at 75% 0%,rgb(2 132 199/16%),transparent 70%),radial-gradient(ellipse 35% 40% at 5% 50%,rgb(2 132 199/9%),transparent 70%),radial-gradient(ellipse 35% 40% at 95% 80%,rgb(56 189 248/12%),transparent 70%)}
+.hero::after{content:"";position:absolute;inset:0;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:64px 64px;opacity:.5;-webkit-mask-image:radial-gradient(ellipse 70% 70% at 60% 25%,#000,transparent 75%);mask-image:radial-gradient(ellipse 70% 70% at 60% 25%,#000,transparent 75%)}
+.hero>.shell{position:relative;z-index:2}
+.pill{display:inline-flex;align-items:center;gap:.5rem;border:1px solid var(--line);border-radius:999px;background:rgb(255 255 255/80%);padding:.45rem .9rem;font-size:12px;font-weight:600;box-shadow:0 4px 14px -8px rgb(2 132 199/40%)}
+.pill i{font-style:normal;display:inline-block;animation:bolt 2.6s ease-in-out infinite}@keyframes bolt{50%{transform:scale(1.25) rotate(-8deg)}}
+.live-dot{animation:pulse-dot 1.8s ease-in-out infinite}@keyframes pulse-dot{0%,100%{box-shadow:0 0 0 0 rgb(2 132 199/35%)}50%{box-shadow:0 0 0 6px rgb(2 132 199/0%)}}
+.split .w{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.1em;margin-bottom:-.1em}
+.split .w>i{display:inline-block;font-style:normal;opacity:0;transform:translateY(105%);filter:blur(6px);animation:wi .85s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:calc(.2s + var(--i)*50ms)}
+@keyframes wi{to{opacity:1;transform:none;filter:blur(0)}}
+.rise{opacity:0;transform:translateY(16px);animation:rise .8s cubic-bezier(.2,.7,.2,1) forwards;animation-delay:var(--d,.5s)}@keyframes rise{to{opacity:1;transform:none}}
+
+/* chat frame */
+.frame{border:1px solid var(--line);border-radius:24px;background:#fff;overflow:hidden;box-shadow:0 50px 90px -40px rgb(2 132 199/38%),0 20px 40px -24px rgb(9 9 11/25%);transform:perspective(1400px) rotateY(var(--ry,-5deg)) rotateX(var(--rx,2deg));transition:transform .25s ease-out}
+.frame-bar{display:flex;gap:7px;padding:13px 20px 0}.frame-bar b{width:10px;height:10px;border-radius:50%}.frame-bar b:nth-child(1){background:#fca5a5}.frame-bar b:nth-child(2){background:#fde68a}.frame-bar b:nth-child(3){background:#86efac}
+.chat{position:relative;background:radial-gradient(ellipse at 50% 0%,rgb(2 132 199/9%),transparent 55%),var(--surface)}
+.chat>div{opacity:0;animation:msg 14s cubic-bezier(.2,.7,.2,1) infinite both}
+.chat>div:nth-child(1){animation-delay:.3s}.chat>div:nth-child(2){animation-delay:1.3s}.chat>div:nth-child(3){animation-delay:2.4s}.chat>div:nth-child(4){animation-delay:3.5s}.chat>div:nth-child(5){animation-delay:4.6s}
+@keyframes msg{0%{opacity:0;transform:translateY(12px) scale(.97)}4%,90%{opacity:1;transform:none}97%,100%{opacity:0;transform:translateY(-4px)}}
+.float{animation:float 6s ease-in-out infinite alternate}@keyframes float{to{transform:translateY(-10px)}}
+.orb{position:absolute;z-index:-1;border-radius:50%;filter:blur(60px);background:rgb(2 132 199/20%);animation:float 9s ease-in-out infinite alternate}
+
+/* stats */
+.stats{border:1px solid var(--line);border-radius:26px;background:var(--surface);overflow:hidden}
+.stat{position:relative;overflow:hidden;transition:background .35s;background-image:radial-gradient(280px circle at var(--px,50%) var(--py,50%),rgb(2 132 199/9%),transparent 70%)}
+.stat::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:100%;background:linear-gradient(90deg,var(--blue),transparent);transform:scaleX(0);transform-origin:left;transition:transform .5s}.stat:hover::after{transform:scaleX(1)}
+
+/* bento + steps */
+.bento{display:grid;gap:1rem;grid-template-columns:repeat(6,1fr)}
+.cell{position:relative;overflow:hidden;grid-column:span 6;border:1px solid var(--line);border-radius:24px;background:var(--surface);padding:1.75rem;transition:transform .35s cubic-bezier(.2,.7,.2,1),box-shadow .35s,border-color .35s,opacity .8s,filter .8s;background-image:radial-gradient(300px circle at var(--px,50%) var(--py,50%),rgb(2 132 199/9%),transparent 70%)}
+.cell:hover{transform:translateY(-6px);border-color:rgb(2 132 199/40%);box-shadow:0 30px 50px -30px rgb(2 132 199/35%)}
+@media(min-width:640px){.cell{grid-column:span 3}}
+@media(min-width:960px){.b1,.b4{grid-column:span 4}.b2,.b3{grid-column:span 2}.b5,.b6{grid-column:span 3}}
+.num{display:grid;place-items:center;width:42px;height:42px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:13px;font-weight:800;color:var(--blue);transition:.3s}.cell:hover .num{background:var(--blue);color:#fff;transform:rotate(-8deg) scale(1.08)}
+.ghost-num{position:absolute;right:-6px;bottom:-34px;font-size:140px;font-weight:800;letter-spacing:-.06em;color:rgb(2 132 199/6%);line-height:1;pointer-events:none;transition:transform .5s,color .5s}.cell:hover .ghost-num{transform:translateY(-12px);color:rgb(2 132 199/11%)}
+.steps{position:relative}
+.steps::before{content:"";position:absolute;left:12%;right:12%;top:46px;height:2px;background:linear-gradient(90deg,var(--blue),#38bdf8,var(--blue));background-size:200% 100%;opacity:.35;animation:line 4s linear infinite;display:none}
+@media(min-width:768px){.steps::before{display:block}}@keyframes line{to{background-position:-200% 0}}
+.step-num{position:relative;display:grid;place-items:center;width:46px;height:46px;border:1px solid var(--line);border-radius:50%;background:#fff;font-size:13px;font-weight:800;color:var(--blue);transition:.3s;box-shadow:0 0 0 6px var(--surface)}
+.cell:hover .step-num{background:var(--blue);color:#fff;transform:scale(1.1)}
+.step-num::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:1px solid rgb(2 132 199/35%);animation:ping 2.6s ease-out infinite}@keyframes ping{to{transform:scale(1.5);opacity:0}}
+
+.cta{position:relative;overflow:hidden;border-radius:30px;background:linear-gradient(135deg,#0284C7,#0369A1 60%,#075985);color:#fff;padding:clamp(2.5rem,6vw,4.5rem);text-align:center;box-shadow:0 40px 80px -40px rgb(2 132 199/70%)}
+.cta::before{content:"";position:absolute;inset:0;background:radial-gradient(500px circle at var(--mx,70%) var(--my,0%),rgb(255 255 255/22%),transparent 60%),repeating-linear-gradient(135deg,rgb(255 255 255/5%) 0 1px,transparent 1px 22px)}
+.cta>*{position:relative}.cta h2{color:#fff!important}.cta p{color:rgb(255 255 255/82%)!important}.cta .button{background:#fff;color:var(--blue);box-shadow:0 12px 24px -10px rgb(0 0 0/40%)}.cta .button:hover{background:#F0F9FF}
+
+.reveal{opacity:0;transform:translateY(22px);filter:blur(5px);transition:opacity .8s ease var(--rd,0s),transform .8s cubic-bezier(.2,.7,.2,1) var(--rd,0s),filter .8s ease var(--rd,0s),box-shadow .35s,border-color .35s}.reveal.in{opacity:1;transform:none;filter:none}.cell.reveal.in:hover{transform:translateY(-6px)}
+.site-footer{border-top:1px solid var(--line);background:#fff}.site-footer nav a{position:relative}.site-footer nav a::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:1px;background:var(--blue);transform:scaleX(0);transform-origin:right;transition:transform .25s}.site-footer nav a:hover::after{transform:scaleX(1);transform-origin:left}
+.top{position:fixed;right:1.1rem;bottom:1.1rem;z-index:50;width:46px;height:46px;border:1px solid var(--line);border-radius:50%;background:#fff;color:var(--blue);font-weight:800;cursor:pointer;box-shadow:0 10px 24px -10px rgb(9 9 11/35%);opacity:0;visibility:hidden;transform:translateY(10px);transition:.3s}.top.show{opacity:1;visibility:visible;transform:none}
+@media(max-width:820px){.links{display:none}.frame{transform:none!important}.ghost-num{font-size:100px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}.reveal,.rise,.chat>div,.split .w>i{opacity:1!important;transform:none!important;filter:none!important;animation:none!important}.frame{transform:none!important}}
+</style>
+</head>
+<body>
+<div class="progress" aria-hidden="true"></div>
+<div class="nav-wrap"><div class="nav">
+  <a class="brand" href="index.html" aria-label="Relay Automation home"><img class="brand-logo" src="assets/logo-mark.png" alt=""><span><span class="brand-name">RELAY</span><span class="brand-sub">AUTOMATION</span></span></a>
+  <nav class="links" aria-label="Main navigation"><a href="index.html" aria-current="page">Home</a><a href="about.html">About</a><a href="pricing.html">Pricing</a><a href="demo.html">Demo</a></nav>
+  <a class="button" href="demo.html">Get Started <span aria-hidden="true">→</span></a>
+</div></div>
+
+<main>
+<section class="hero">
+  <div class="shell grid items-center gap-12 py-14 md:grid-cols-2 md:py-24">
+    <div class="max-w-2xl">
+      <p class="pill rise text-zinc-700" style="--d:.05s"><i class="text-sky-700" aria-hidden="true">⚡</i>Instant Missed-Call Recovery for Independent US HVAC Contractors</p>
+      <h1 class="split mt-7 text-4xl font-semibold leading-[1.06] tracking-[-.055em] text-zinc-950 sm:text-6xl">Never lose an emergency repair job to a missed call.</h1>
+      <p class="rise mt-6 max-w-xl text-base leading-7 text-zinc-600 sm:text-lg sm:leading-8" style="--d:.8s">When your technicians are on roofs or driving between service calls, unanswered inbound calls represent immediate revenue leaks. Relay Automation detects missed calls instantly, engages prospective customers via text in under 5 seconds with a warm human assistant tone, and hands qualified leads directly to your dispatch team before they call a competitor.</p>
+      <div class="rise mt-8 flex flex-col gap-3 sm:flex-row" style="--d:1s">
+        <a class="button" href="demo.html">Request Custom Demo <span aria-hidden="true">→</span></a>
+        <a class="button ghost" href="pricing.html">View Transparent Pricing</a>
       </div>
-      <nav class="shell mobile-nav" aria-label="Mobile navigation">
-        <a href="index.html" aria-current="page">Home</a><a href="about.html">About</a><a href="pricing.html">Pricing</a><a href="demo.html">Demo</a>
-      </nav>
-    </header>
-
-    <main>
-      <section class="hero-glow overflow-hidden">
-        <div class="shell grid items-center gap-12 py-16 md:grid-cols-2 md:py-24">
-          <div class="fade-in max-w-2xl">
-            <p class="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-xs font-semibold text-zinc-700"><span class="text-sky-700" aria-hidden="true">⚡</span>Instant Missed-Call Recovery for Independent US HVAC Contractors</p>
-            <h1 class="mt-7 text-4xl font-semibold leading-[1.08] tracking-[-.055em] text-zinc-950 sm:text-6xl">Never lose an emergency repair job to a missed call.</h1>
-            <p class="mt-6 max-w-xl text-base leading-7 text-zinc-600 sm:text-lg sm:leading-8">When your technicians are on roofs or driving between service calls, unanswered inbound calls represent immediate revenue leaks. Relay Automation detects missed calls instantly, engages prospective customers via text in under 5 seconds with a warm human assistant tone, and hands qualified leads directly to your dispatch team before they call a competitor.</p>
-            <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-              <a class="button" href="demo.html">Request Custom Demo <span aria-hidden="true">→</span></a>
-              <a class="inline-flex min-h-11 items-center justify-center rounded-lg border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50" href="pricing.html">View Transparent Pricing</a>
-            </div>
-            <p class="mt-5 text-xs font-medium text-zinc-500">A managed service for independent US HVAC teams. Keep your existing business number.</p>
-          </div>
-          <div class="fade-delay relative mx-auto w-full max-w-[490px]">
-            <div class="absolute -inset-6 -z-10 rounded-full bg-sky-100/70 blur-3xl" aria-hidden="true"></div>
-            <div class="lift-card overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_25px_70px_-42px_rgba(9,9,11,0.32)]">
-              <div class="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
-                <div><p class="text-sm font-semibold text-zinc-950">Missed-call message flow</p><p class="mt-1 text-xs text-zinc-500">Illustrative conversation</p></div>
-                <span class="inline-flex items-center gap-2 rounded-full bg-zinc-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-600"><i class="live-dot size-1.5 rounded-full bg-sky-600"></i>Live flow</span>
-              </div>
-              <div class="space-y-4 bg-zinc-50 p-5 sm:p-6">
-                <div class="text-center text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Missed call · 2:14 PM</div>
-                <div class="ml-auto max-w-[88%] rounded-2xl rounded-br-sm bg-sky-600 p-4 text-sm leading-6 text-white"><p class="mb-1 text-[10px] font-semibold uppercase tracking-wider">Relay · sent in 4 sec</p>Hi! This is Relay on behalf of your HVAC team. Sorry we missed your call. How can we help today?</div>
-                <div class="max-w-[78%] rounded-2xl rounded-bl-sm border border-zinc-200 bg-white p-3.5 text-sm leading-6 text-zinc-600">My AC stopped working. I’m in 78704.</div>
-                <div class="ml-auto max-w-[88%] rounded-2xl rounded-br-sm bg-sky-600 p-4 text-sm leading-6 text-white">Thanks for letting us know. I’ve passed this to the team so someone can follow up.</div>
-                <div class="rounded-xl border border-zinc-200 bg-white p-3.5"><p class="text-xs font-semibold text-zinc-950">Dispatcher alert</p><p class="mt-1 text-xs leading-5 text-zinc-500">AC not cooling · ZIP 78704 · Callback requested</p></div>
-              </div>
-              <div class="border-t border-zinc-200 px-5 py-3 text-[11px] text-zinc-500">Your staff receives the details and takes it from here.</div>
-            </div>
-          </div>
+      <p class="rise mt-5 text-xs font-medium text-zinc-500" style="--d:1.15s">A managed service for independent US HVAC teams. Keep your existing business number.</p>
+    </div>
+    <div class="rise relative mx-auto w-full max-w-[490px]" style="--d:.6s">
+      <div class="orb -inset-6" style="inset:-24px" aria-hidden="true"></div>
+      <div class="float"><div class="frame" id="frame">
+        <div class="frame-bar" aria-hidden="true"><b></b><b></b><b></b></div>
+        <div class="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
+          <div><p class="text-sm font-semibold text-zinc-950">Missed-call message flow</p><p class="mt-1 text-xs text-zinc-500">Illustrative conversation</p></div>
+          <span class="inline-flex items-center gap-2 rounded-full bg-zinc-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-600"><i class="live-dot size-1.5 rounded-full bg-sky-600"></i>Live flow</span>
         </div>
-      </section>
-
-      <section aria-label="Service metrics" class="border-y border-zinc-200 bg-white py-10">
-        <div class="shell">
-          <div class="grid divide-y divide-zinc-200 rounded-2xl border border-zinc-200 bg-zinc-50 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            <article class="lift-card px-5 py-6 text-center"><p class="text-3xl font-semibold tracking-tight text-zinc-950">&lt; 5 Seconds Response</p><p class="mt-2 text-sm leading-6 text-zinc-600">Average automated text-back trigger speed ensures leads are caught while their intent is highest. Carrier timing may vary.</p></article>
-            <article class="lift-card px-5 py-6 text-center"><p class="text-3xl font-semibold tracking-tight text-zinc-950">82% Industry Stat</p><p class="mt-2 text-sm leading-6 text-zinc-600">Of homeowners hang up on an unanswered call and immediately dial the next contractor on Google.</p></article>
-            <article class="lift-card px-5 py-6 text-center"><p class="text-3xl font-semibold tracking-tight text-zinc-950">1 Saved Repair Job</p><p class="mt-2 text-sm leading-6 text-zinc-600">A recovered job may cover your monthly service investment; job value and recovery results vary.</p></article>
-          </div>
-          <p class="mt-3 text-center text-[11px] leading-5 text-zinc-500">The 82% figure is an industry estimate; verify its source before using it in advertising. Job values and recovery results vary. The monthly service is $99; a saved job does not guarantee a particular return or cover a full quarter.</p>
+        <div class="chat min-h-[360px] space-y-4 p-5 sm:p-6">
+          <div class="text-center text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Missed call · 2:14 PM</div>
+          <div class="ml-auto max-w-[88%] rounded-2xl rounded-br-sm bg-sky-600 p-4 text-sm leading-6 text-white shadow-[0_16px_30px_-18px_rgb(2_132_199/70%)]"><p class="mb-1 text-[10px] font-semibold uppercase tracking-wider">Relay · sent in 4 sec</p>Hi! This is Relay on behalf of your HVAC team. Sorry we missed your call. How can we help today?</div>
+          <div class="max-w-[78%] rounded-2xl rounded-bl-sm border border-zinc-200 bg-white p-3.5 text-sm leading-6 text-zinc-600">My AC stopped working. I’m in 78704.</div>
+          <div class="ml-auto max-w-[88%] rounded-2xl rounded-br-sm bg-sky-600 p-4 text-sm leading-6 text-white">Thanks for letting us know. I’ve passed this to the team so someone can follow up.</div>
+          <div class="rounded-xl border border-zinc-200 bg-white p-3.5 shadow-sm"><p class="text-xs font-semibold text-zinc-950">Dispatcher alert</p><p class="mt-1 text-xs leading-5 text-zinc-500">AC not cooling · ZIP 78704 · Callback requested</p></div>
         </div>
-      </section>
+        <div class="border-t border-zinc-200 px-5 py-3 text-[11px] text-zinc-500">Your staff receives the details and takes it from here.</div>
+      </div></div>
+    </div>
+  </div>
+</section>
 
-      <section id="features" class="shell scroll-mt-24 py-20 sm:py-24">
-        <div class="mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.14em] text-sky-700">A practical safety net</p><h2 class="mt-4 text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">Useful details, delivered to the right people.</h2><p class="mt-4 text-base leading-7 text-zinc-600">A focused managed service to close the gap between a missed call and a human follow-up.</p></div>
-        <div class="mt-11 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">01</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">Instant Call Event Detection</h3><p class="mt-2 text-sm leading-6 text-zinc-600">When configured with a compatible phone system, call-event integrations can identify missed, busy, or unanswered calls for a timely follow-up.</p></article>
-          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">02</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">5-Second Branded SMS Trigger</h3><p class="mt-2 text-sm leading-6 text-zinc-600">A registered, friendly text can acknowledge the missed call while your crew is on a job site. Actual timing and delivery depend on carrier and service availability.</p></article>
-          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">03</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">Natural 2-Way Intent Gathering</h3><p class="mt-2 text-sm leading-6 text-zinc-600">A short, controlled conversation gathers the customer's equipment issue and ZIP code so your team can decide what to do next.</p></article>
-          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">04</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">Immediate Staff &amp; Tech Alerts</h3><p class="mt-2 text-sm leading-6 text-zinc-600">SMS and email notifications can route caller details to your dispatcher or on-call technician for a personal callback.</p></article>
-          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">05</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">A2P 10DLC Registration Support</h3><p class="mt-2 text-sm leading-6 text-zinc-600">We assist with US carrier brand and campaign registration and opt-out setup. Approval is determined by carriers; no registration can guarantee messages are never filtered.</p></article>
-          <article class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-6"><span class="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white text-sky-700">06</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">Works With Your Existing Setup</h3><p class="mt-2 text-sm leading-6 text-zinc-600">Relay is designed to work alongside common phone providers and CRMs such as RingCentral, Verizon, Housecall Pro, and Jobber, subject to compatibility and call routing.</p></article>
-        </div>
-      </section>
+<section aria-label="Service metrics" class="py-10">
+  <div class="shell reveal">
+    <div class="stats grid divide-y divide-zinc-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+      <article class="stat px-5 py-8 text-center"><p class="text-3xl font-semibold tracking-tight text-zinc-950">&lt; 5 Seconds Response</p><p class="mt-2 text-sm leading-6 text-zinc-600">Average automated text-back trigger speed ensures leads are caught while their intent is highest. Carrier timing may vary.</p></article>
+      <article class="stat px-5 py-8 text-center"><p class="text-3xl font-semibold tracking-tight text-zinc-950">82% Industry Stat</p><p class="mt-2 text-sm leading-6 text-zinc-600">Of homeowners hang up on an unanswered call and immediately dial the next contractor on Google.</p></article>
+      <article class="stat px-5 py-8 text-center"><p class="text-3xl font-semibold tracking-tight text-zinc-950">1 Saved Repair Job</p><p class="mt-2 text-sm leading-6 text-zinc-600">A recovered job may cover your monthly service investment; job value and recovery results vary.</p></article>
+    </div>
+    <p class="mt-3 text-center text-[11px] leading-5 text-zinc-500">The 82% figure is an industry estimate; verify its source before using it in advertising. Job values and recovery results vary. The monthly service is $99; a saved job does not guarantee a particular return or cover a full quarter.</p>
+  </div>
+</section>
 
-      <section id="how-it-works" class="border-y border-zinc-200 bg-zinc-50 py-20">
-        <div class="shell"><div class="mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.14em] text-sky-700">Three simple steps</p><h2 class="mt-4 text-3xl font-semibold tracking-tight text-zinc-950">From missed call to staff handoff.</h2></div>
-          <div class="mt-12 grid gap-6 md:grid-cols-3">
-            <article class="lift-card rounded-2xl border border-zinc-200 bg-white p-6"><span class="grid size-11 place-items-center rounded-full border border-zinc-200 bg-zinc-50 text-sm font-bold text-sky-700">01</span><h3 class="mt-4 text-lg font-semibold text-zinc-950">The Missed Call Occurs</h3><p class="mt-2 text-sm leading-6 text-zinc-600">Your office line rings out because technicians are deployed in the field and staff are occupied.</p></article>
-            <article class="lift-card rounded-2xl border border-zinc-200 bg-white p-6"><span class="grid size-11 place-items-center rounded-full border border-zinc-200 bg-zinc-50 text-sm font-bold text-sky-700">02</span><h3 class="mt-4 text-lg font-semibold text-zinc-950">Instant Automated Text-Back</h3><p class="mt-2 text-sm leading-6 text-zinc-600">When carrier and service conditions allow, the customer receives a soft, professional text about their heating or cooling issue.</p></article>
-            <article class="lift-card rounded-2xl border border-zinc-200 bg-white p-6"><span class="grid size-11 place-items-center rounded-full border border-zinc-200 bg-zinc-50 text-sm font-bold text-sky-700">03</span><h3 class="mt-4 text-lg font-semibold text-zinc-950">Handoff &amp; Dispatch</h3><p class="mt-2 text-sm leading-6 text-zinc-600">The customer can reply with their address and issue, triggering an alert so your team can call them back.</p></article>
-          </div>
-        </div>
-      </section>
-      <section class="shell py-16"><div class="lift-card rounded-2xl border border-zinc-200 bg-zinc-50 p-8 text-center sm:p-12"><h2 class="text-2xl font-semibold tracking-tight text-zinc-950">Stop letting missed calls fund your local competitors.</h2><p class="mx-auto mt-3 max-w-xl text-sm leading-6 text-zinc-600">Get set up in 24 hours, subject to phone-system configuration and carrier registration approvals.</p><a class="button mt-6" href="demo.html">Request Custom Demo <span aria-hidden="true">→</span></a></div></section>
-    </main>
+<section id="features" class="shell scroll-mt-24 py-16 sm:py-24">
+  <div class="reveal mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.14em] text-sky-700">A practical safety net</p><h2 class="mt-4 text-3xl font-semibold tracking-tight text-zinc-950 sm:text-5xl sm:tracking-[-.04em]">Useful details, delivered to the right people.</h2><p class="mt-4 text-base leading-7 text-zinc-600">A focused managed service to close the gap between a missed call and a human follow-up.</p></div>
+  <div class="bento mt-14">
+    <article class="cell b1 reveal"><span class="num">01</span><h3 class="mt-6 text-xl font-semibold text-zinc-950">Instant Call Event Detection</h3><p class="mt-2 max-w-md text-sm leading-6 text-zinc-600">When configured with a compatible phone system, call-event integrations can identify missed, busy, or unanswered calls for a timely follow-up.</p><span class="ghost-num" aria-hidden="true">01</span></article>
+    <article class="cell b2 reveal" style="--rd:.08s"><span class="num">02</span><h3 class="mt-6 text-xl font-semibold text-zinc-950">5-Second Branded SMS Trigger</h3><p class="mt-2 text-sm leading-6 text-zinc-600">A registered, friendly text can acknowledge the missed call while your crew is on a job site. Actual timing and delivery depend on carrier and service availability.</p><span class="ghost-num" aria-hidden="true">02</span></article>
+    <article class="cell b3 reveal"><span class="num">03</span><h3 class="mt-6 text-xl font-semibold text-zinc-950">Natural 2-Way Intent Gathering</h3><p class="mt-2 text-sm leading-6 text-zinc-600">A short, controlled conversation gathers the customer's equipment issue and ZIP code so your team can decide what to do next.</p><span class="ghost-num" aria-hidden="true">03</span></article>
+    <article class="cell b4 reveal" style="--rd:.08s"><span class="num">04</span><h3 class="mt-6 text-xl font-semibold text-zinc-950">Immediate Staff &amp; Tech Alerts</h3><p class="mt-2 max-w-lg text-sm leading-6 text-zinc-600">SMS and email notifications can route caller details to your dispatcher or on-call technician for a personal callback.</p><span class="ghost-num" aria-hidden="true">04</span></article>
+    <article class="cell b5 reveal"><span class="num">05</span><h3 class="mt-6 text-xl font-semibold text-zinc-950">A2P 10DLC Registration Support</h3><p class="mt-2 text-sm leading-6 text-zinc-600">We assist with US carrier brand and campaign registration and opt-out setup. Approval is determined by carriers; no registration can guarantee messages are never filtered.</p><span class="ghost-num" aria-hidden="true">05</span></article>
+    <article class="cell b6 reveal" style="--rd:.08s"><span class="num">06</span><h3 class="mt-6 text-xl font-semibold text-zinc-950">Works With Your Existing Setup</h3><p class="mt-2 text-sm leading-6 text-zinc-600">Relay is designed to work alongside common phone providers and CRMs such as RingCentral, Verizon, Housecall Pro, and Jobber, subject to compatibility and call routing.</p><span class="ghost-num" aria-hidden="true">06</span></article>
+  </div>
+</section>
 
-    <footer class="site-footer"><div class="shell flex flex-col gap-5 py-7 sm:flex-row sm:items-end sm:justify-between"><a class="brand" href="index.html" aria-label="Relay Automation home"><img class="brand-logo" src="assets/logo-mark.png" alt=""><span><span class="brand-name">RELAY</span><span class="brand-sub block">AUTOMATION</span></span></a><div class="max-w-2xl text-xs leading-5 text-zinc-500 sm:text-right"><nav aria-label="Footer navigation" class="mb-3 flex flex-wrap gap-4 sm:justify-end"><a class="transition hover:text-zinc-950" href="index.html">Home</a><a class="transition hover:text-zinc-950" href="about.html">About</a><a class="transition hover:text-zinc-950" href="pricing.html">Pricing</a><a class="transition hover:text-zinc-950" href="demo.html">Demo</a></nav><p>© 2026 Relay Automation. All rights reserved.</p><p class="mt-2">US business texting requires applicable A2P 10DLC registration and carrier approval. Message delivery, timing, and service availability depend on carrier rules; delivery is not guaranteed.</p></div></div></footer>
-    <script>
-      if ("IntersectionObserver" in window && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        document.documentElement.classList.add("motion-ready");
-        const revealObserver = new IntersectionObserver((entries, observer) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add("is-visible");
-              observer.unobserve(entry.target);
-            }
-          });
-        }, { threshold: 0.12, rootMargin: "0px 0px -24px 0px" });
-        document.querySelectorAll("main > section, .lift-card").forEach((element, index) => {
-          element.classList.add("motion-item");
-          element.style.setProperty("--reveal-delay", `${(index % 4) * 75}ms`);
-          revealObserver.observe(element);
-        });
-      }
+<section id="how-it-works" class="border-y border-zinc-200 bg-zinc-50 py-20">
+  <div class="shell"><div class="reveal mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.14em] text-sky-700">Three simple steps</p><h2 class="mt-4 text-3xl font-semibold tracking-tight text-zinc-950 sm:text-5xl sm:tracking-[-.04em]">From missed call to staff handoff.</h2></div>
+    <div class="steps mt-14 grid gap-6 md:grid-cols-3">
+      <article class="cell reveal !col-auto bg-white"><span class="step-num">01</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">The Missed Call Occurs</h3><p class="mt-2 text-sm leading-6 text-zinc-600">Your office line rings out because technicians are deployed in the field and staff are occupied.</p></article>
+      <article class="cell reveal !col-auto bg-white" style="--rd:.1s"><span class="step-num">02</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">Instant Automated Text-Back</h3><p class="mt-2 text-sm leading-6 text-zinc-600">When carrier and service conditions allow, the customer receives a soft, professional text about their heating or cooling issue.</p></article>
+      <article class="cell reveal !col-auto bg-white" style="--rd:.2s"><span class="step-num">03</span><h3 class="mt-5 text-lg font-semibold text-zinc-950">Handoff &amp; Dispatch</h3><p class="mt-2 text-sm leading-6 text-zinc-600">The customer can reply with their address and issue, triggering an alert so your team can call them back.</p></article>
+    </div>
+  </div>
+</section>
 
-        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-          const progress = document.querySelector(".scroll-progress");
-          let ticking = false;
-          const updateProgress = () => {
-            const range = document.documentElement.scrollHeight - window.innerHeight;
-            progress.style.transform = `scaleX(${range > 0 ? window.scrollY / range : 0})`;
-            ticking = false;
-          };
-          window.addEventListener("scroll", () => {
-            if (!ticking) {
-              window.requestAnimationFrame(updateProgress);
-              ticking = true;
-            }
-          }, { passive: true });
-          updateProgress();
-        }
+<section class="shell py-16"><div class="cta reveal" id="cta"><h2 class="mx-auto max-w-2xl text-2xl font-semibold tracking-tight sm:text-4xl">Stop letting missed calls fund your local competitors.</h2><p class="mx-auto mt-4 max-w-xl text-sm leading-6">Get set up in 24 hours, subject to phone-system configuration and carrier registration approvals.</p><a class="button mt-8" href="demo.html">Request Custom Demo <span aria-hidden="true">→</span></a></div></section>
+</main>
 
-        if (window.matchMedia("(hover: hover) and (pointer: fine)").matches
-          && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-          document.documentElement.classList.add("pointer-tilt");
-          document.querySelectorAll(".lift-card").forEach((card) => {
-            card.addEventListener("pointermove", (event) => {
-              const bounds = card.getBoundingClientRect();
-              const x = (event.clientX - bounds.left) / bounds.width;
-              const y = (event.clientY - bounds.top) / bounds.height;
-              card.style.setProperty("--pointer-x", `${x * 100}%`);
-              card.style.setProperty("--pointer-y", `${y * 100}%`);
-              card.style.setProperty("--tilt-x", `${(x - 0.5) * 2}deg`);
-              card.style.setProperty("--tilt-y", `${(0.5 - y) * 2}deg`);
-            });
-            card.addEventListener("pointerleave", () => {
-              card.style.setProperty("--tilt-x", "0deg");
-              card.style.setProperty("--tilt-y", "0deg");
-            });
-          });
-        }
-    </script>
-  </body>
+<footer class="site-footer"><div class="shell flex flex-col gap-5 py-8 sm:flex-row sm:items-end sm:justify-between"><a class="brand" href="index.html" aria-label="Relay Automation home"><img class="brand-logo" src="assets/logo-mark.png" alt=""><span><span class="brand-name">RELAY</span><span class="brand-sub">AUTOMATION</span></span></a><div class="max-w-2xl text-xs leading-5 text-zinc-500 sm:text-right"><nav aria-label="Footer navigation" class="mb-3 flex flex-wrap gap-4 sm:justify-end"><a class="transition hover:text-zinc-950" href="index.html">Home</a><a class="transition hover:text-zinc-950" href="about.html">About</a><a class="transition hover:text-zinc-950" href="pricing.html">Pricing</a><a class="transition hover:text-zinc-950" href="demo.html">Demo</a></nav><p>© 2026 Relay Automation. All rights reserved.</p><p class="mt-2">US business texting requires applicable A2P 10DLC registration and carrier approval. Message delivery, timing, and service availability depend on carrier rules; delivery is not guaranteed.</p></div></div></footer>
+<button class="top" type="button" aria-label="Back to top">↑</button>
+
+<script>
+const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches,fine=matchMedia("(hover: hover) and (pointer: fine)").matches;
+document.querySelectorAll(".split").forEach(el=>{const t=el.textContent.trim();el.setAttribute("aria-label",t);el.innerHTML=t.split(/\s+/).map((w,i)=>`<span class="w" aria-hidden="true"><i style="--i:${i}">${w}</i></span>`).join(" ")});
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add("in");io.unobserve(e.target)}}),{threshold:.1});
+document.querySelectorAll(".reveal").forEach(e=>io.observe(e));
+const bar=document.querySelector(".progress"),nav=document.querySelector(".nav"),topBtn=document.querySelector(".top");
+const sc=()=>{const y=scrollY,r=document.documentElement.scrollHeight-innerHeight;bar.style.transform=`scaleX(${r>0?y/r:0})`;nav.style.boxShadow=y>20?"0 18px 40px -20px rgb(9 9 11/35%)":"";topBtn.classList.toggle("show",y>500)};
+addEventListener("scroll",()=>requestAnimationFrame(sc),{passive:true});sc();
+topBtn.onclick=()=>scrollTo({top:0,behavior:reduce?"auto":"smooth"});
+document.querySelectorAll(".button").forEach(b=>{
+  b.addEventListener("pointerdown",e=>{const r=b.getBoundingClientRect(),s=Math.max(r.width,r.height),n=document.createElement("span");n.className="ripple";n.style.cssText=`width:${s}px;height:${s}px;left:${e.clientX-r.left-s/2}px;top:${e.clientY-r.top-s/2}px`;b.appendChild(n);setTimeout(()=>n.remove(),700)});
+});
+if(fine&&!reduce){
+  document.querySelectorAll(".cell,.stat").forEach(c=>c.addEventListener("pointermove",e=>{const r=c.getBoundingClientRect();c.style.setProperty("--px",e.clientX-r.left+"px");c.style.setProperty("--py",e.clientY-r.top+"px")}));
+  const cta=document.getElementById("cta");cta.addEventListener("pointermove",e=>{const r=cta.getBoundingClientRect();cta.style.setProperty("--mx",e.clientX-r.left+"px");cta.style.setProperty("--my",e.clientY-r.top+"px")});
+  // hero chat card follows the cursor in 3D
+  const fr=document.getElementById("frame"),hero=document.querySelector(".hero");
+  hero.addEventListener("pointermove",e=>{const r=hero.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;fr.style.setProperty("--ry",(-5+x*8)+"deg");fr.style.setProperty("--rx",(2-y*6)+"deg")});
+  hero.addEventListener("pointerleave",()=>{fr.style.setProperty("--ry","-5deg");fr.style.setProperty("--rx","2deg")});
+}
+</script>
+</body>
 </html>
