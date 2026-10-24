@@ -2,7 +2,7 @@
   "name": "relay-automation-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "Twilio missed-call recovery webhooks for Relay Automation",
+  "description": "Lead intake with Telegram notifications for Relay Automation",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",
-    "express": "^4.22.3",
-    "twilio": "^5.13.1"
+    "express": "^4.22.3"
   }
 }

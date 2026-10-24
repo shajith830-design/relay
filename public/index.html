@@ -28,7 +28,7 @@
           Relay Automation
         </div>
         <h1 class="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">HVAC Leads Dashboard</h1>
-        <p class="mt-2 text-sm text-slate-500">Review missed calls and customer replies in one place.</p>
+        <p class="mt-2 text-sm text-slate-500">Review leads and customer replies in one place.</p>
       </div>
       <button id="refresh-button" type="button" class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-600 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-70">
         <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -44,8 +44,8 @@
         <p id="total-count" class="mt-2 text-2xl font-bold tracking-tight text-slate-950">—</p>
       </article>
       <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p class="text-sm font-medium text-slate-500">Missed calls</p>
-        <p id="missed-count" class="mt-2 text-2xl font-bold tracking-tight text-amber-700">—</p>
+        <p class="text-sm font-medium text-slate-500">New leads</p>
+        <p id="new-count" class="mt-2 text-2xl font-bold tracking-tight text-amber-700">—</p>
       </article>
       <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <p class="text-sm font-medium text-slate-500">Customer replies</p>
@@ -68,14 +68,15 @@
         <table class="w-full min-w-[760px] border-collapse text-left text-sm">
           <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
+              <th class="px-5 py-3 font-semibold" scope="col">Customer Name</th>
               <th class="px-5 py-3 font-semibold" scope="col">Customer Phone</th>
               <th class="px-5 py-3 font-semibold" scope="col">Status</th>
-              <th class="px-5 py-3 font-semibold" scope="col">Reported Issue</th>
+              <th class="px-5 py-3 font-semibold" scope="col">Message</th>
               <th class="px-5 py-3 font-semibold" scope="col">Last Updated</th>
             </tr>
           </thead>
           <tbody id="leads-body" class="divide-y divide-slate-100">
-            <tr><td colspan="4" class="px-5 py-12 text-center text-sm text-slate-500">Loading leads…</td></tr>
+            <tr><td colspan="5" class="px-5 py-12 text-center text-sm text-slate-500">Loading leads…</td></tr>
           </tbody>
         </table>
       </div>
@@ -121,6 +122,13 @@
 
     function statusBadge(status) {
       const isReplied = status === "replied";
+      const statusLabel = isReplied
+        ? "Replied"
+        : status === "missed_call"
+          ? "Missed call"
+          : status === "new"
+            ? "New"
+            : status || "Unknown";
       const badge = document.createElement("span");
       badge.className = isReplied
         ? "inline-flex items-center gap-2 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
@@ -128,20 +136,20 @@
       const dot = document.createElement("span");
       dot.className = `status-dot ${isReplied ? "bg-emerald-500" : "bg-amber-500"}`;
       dot.setAttribute("aria-hidden", "true");
-      badge.append(dot, document.createTextNode(isReplied ? "Replied" : status === "missed_call" ? "Missed call" : status || "Unknown"));
+      badge.append(dot, document.createTextNode(statusLabel));
       return badge;
     }
 
     function renderLeads(leads) {
       leadsBody.replaceChildren();
       document.getElementById("total-count").textContent = String(leads.length);
-      document.getElementById("missed-count").textContent = String(leads.filter((lead) => lead.status === "missed_call").length);
+      document.getElementById("new-count").textContent = String(leads.filter((lead) => lead.status === "new").length);
       document.getElementById("replied-count").textContent = String(leads.filter((lead) => lead.status === "replied").length);
 
       if (leads.length === 0) {
         const row = document.createElement("tr");
-        const cell = createCell("No leads yet. New missed calls will appear here.", "px-5 py-12 text-center text-sm text-slate-500");
-        cell.colSpan = 4;
+        const cell = createCell("No leads yet. New submissions will appear here.", "px-5 py-12 text-center text-sm text-slate-500");
+        cell.colSpan = 5;
         row.append(cell);
         leadsBody.append(row);
         return;
@@ -150,7 +158,10 @@
       for (const lead of leads) {
         const row = document.createElement("tr");
         row.className = "transition hover:bg-slate-50/80";
-        row.append(createCell(lead.customer_phone || "—", "whitespace-nowrap px-5 py-4 align-top font-medium text-slate-900"));
+        row.append(
+          createCell(lead.name || "—", "whitespace-nowrap px-5 py-4 align-top font-medium text-slate-900"),
+          createCell(lead.customer_phone || "—", "whitespace-nowrap px-5 py-4 align-top text-slate-700")
+        );
 
         const statusCell = document.createElement("td");
         statusCell.className = "px-5 py-4 align-top";
