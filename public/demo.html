@@ -80,15 +80,14 @@
             <p class="text-xs font-bold uppercase tracking-[.14em] text-sky-700">Custom walkthrough</p>
             <h2 class="mt-3 text-2xl font-semibold tracking-tight text-zinc-950">Request a custom video demo</h2>
             <p class="mt-2 text-sm leading-6 text-zinc-600">Share your HVAC business details to preview a walkthrough tailored to your operation.</p>
-            <div class="mt-5 rounded-lg border border-zinc-200 bg-white px-3.5 py-3 text-xs leading-5 text-zinc-600" role="note">This form is currently a UI-only preview. It validates fields in your browser but does not transmit or store your information. Connect a form service before publishing.</div>
             <form id="demo-form" class="mt-6 space-y-4" action="#" method="post">
               <div><label class="field-label" for="business-name">HVAC Company Name</label><input class="field" id="business-name" name="business" autocomplete="organization" required /></div>
               <div><label class="field-label" for="owner-name">Owner / Manager Full Name</label><input class="field" id="owner-name" name="name" autocomplete="name" required /></div>
-              <div><label class="field-label" for="phone-number">Direct Phone Number</label><input class="field" id="phone-number" name="phone" type="tel" autocomplete="tel" required /></div>
+              <div><label class="field-label" for="phone-number">Direct Phone Number</label><input class="field" id="phone-number" name="phone" type="tel" autocomplete="tel" placeholder="+15551234567" pattern="\+[1-9]\d{7,14}" title="Enter a phone number in international format, such as +15551234567." required /></div>
               <div><label class="field-label" for="email-address">Business Email Address</label><input class="field" id="email-address" name="email" type="email" autocomplete="email" required /></div>
               <div><label class="field-label" for="truck-count">Number of Service Trucks</label><select class="field" id="truck-count" name="trucks" required><option value="" selected disabled>Select truck fleet size</option><option value="2-3">2-3 trucks</option><option value="4-6">4-6 trucks</option><option value="7-10">7-10 trucks</option></select></div>
               <button class="button w-full" type="submit">Request Custom Video Demo <span aria-hidden="true">→</span></button>
-              <p class="text-center text-xs leading-5 text-zinc-500">No sales pressure. We will record a personalized 3-minute breakdown showing your potential missed-call recovery volume within 24 hours. Request delivery is not active until a form service is connected.</p>
+              <p class="text-center text-xs leading-5 text-zinc-500">No sales pressure. We will use your details to prepare a personalized walkthrough for your HVAC business.</p>
               <p id="form-status" class="hidden rounded-lg border border-zinc-200 bg-white p-3 text-xs leading-5 text-zinc-600" role="status" aria-live="polite"></p>
             </form>
           </section>
@@ -98,13 +97,56 @@
 
     <footer class="site-footer"><div class="shell flex flex-col gap-5 py-7 sm:flex-row sm:items-end sm:justify-between"><a class="brand" href="index.html" aria-label="Relay Automation home"><img class="brand-logo" src="assets/logo-mark.png" alt=""><span><span class="brand-name">RELAY</span><span class="brand-sub block">AUTOMATION</span></span></a><div class="max-w-2xl text-xs leading-5 text-zinc-500 sm:text-right"><nav aria-label="Footer navigation" class="mb-3 flex flex-wrap gap-4 sm:justify-end"><a class="transition hover:text-zinc-950" href="index.html">Home</a><a class="transition hover:text-zinc-950" href="about.html">About</a><a class="transition hover:text-zinc-950" href="pricing.html">Pricing</a><a class="transition hover:text-zinc-950" href="demo.html">Demo</a></nav><p>© 2026 Relay Automation. All rights reserved.</p><p class="mt-2">US business texting requires applicable A2P 10DLC registration and carrier approval. Message delivery, timing, and service availability depend on carrier rules; delivery is not guaranteed.</p></div></div></footer>
     <script>
-      document.getElementById("demo-form").addEventListener("submit", (event) => {
+      document.getElementById("demo-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
         if (!form.reportValidity()) return;
         const status = document.getElementById("form-status");
-        status.textContent = "This is a UI-only preview. Your information was not sent or stored.";
-        status.classList.remove("hidden");
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonText = submitButton.textContent;
+        const formData = new FormData(form);
+        const message = [
+          `Company: ${formData.get("business")}`,
+          `Business email: ${formData.get("email")}`,
+          `Service trucks: ${formData.get("trucks")}`
+        ].join("\n");
+
+        submitButton.disabled = true;
+        submitButton.textContent = "Sending...";
+        status.classList.remove("hidden", "border-emerald-200", "bg-emerald-50", "text-emerald-800", "border-rose-200", "bg-rose-50", "text-rose-800");
+        status.textContent = "Sending your request...";
+
+        try {
+          const response = await fetch("https://service.relay.com/api/leads", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: formData.get("name"),
+              phone: formData.get("phone"),
+              message
+            })
+          });
+          let result;
+          try {
+            result = await response.json();
+          } catch {
+            throw new Error("The server returned an invalid response. Please try again.");
+          }
+
+          if (!response.ok || !result.success) {
+            throw new Error(result.error || "Unable to submit your request. Please try again.");
+          }
+
+          status.classList.add("border-emerald-200", "bg-emerald-50", "text-emerald-800");
+          status.textContent = "Thanks! Your request has been sent. Our team will be in touch.";
+          form.reset();
+        } catch (error) {
+          status.classList.add("border-rose-200", "bg-rose-50", "text-rose-800");
+          status.textContent = error.message || "Unable to submit your request. Please try again.";
+        } finally {
+          submitButton.disabled = false;
+          submitButton.textContent = originalButtonText;
+        }
       });
     </script>
     <script>

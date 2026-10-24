@@ -78,7 +78,20 @@ function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
 
-app.post("/api/leads", asyncRoute(async (req, res) => {
+function allowLeadSubmissionCors(_req, res, next) {
+  res.set({
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type"
+  });
+  next();
+}
+
+app.options("/api/leads", allowLeadSubmissionCors, (_req, res) => {
+  res.sendStatus(204);
+});
+
+app.post("/api/leads", allowLeadSubmissionCors, asyncRoute(async (req, res) => {
   const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
   const phone = typeof req.body.phone === "string" ? req.body.phone.trim() : "";
   const message = typeof req.body.message === "string" ? req.body.message.trim() : "";
