@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Validate Compose configuration
+        env:
+          TELEGRAM_BOT_TOKEN: ci-placeholder
+          TELEGRAM_CHAT_ID: ci-placeholder
+          INQUIRIES_API_TOKEN: ci-placeholder
+          RESEND_API_KEY: ci-placeholder
+          AUTH_EMAIL_FROM: relay@example.invalid
+          PUBLIC_BASE_URL: https://relay.example.invalid
+          TRUST_PROXY_HOPS: "1"
+        run: docker compose config --quiet
+
+      - name: Build production image
+        run: docker build --tag relay-automation:${{ github.sha }} .
+
+      - name: Smoke-test production image
+        env:
+          RELAY_IMAGE: relay-automation:${{ github.sha }}
+        run: |
+          set -eu
+          trap 'docker rm -f relay-smoke >/dev/null 2>&1 || true; docker volume rm relay-smoke-data >/dev/null 2>&1 || true' EXIT
+          docker run -d --name relay-smoke -p 127.0.0.1:3000:3000 \
+            -e NODE_ENV=production \
+            -e DATABASE_PATH=/app/data/relay.db \
+            -e INQUIRIES_API_TOKEN=ci-test-token \
+            -v relay-smoke-data:/app/data \
+            "$RELAY_IMAGE"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/healthz; then
+              curl --fail --silent http://127.0.0.1:3000/product.html >/dev/null
+              curl --fail --silent --head http://127.0.0.1:3000/product.html \
+                | grep --ignore-case '^strict-transport-security:'
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs relay-smoke
+          exit 1

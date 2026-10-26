@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="referrer" content="no-referrer">
+  <title>Customer setup information | Relay</title>
+  <link rel="stylesheet" href="product.css">
+  <script src="relay-motion.js" defer></script>
+  <script src="customer.js" defer></script>
+</head>
+<body>
+  <main class="auth-screen">
+    <a class="wordmark" href="index.html" aria-label="Relay Automation home"><img class="wordmark-logo" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="wordmark-name"><span>Relay</span><small>Automation</small></span></a>
+    <section class="auth-card customer-card" aria-labelledby="customer-title">
+      <p class="eyebrow">Customer setup</p>
+      <h1 id="customer-title">Help us get your implementation ready.</h1>
+      <p class="muted" id="customer-intro">Share the requested information with your implementation team.</p>
+      <div id="customer-loading" class="status" role="status" aria-live="polite">Loading your secure request…</div>
+      <form id="customer-form" hidden>
+        <div id="customer-fields"></div>
+        <p class="customer-privacy">Only submit the information requested for setup. Never share passwords, payment card details, or other secrets through this form.</p>
+        <button class="button primary full" type="submit">Send information</button>
+        <p class="status" id="customer-status" role="status" aria-live="polite"></p>
+      </form>
+      <div id="customer-success" class="result-box" hidden>Thank you. Your information has been sent to the implementation team.</div>
+    </section>
+    <p class="auth-foot">A clear, practical onboarding experience with Relay. <a href="privacy.html">Privacy</a></p>
+  </main>
+</body>
+</html>

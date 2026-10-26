@@ -8,7 +8,7 @@ const path = require("node:path");
 /*
  * Environment variables:
  *   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
- *   LEADS_API_TOKEN
+ *   INQUIRIES_API_TOKEN
  *
  * Keep secrets private.
  */
@@ -18,18 +18,35 @@ const portValue = Number.parseInt(env("PORT", "3000"), 10);
 const port = Number.isInteger(portValue) && portValue >= 1 && portValue <= 65535
  ? portValue
  : 3000;
+const trustProxyHops = Number.parseInt(env("TRUST_PROXY_HOPS", "0"), 10);
 if (port !== portValue) {
  console.warn(`Invalid PORT; using ${port}.`);
 }
+if (!Number.isInteger(trustProxyHops) || trustProxyHops < 0 || trustProxyHops > 10) {
+  throw new Error("TRUST_PROXY_HOPS must be an integer between 0 and 10.");
+}
 
 const config = {
- leadsApiToken: env("LEADS_API_TOKEN"),
+ inquiriesApiToken: env("INQUIRIES_API_TOKEN"),
  port
 };
 
 const app = express();
 
 app.disable("x-powered-by");
+app.set("trust proxy", trustProxyHops);
+app.use((_req, res, next) => {
+  const headers = {
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
+  };
+  if (isProduction) headers["Strict-Transport-Security"] = "max-age=31536000";
+  res.set(headers);
+  next();
+});
+app.use("/api/product/customer", express.json({ limit: "128kb" }));
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 app.use(express.static(path.join(__dirname, "public"), {
@@ -37,18 +54,24 @@ app.use(express.static(path.join(__dirname, "public"), {
   maxAge: isProduction ? "1h" : 0
 }));
 
-async function sendLeadNotification(leadData) {
+require("./product-routes")(app, db, isProduction);
+
+async function sendInquiryNotification(inquiry) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   const messageText =
-    `🚨 *New Lead Received!*\n\n` +
-    `👤 *Name:* ${leadData.name || "N/A"}\n` +
-    `📞 *Phone:* ${leadData.phone || "N/A"}\n` +
-    `💬 *Message:* ${leadData.message || "N/A"}`;
+    `📩 *New Customer Onboarding Inquiry*\n\n` +
+    `👤 *Name:* ${inquiry.name}\n` +
+    `📞 *Phone:* ${inquiry.phone}\n` +
+    `💬 *Message:* ${inquiry.message}`;
 
   if (!botToken || !chatId) {
-    console.error("❌ Failed to send Telegram notification: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required.");
+    console.error(JSON.stringify({
+      event: "inquiry_notification_failed",
+      inquiry_id: inquiry.id,
+      reason: "telegram_not_configured"
+    }));
     return;
   }
 
@@ -58,19 +81,28 @@ async function sendLeadNotification(leadData) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
-        text: messageText,
-        parse_mode: "Markdown"
-      })
+        text: messageText
+      }),
+      signal: AbortSignal.timeout(10000)
     });
 
-    const data = await response.json();
-    if (data.ok) {
-      console.log("✅ Telegram notification sent successfully!");
-    } else {
-      console.error("❌ Telegram API error:", data);
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.ok) {
+      console.info(JSON.stringify({ event: "inquiry_notification_sent", inquiry_id: inquiry.id }));
+      return;
     }
+    console.error(JSON.stringify({
+      event: "inquiry_notification_failed",
+      inquiry_id: inquiry.id,
+      provider_status: response.status
+    }));
   } catch (error) {
-    console.error("❌ Failed to send Telegram notification:", error);
+    console.error(JSON.stringify({
+      event: "inquiry_notification_failed",
+      inquiry_id: inquiry.id,
+      reason: error.name === "TimeoutError" ? "timeout" : "request_error",
+      message: error.message
+    }));
   }
 }
 
@@ -78,7 +110,7 @@ function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
 
-function allowLeadSubmissionCors(_req, res, next) {
+function allowInquirySubmissionCors(_req, res, next) {
   res.set({
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -87,11 +119,27 @@ function allowLeadSubmissionCors(_req, res, next) {
   next();
 }
 
-app.options("/api/leads", allowLeadSubmissionCors, (_req, res) => {
+const inquirySubmissionAttempts = new Map();
+function rateLimitInquirySubmission(req, res, next) {
+  const now = Date.now();
+  for (const [ip, bucket] of inquirySubmissionAttempts) {
+    if (now - bucket.windowStart >= 60 * 1000) inquirySubmissionAttempts.delete(ip);
+  }
+  const key = req.ip || "unknown";
+  const bucket = inquirySubmissionAttempts.get(key) || { count: 0, windowStart: now };
+  if (bucket.count >= 5) {
+    return res.status(429).json({ success: false, error: "Too many inquiries. Please try again later." });
+  }
+  bucket.count += 1;
+  inquirySubmissionAttempts.set(key, bucket);
+  return next();
+}
+
+app.options("/api/inquiries", allowInquirySubmissionCors, (_req, res) => {
   res.sendStatus(204);
 });
 
-app.post("/api/leads", allowLeadSubmissionCors, asyncRoute(async (req, res) => {
+app.post("/api/inquiries", allowInquirySubmissionCors, rateLimitInquirySubmission, asyncRoute(async (req, res) => {
   const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
   const phone = typeof req.body.phone === "string" ? req.body.phone.trim() : "";
   const message = typeof req.body.message === "string" ? req.body.message.trim() : "";
@@ -103,20 +151,20 @@ app.post("/api/leads", allowLeadSubmissionCors, asyncRoute(async (req, res) => {
     });
   }
 
-  const lead = db.createLead({ name, phone, message });
-  await sendLeadNotification({ name, phone, message });
-  return res.status(201).json({ success: true, lead });
+  const inquiry = db.createInquiry({ name, phone, message });
+  await sendInquiryNotification(inquiry);
+  return res.status(201).json({ success: true, inquiry: { id: inquiry.id } });
 }));
 
-app.get("/leads", (req, res) => {
-  if (!config.leadsApiToken) {
-    console.error("Rejected leads API request: LEADS_API_TOKEN is not configured.");
-    return res.status(503).json({ success: false, error: "Leads API is not configured" });
+app.get("/inquiries", (req, res) => {
+  if (!config.inquiriesApiToken) {
+    console.error("Rejected inquiry API request: INQUIRIES_API_TOKEN is not configured.");
+    return res.status(503).json({ success: false, error: "Inquiries API is not configured" });
   }
 
   const authorization = req.get("Authorization") || "";
   const providedToken = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] || "";
-  const expected = Buffer.from(config.leadsApiToken);
+  const expected = Buffer.from(config.inquiriesApiToken);
   const provided = Buffer.from(providedToken);
   const validToken = expected.length === provided.length
     && timingSafeEqual(expected, provided);
@@ -126,20 +174,26 @@ app.get("/leads", (req, res) => {
   }
 
   try {
-    const leads = db.getLeads();
+    const inquiries = db.getInquiries();
     return res.json({
       success: true,
-      count: leads.length,
-      leads
+      count: inquiries.length,
+      inquiries
     });
   } catch (error) {
-    console.error(`Error fetching leads: ${error.message}`);
-    return res.status(500).json({ success: false, error: "Failed to retrieve leads" });
+    console.error(`Error fetching inquiries: ${error.message}`);
+    return res.status(500).json({ success: false, error: "Failed to retrieve inquiries" });
   }
 });
 
 app.get(["/health", "/healthz"], (_req, res) => {
-  res.status(200).json({ status: "ok" });
+  try {
+    db.database.prepare("SELECT 1").get();
+    return res.status(200).json({ status: "ok", database: "ok" });
+  } catch (error) {
+    console.error(JSON.stringify({ event: "health_check_failed", message: error.message }));
+    return res.status(503).json({ status: "unavailable", database: "unavailable" });
+  }
 });
 
 app.use((error, _req, res, _next) => {

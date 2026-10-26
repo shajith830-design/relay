@@ -1,11 +1,13 @@
 {
-  "name": "relay-automation-backend",
+  "name": "relay-automation-inquiries",
   "version": "1.0.0",
   "private": true,
-  "description": "Lead intake with Telegram notifications for Relay Automation",
+  "description": "Customer onboarding inquiry intake for Relay Automation",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "backup": "node scripts/backup-database.js",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=20"

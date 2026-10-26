@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Learn what information Relay processes and how to ask questions about it.">
+  <meta name="theme-color" content="#ffffff">
+  <title>Privacy | Relay</title>
+  <link rel="stylesheet" href="relay.css">
+</head>
+<body>
+  <header class="topbar"><div class="wrap nav">
+    <a class="brand" href="index.html" aria-label="Relay Automation home"><img src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="brand-name"><span class="brand-relay">Relay</span><span class="brand-automation">Automation</span></span></a>
+    <div class="nav-actions"><a class="button nav-demo" href="contact.html">Contact Relay <span aria-hidden="true">→</span></a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-menu" aria-label="Open menu"><span></span><span></span><span></span></button></div>
+    <nav class="menu-panel" id="site-menu" aria-label="Main menu">
+      <a href="index.html">Home</a><a href="features-services.html">Our Solutions</a><a href="pricing.html">Pricing</a><a href="contact.html">Contact</a>
+    </nav>
+  </div></header>
+  <main>
+    <section class="page-hero"><div class="wrap"><p class="eyebrow">Privacy</p><h1>How Relay handles information.</h1><p>This notice summarizes information processed by the Relay application and inquiry forms. Read it together with your written service terms.</p></div></section>
+    <section class="section"><div class="wrap content-grid">
+      <article class="offer plain-list"><p class="eyebrow">Information processed</p><h2>Information you provide or create.</h2><ul>
+        <li>Account email addresses and password hashes used for access.</li>
+        <li>Workspace names, team invitations, process steps, templates, implementation tasks, and statuses.</li>
+        <li>Information customers submit through a private setup link, according to the fields the workspace requests.</li>
+        <li>Inquiry form name, phone number, company, email, and message. Company and email are included in the stored inquiry message.</li>
+        <li>Technical request data processed by the hosting environment to operate and protect the service.</li>
+      </ul></article>
+      <article class="offer plain-list"><p class="eyebrow">Use and sharing</p><h2>Used to operate Relay and respond to you.</h2><ul>
+        <li>Relay uses account and workspace information to provide sign-in and implementation workflows.</li>
+        <li>Password recovery uses an email delivery provider to send a one-time recovery link. Recovery tokens are stored as hashes and expire after 30 minutes.</li>
+        <li>Inquiry submissions are stored in the Relay database. When configured, inquiry details are also sent to the service operator’s messaging destination for follow-up.</li>
+        <li>Relay does not ask customers to submit passwords, payment card data, or other secrets through setup forms.</li>
+      </ul></article>
+    </div></section>
+    <section class="section tint"><div class="wrap content-grid">
+      <div><p class="eyebrow">Storage and access</p><h2>Service configuration matters.</h2><p class="muted">The application stores workspace and inquiry data in a SQLite database on the configured server storage. The hosting provider, storage region, retention schedule, and access controls depend on the production deployment and are not determined by the application code. The service operator should confirm those details in the written service terms.</p></div>
+      <article class="offer plain-list"><p class="eyebrow">Your requests</p><h3>Ask about your information.</h3><p class="muted">The application does not include a self-service account or data deletion control. Use the <a href="contact.html">Contact page</a> to ask the service operator about access, correction, or deletion requests and to report a privacy concern.</p></article>
+    </div></section>
+    <section class="section"><div class="wrap content-grid">
+      <div><p class="eyebrow">Cookies and security</p><h2>Session access is protected.</h2><p class="muted">The product uses an HTTP-only session cookie with a 14-day expiry; production cookies are marked Secure and SameSite=Strict. Passwords are stored as scrypt hashes. These controls do not remove the need to protect account credentials and customer links.</p></div>
+      <article class="offer plain-list"><p class="eyebrow">Questions</p><h3>Contact Relay.</h3><p class="muted">For privacy questions or requests, use the <a href="contact.html">Contact page</a>. The service operator and applicable privacy requirements should be identified in the written service terms.</p></article>
+    </div></section>
+  </main>
+  <footer class="foot"><div class="wrap foot-inner"><a class="brand" href="index.html"><img src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="brand-name"><span class="brand-relay">Relay</span><span class="brand-automation">Automation</span></span></a><div class="foot-links"><a href="index.html">Home</a><a href="pricing.html">Pricing</a><a href="terms.html">Terms</a><a href="contact.html">Contact</a></div><span class="small-print">© 2026 Relay Automation. Customer implementation readiness for B2B SaaS teams.</span></div></footer>
+  <script src="relay-nav.js" defer></script>
+  <script src="relay-motion.js" defer></script>
+</body>
+</html>

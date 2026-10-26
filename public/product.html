@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="referrer" content="no-referrer">
+  <title>Relay | Customer implementation workspace</title>
+  <link rel="stylesheet" href="product.css">
+  <script src="relay-motion.js" defer></script>
+  <script src="product.js" defer></script>
+</head>
+<body>
+  <main id="auth-screen" class="auth-screen">
+    <a class="wordmark" href="index.html" aria-label="Relay Automation home"><img class="wordmark-logo" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="wordmark-name"><span>Relay</span><small>Automation</small></span></a>
+    <section class="auth-card" aria-labelledby="auth-title">
+      <p class="eyebrow">Customer implementation workspace</p>
+      <h1 id="auth-title">Make onboarding easier to run.</h1>
+      <p class="muted" id="auth-intro">Plan your process, guide each customer, and see what needs attention.</p>
+      <div class="auth-tabs" id="auth-tabs" role="tablist" aria-label="Account options">
+        <button class="tab active" id="login-tab" type="button" role="tab" aria-selected="true">Sign in</button>
+        <button class="tab" id="signup-tab" type="button" role="tab" aria-selected="false">Create workspace</button>
+      </div>
+      <form id="auth-form">
+        <div class="field" id="workspace-field" hidden>
+          <label for="workspace-name">Workspace name</label>
+          <input id="workspace-name" name="workspaceName" maxlength="100" autocomplete="organization">
+        </div>
+        <div class="field">
+          <label for="auth-email">Email</label>
+          <input id="auth-email" name="email" type="email" maxlength="254" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label for="auth-password">Password</label>
+          <input id="auth-password" name="password" type="password" minlength="12" maxlength="128" autocomplete="current-password" required>
+          <small id="password-hint">Use at least 12 characters.</small>
+        </div>
+        <button class="button primary full" id="auth-submit" type="submit">Sign in</button>
+        <p class="status" id="auth-status" role="status" aria-live="polite"></p>
+      </form>
+      <button class="text-button" id="forgot-password" type="button" hidden>Forgot your password?</button>
+      <section id="password-reset-request" hidden aria-labelledby="password-reset-request-title">
+        <h2 id="password-reset-request-title">Recover your password</h2>
+        <p class="muted">Enter your account email. If it matches an account, Relay will send a one-time recovery link.</p>
+        <form id="password-reset-request-form">
+          <div class="field">
+            <label for="reset-email">Email</label>
+            <input id="reset-email" type="email" maxlength="254" autocomplete="email" required>
+          </div>
+          <button class="button primary full" type="submit">Send recovery link</button>
+          <p class="status" id="password-reset-request-status" role="status" aria-live="polite"></p>
+        </form>
+        <button class="text-button" id="back-to-sign-in" type="button">Back to sign in</button>
+      </section>
+      <section id="password-reset-complete" hidden aria-labelledby="password-reset-complete-title">
+        <h2 id="password-reset-complete-title">Choose a new password</h2>
+        <p class="muted">Use at least 12 characters. This link can only be used once.</p>
+        <form id="password-reset-complete-form">
+          <div class="field">
+            <label for="reset-password">New password</label>
+            <input id="reset-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+          </div>
+          <div class="field">
+            <label for="reset-password-confirm">Confirm new password</label>
+            <input id="reset-password-confirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+          </div>
+          <button class="button primary full" type="submit">Update password</button>
+          <p class="status" id="password-reset-complete-status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+    </section>
+    <p class="auth-foot">A clear, practical home for customer onboarding. <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+  </main>
+
+  <div id="app-shell" class="app-shell" hidden>
+    <aside class="sidebar">
+      <a class="wordmark" href="index.html" aria-label="Relay Automation home"><img class="wordmark-logo" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="wordmark-name"><span>Relay</span><small>Automation</small></span></a>
+      <div class="workspace-label"><img class="workspace-avatar" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span id="workspace-name-display"></span></div>
+      <nav class="side-nav" aria-label="Workspace">
+        <button class="nav-item active" data-view="overview"><span>◫</span> Overview</button>
+        <button class="nav-item" data-view="processes"><span>≋</span> Process map</button>
+        <button class="nav-item" data-view="templates"><span>▤</span> Templates</button>
+        <button class="nav-item" data-view="implementations"><span>◷</span> Implementations</button>
+        <button class="nav-item" data-view="requirements"><span>✓</span> Customer information</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="principles-note"><strong>Implementation, made clear</strong><span>Clear steps. Useful next actions. Work together in Relay.</span></div>
+        <button id="signout-button" class="signout" type="button">Sign out <span id="user-email"></span></button>
+      </div>
+    </aside>
+    <main class="main-content">
+      <header class="topbar">
+        <div><span class="eyebrow" id="view-eyebrow">Your workspace</span><h1 id="view-title">Overview</h1></div>
+        <button id="refresh-button" class="button secondary" type="button">Refresh</button>
+      </header>
+      <p class="global-status" id="global-status" role="status" aria-live="polite"></p>
+
+      <section class="view active" id="view-overview">
+        <div class="welcome-card">
+          <div><p class="eyebrow">A clear view of the work</p><h2>Keep every implementation moving.</h2><p>Relay highlights missing information, blocked or overdue tasks, and work waiting on prerequisites. Open an implementation to review the details and next action.</p></div>
+          <button class="button primary" data-go="implementations" type="button">Start an implementation</button>
+        </div>
+        <div class="metric-grid" id="overview-metrics"></div>
+        <div class="panel">
+          <div class="panel-heading"><div><h2>Customer implementations</h2><p>See what is progressing and what may need attention.</p></div><button class="text-button" data-go="implementations" type="button">View all →</button></div>
+          <div id="overview-implementations" class="table-wrap"></div>
+          <p id="overview-empty" class="empty-state" hidden>Start by mapping your onboarding process, then save it as a template.</p>
+        </div>
+      </section>
+
+      <section class="view" id="view-processes">
+        <div class="section-intro"><h2>Map the way your team works</h2><p>Write down stages, ordered steps, instructions, responsible roles, prerequisites, and due-date offsets. Check the workflow before saving it as a reusable template.</p></div>
+        <div class="two-column">
+          <div class="panel">
+            <div class="panel-heading"><div><h2>Your process maps</h2><p>Start with the way your team works today.</p></div></div>
+            <form id="process-form" class="inline-form">
+              <div class="field"><label for="process-name">Process name</label><input id="process-name" maxlength="100" placeholder="e.g. Standard SaaS onboarding" required></div>
+              <div class="field"><label for="process-description">What is this for? <span class="optional">Optional</span></label><input id="process-description" maxlength="500" placeholder="A short note for your team"></div>
+              <button class="button primary" type="submit">Create process</button>
+            </form>
+            <div id="process-list" class="list-stack"></div>
+          </div>
+          <div class="panel" id="process-editor">
+            <div class="panel-heading"><div><h2 id="process-editor-title">Select a process</h2><p>Add the real steps your team needs to complete.</p></div></div>
+            <form id="process-meta-form" class="subform" hidden>
+              <h3>Process details</h3>
+              <div class="field"><label for="process-edit-name">Process name</label><input id="process-edit-name" maxlength="100" required></div>
+              <div class="field"><label for="process-edit-description">Description</label><input id="process-edit-description" maxlength="500"></div>
+              <button class="button secondary" type="submit">Save process details</button>
+              <button class="text-button" id="delete-process" type="button">Delete process</button>
+            </form>
+            <div id="process-step-list" class="step-list empty-state">Choose a process map or create one to begin.</div>
+            <form id="step-form" class="subform" hidden>
+              <h3>Add a process step</h3>
+              <div class="field"><label for="step-title">Step</label><input id="step-title" maxlength="120" placeholder="e.g. Configure the workspace" required></div>
+              <div class="field"><label for="step-description">What needs to happen?</label><textarea id="step-description" maxlength="500" placeholder="A short instruction the team can follow" required></textarea></div>
+              <div class="field"><label for="step-owner">Responsible role</label><input id="step-owner" maxlength="120" placeholder="e.g. Implementation lead" required></div>
+              <div class="field"><label for="step-assignee">Assigned workspace member</label><select id="step-assignee" required></select></div>
+              <div class="field"><label for="step-stage">Stage</label><input id="step-stage" maxlength="100" value="Implementation" required></div>
+              <div class="field"><label for="step-due-offset">Due after start (days)</label><input id="step-due-offset" type="number" min="0" max="3650" value="0" required></div>
+              <div class="field"><label for="step-dependencies">Prerequisite steps</label><select id="step-dependencies" multiple size="4"></select><small>Hold Ctrl or Command to choose more than one.</small></div>
+              <button class="button primary" id="step-submit" type="submit">Add step</button>
+              <button class="text-button" id="cancel-step-edit" type="button" hidden>Cancel edit</button>
+            </form>
+            <div id="process-actions" class="button-row" hidden>
+              <button class="button secondary" id="test-process" type="button">Test this process</button>
+              <button class="button primary" id="save-template" type="button">Save as template</button>
+            </div>
+            <div class="result-box" id="process-test-result" hidden></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-templates">
+        <div class="section-intro"><h2>Reuse a process that works</h2><p>A template keeps a versioned snapshot of a checked process. Refresh it from a newly checked process when you want future implementations to use updated steps; existing work remains unchanged.</p></div>
+        <div class="panel">
+          <div class="panel-heading"><div><h2>Reusable templates</h2><p>Each template is a versioned snapshot of a tested process.</p></div></div>
+          <div id="template-list" class="card-grid"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-implementations">
+        <div class="section-intro"><h2>Run a customer implementation</h2><p>Start from a template, track work in one place, and share a secure link for customers to submit the information you need.</p></div>
+        <div class="panel">
+          <div class="panel-heading"><div><h2>Start with a reusable template</h2><p>Relay creates the customer-specific tasks from the saved process.</p></div></div>
+          <form id="implementation-form" class="inline-form">
+            <div class="field"><label for="implementation-customer">Customer company</label><input id="implementation-customer" maxlength="120" placeholder="Customer name" required></div>
+            <div class="field"><label for="implementation-template">Template</label><select id="implementation-template" required><option value="">Choose a template</option></select></div>
+            <button class="button primary" type="submit">Start implementation</button>
+          </form>
+        </div>
+        <div class="panel">
+          <div class="panel-heading"><div><h2>All implementations</h2><p>Open a customer to update tasks or check required information.</p></div></div>
+          <div id="implementation-list" class="table-wrap"></div>
+        </div>
+        <div class="panel" id="implementation-detail" hidden>
+          <div class="panel-heading"><div><h2 id="implementation-detail-title">Implementation details</h2><p id="implementation-detail-subtitle"></p></div><button class="text-button" id="close-implementation" type="button">Close</button></div>
+          <div class="share-box" id="customer-link-box" hidden></div>
+          <h3 class="subheading">Work plan</h3>
+          <div id="implementation-step-list" class="step-list"></div>
+          <h3 class="subheading">Required customer information</h3>
+          <div id="implementation-requirements" class="step-list"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-requirements">
+        <div class="section-intro"><h2>Ask for only what you need</h2><p>Define global or template-specific requests and choose a response type. Relay validates responses before saving them. Customers can submit information through their private implementation link. Do not request passwords, payment card numbers, or other secrets.</p></div>
+        <div class="two-column">
+          <div class="panel">
+            <div class="panel-heading"><div><h2>Required information</h2><p>Keep requests clear, specific, and relevant.</p></div></div>
+            <form id="requirement-form" class="inline-form vertical">
+              <div class="field"><label for="requirement-name">What do you need?</label><input id="requirement-name" maxlength="120" placeholder="e.g. Company website URL" required></div>
+              <div class="field"><label for="requirement-description">Why is it needed? <span class="optional">Optional</span></label><textarea id="requirement-description" maxlength="500" placeholder="Explain what the customer should provide"></textarea></div>
+              <div class="field"><label for="requirement-template">Apply to</label><select id="requirement-template"><option value="">Every implementation</option></select></div>
+              <div class="field"><label for="requirement-type">Response type</label><select id="requirement-type"><option value="text">Text</option><option value="email">Email</option><option value="url">Website URL</option><option value="number">Number</option><option value="date">Date</option></select></div>
+              <label class="check-field"><input id="requirement-required" type="checkbox" checked> Required to proceed</label>
+              <button class="button primary" type="submit">Add information request</button>
+            </form>
+          </div>
+          <div class="panel">
+            <div class="panel-heading"><div><h2>Your requests</h2><p>Global requests apply to all implementations; template requests apply only to matching implementations.</p></div></div>
+            <div id="requirement-list" class="list-stack"></div>
+          </div>
+        </div>
+      </section>
+      <section class="panel" id="team-panel">
+        <div class="panel-heading"><div><h2>Workspace team</h2><p>Invite a teammate and assign implementation work to a real account.</p></div></div>
+        <div class="two-column">
+          <div>
+            <h3 class="subheading">Members</h3>
+            <div id="team-member-list" class="list-stack"></div>
+            <h3 class="subheading">Pending invitations</h3>
+            <div id="team-invite-list" class="list-stack"></div>
+          </div>
+          <div>
+            <form id="team-invite-form" class="inline-form vertical">
+              <div class="field"><label for="invite-email">Teammate email</label><input id="invite-email" type="email" maxlength="254" required></div>
+              <button class="button primary" type="submit">Create invitation link</button>
+            </form>
+            <p class="muted">Relay creates a one-time invitation link. Share it securely with the invited person; it expires after seven days.</p>
+            <div id="invite-result" class="share-box" hidden></div>
+          </div>
+        </div>
+      </section>
+      <footer class="app-footer">Relay helps teams run clear, dependable customer implementations.</footer>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -5,6 +5,7 @@ npm-debug.log*
 !.env.example
 relay.db
 relay.db-*
+backups
 .git
 .gitignore
 Dockerfile

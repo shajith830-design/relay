@@ -7,14 +7,18 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       PORT: "3000"
       NODE_ENV: production
       DATABASE_PATH: /app/data/relay.db
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:?Set TELEGRAM_CHAT_ID}
-      LEADS_API_TOKEN: ${LEADS_API_TOKEN:?Set a strong LEADS_API_TOKEN}
+      INQUIRIES_API_TOKEN: ${INQUIRIES_API_TOKEN:?Set a strong INQUIRIES_API_TOKEN}
+      RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY for password recovery}
+      AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM:?Set a verified AUTH_EMAIL_FROM address}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set the public HTTPS URL}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
     volumes:
       - relay-data:/app/data
     read_only: true
