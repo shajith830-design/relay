@@ -26,15 +26,15 @@ Set these values in the deployment secret manager or an appropriately protected 
 | `AUTH_EMAIL_FROM` | Sender address verified with the email provider. |
 | `PUBLIC_BASE_URL` | Public HTTPS origin used in password recovery links. |
 | `TRUST_PROXY_HOPS` | Number of trusted reverse proxies in front of Relay. Compose defaults to one local host proxy; only use this when the application port is not directly reachable by untrusted clients. |
-| `OPENAI_API_KEY` | Server-side secret used by Relay Help to request focused product-support answers from the configured AI service. Never expose this value to browser code. |
-| `OPENAI_MODEL` | AI model identifier used for Relay Help; defaults to `gpt-4o-mini`. |
+| `OPENAI_API_KEY` | Optional server-side secret for Relay Help. Leave unset to disable Ray; configure only if Ray is enabled for launch. Never expose this value to browser code. |
+| `OPENAI_MODEL` | Optional AI model identifier for Relay Help; defaults to `gpt-4o-mini` when Ray is configured. |
 
 Do not put any secret in browser code, page source, screenshots, support messages, or source control. Use unique production credentials and rotate them if exposed.
 
 ## First deployment
 
 1. Choose a production host and configure a domain, HTTPS, restart behavior, access to deployment logs, and a persistent Docker volume for `/app/data`. The Compose port binds to host loopback (`127.0.0.1:3000`); configure a host reverse proxy to terminate HTTPS and forward traffic locally to that port.
-2. Copy `.env.example` to `.env` locally or transfer its variables to the host's secret manager. Replace every example value. Verify the sending domain and sender address with the email provider.
+2. Copy `.env.example` to `.env` locally or transfer its variables to the host's secret manager. Replace every example value. `OPENAI_API_KEY` may remain blank if Ray is disabled. Verify the sending domain and sender address with the email provider.
 3. Build and start the service:
 
    ```powershell
@@ -49,7 +49,7 @@ Do not put any secret in browser code, page source, screenshots, support message
 6. Submit an inquiry using the public form. Confirm the response is successful, the inquiry is available to the authorized dashboard, and the notification arrives. Check logs for notification failures. Do not use real customer data for this smoke test.
 7. Restart the service and repeat the health check and sign-in check. Confirm the named volume still contains the database.
 
-The GitHub Actions workflow runs the tests, builds the production image, starts it with an isolated test volume, and checks its health and product page on every push and pull request. Treat the workflow as the Docker build verification; the local test suite does not replace it.
+The GitHub Actions workflow runs the tests, validates Compose without an AI provider key, builds the production image, starts it with an isolated test volume, and checks its health, product page, and production HSTS header on every push and pull request. Treat a successful workflow run as the Docker build verification; the local test suite does not replace it.
 
 ## SQLite backup
 
@@ -66,7 +66,7 @@ docker compose exec -T relay node scripts/backup-database.js /app/data/relay-bac
 docker compose cp relay:/app/data/relay-backup.db .\relay-backup.db
 ```
 
-The copied backup must not live only in the same host or volume as the service. Restrict access and encrypt it using the chosen backup storage. Configure protected backups to expire no later than 30 days after creation. Maintain a restricted deletion ledger outside the application database and backup snapshots, containing only the account identifier and deletion date needed to replay removals. Before restoring a snapshot, apply every later deletion request so deleted records are not returned to service. Remove ledger entries after all backups that could contain the deleted data have expired. These backup and restore controls are operational responsibilities outside the application and must be exercised before onboarding customers.
+The copied backup must not live only in the same host or volume as the service. Restrict access and encrypt it using the chosen backup storage. The 30-day maximum is a proposed operational target in this checklist, not a verified host setting or legal conclusion; confirm it is appropriate and achievable with the actual provider and applicable obligations. Maintain a restricted deletion ledger outside the application database and backup snapshots, containing only the account identifier and deletion date needed to replay removals. Record workspace ownership transfers/deletions that must be replayed as well. Before restoring a snapshot, apply every later deletion and ownership change so deleted records are not returned to service or removed users regain control. Remove ledger entries after all backups that could contain the data have expired. These backup and restore controls are operational responsibilities outside the application and must be exercised before onboarding customers.
 
 ## Restore exercise
 
@@ -90,12 +90,36 @@ Practice with a non-production copy before relying on a backup:
 5. Check `/healthz`, sign in with the test account, and verify the expected test records.
 6. Record the restore result and elapsed time. Keep the preserved files until recovery is confirmed.
 
+## Monitoring and incident response
+
+### Routine checks
+
+- Monitor `/healthz` from outside the host at an interval appropriate to the service. Alert on repeated failures, not a single transient probe; test that alerts reach a monitored person.
+- Collect container/application logs centrally with restricted access and a defined retention period. Do not log request bodies, passwords, reset/invitation/customer-link tokens, authorization headers, AI keys, or customer-submitted values.
+- Review `request_failed`, `health_check_failed`, `inquiry_notification_failed`, `password_reset_email_failed`, and `relay_help_provider_failed` events. Correlate by event and timestamp; do not copy credentials or sensitive payloads into support tickets.
+- Monitor disk space and SQLite volume capacity, backup job success and age, container restarts, email delivery, inquiry notifications, and provider error rates.
+- Keep an operator and backup contact assigned. Document who receives alerts, who can stop/restart the service, and where the recovery instructions and encrypted backups are held.
+
+### Incident response runbook
+
+1. **Triage and record:** note start time, affected service/workspaces, symptoms, and actions. Use synthetic/test accounts to reproduce where possible. Do not put customer secrets or full customer records into incident notes.
+2. **Contain:** for suspected credential exposure, revoke/rotate the affected provider key at the provider, update the host secret store, and restart/redeploy. For suspected customer-link exposure, rotate the affected link. If the application itself is actively exposing data, restrict public access at the reverse proxy/host while preserving the database for investigation.
+3. **Protect evidence:** restrict access to relevant logs and database/volume snapshots. Do not overwrite or publicly share evidence. Preserve timestamps and record who accessed or changed production systems.
+4. **Restore service safely:** use the restore exercise above on a copy first when feasible. Before restoring an older snapshot, replay the deletion/ownership ledger and verify the resulting database. Never restore a test snapshot over production.
+5. **Notify and escalate:** promptly contact the named service operator and hosting/provider support. Assess whether affected customers, regulators, or other parties need notice under applicable contracts and law; obtain appropriate qualified advice. Do not promise a notice deadline from this generic checklist.
+6. **Recover and verify:** restore normal access only after checking `/healthz`, sign-in, a test workflow, database persistence, and provider connectivity. Confirm rate/error monitoring is active.
+7. **Learn and close:** document root cause, scope, data involved, containment, recovery time, customer communications, and corrective actions. Review secrets, access, backup state, and tests; assign owners and due dates.
+
+These are operational instructions, not a configured monitoring or incident-response service. Test the alert path and runbook with a non-production exercise before inviting customers.
+
 ## Operational responsibilities
 
 - Configure external uptime and log monitoring; the health endpoint is a probe, not an alerting service.
 - Review `inquiry_notification_failed`, `password_reset_email_failed`, and `request_failed` events. Inquiry records are stored even if notification delivery fails.
 - After explicit consent, Relay Help sends the user's question and recent private conversation to the configured AI service. The assistant receives only a curated user-facing Relay guide, never account or customer workspace records. Users can clear their own help history and withdraw consent in the chat panel.
+- Ray is optional at deployment. If `OPENAI_API_KEY` is absent, the product API reports that Ray is unavailable; verify the UI communicates this clearly before disabling it for a customer-facing launch.
 - Set a person and monitored support channel responsible for customer requests and incidents.
 - Account deletion is available in Settings. It removes the account from the live database, deletes workspaces where that account was the sole member, and removes a departing member from shared workspaces; an owner must transfer ownership to a remaining member. Configure backup expiry at 30 days or less and reapply post-snapshot deletion requests before restoring a database.
 - Before charging customers, have the service provider, pricing, billing, renewal, cancellation/refund terms, governing law, privacy obligations, and support commitments reviewed and stated in writing.
+- Complete the privacy and service-terms review checklist in `PRIVACY-TERMS-REVIEW.md` using the actual operator, jurisdiction, host, providers, and customer agreement; it is a review aid, not legal advice.
 - Keep release artifacts and backups separate from the working directory and user-local database.

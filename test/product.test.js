@@ -19,6 +19,8 @@ let emailMessages = [];
 let emailProviderStatus = 200;
 let assistantProviderStatus = 200;
 let assistantProviderMessages = [];
+let telegramMessages = [];
+let telegramProviderStatus = 200;
 
 async function availablePort() {
   const server = net.createServer();
@@ -62,11 +64,21 @@ before(async () => {
   emailProviderStatus = 200;
   assistantProviderStatus = 200;
   assistantProviderMessages = [];
+  telegramMessages = [];
+  telegramProviderStatus = 200;
   emailServer = http.createServer((req, res) => {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => {
       const payload = JSON.parse(Buffer.concat(chunks).toString());
+      if (req.url === "/telegram/sendMessage") {
+        telegramMessages.push(payload);
+        res.writeHead(telegramProviderStatus, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(telegramProviderStatus < 300
+          ? { ok: true, result: { message_id: telegramMessages.length } }
+          : { ok: false, description: "test Telegram provider failure" }));
+        return;
+      }
       if (req.url === "/chat/completions") {
         assistantProviderMessages.push(payload);
         res.writeHead(assistantProviderStatus, { "Content-Type": "application/json" });
@@ -99,9 +111,10 @@ before(async () => {
       OPENAI_API_KEY: "test-assistant-key",
       OPENAI_MODEL: "test-help-model",
       RELAY_HELP_API_URL: `http://127.0.0.1:${emailPort}/chat/completions`,
+      TELEGRAM_BOT_TOKEN: "test-telegram-token",
+      TELEGRAM_CHAT_ID: "test-telegram-chat",
+      TELEGRAM_API_URL: `http://127.0.0.1:${emailPort}/telegram/sendMessage`,
       INQUIRIES_API_TOKEN: "test-inquiry-api-token",
-      TELEGRAM_BOT_TOKEN: "",
-      TELEGRAM_CHAT_ID: ""
     },
     stdio: "ignore"
   });
@@ -1194,6 +1207,22 @@ test("public pages and the inquiry app remain available", async () => {
   assert.equal(inquiry.data.success, true);
   assert.equal(typeof inquiry.data.inquiry.id, "number");
   assert.equal("phone" in inquiry.data.inquiry, false);
+  assert.equal(telegramMessages.length, 1);
+  assert.equal(telegramMessages[0].chat_id, "test-telegram-chat");
+  assert.match(telegramMessages[0].text, /New Customer Onboarding Inquiry/);
+
+  telegramProviderStatus = 503;
+  const inquiryWithFailedNotification = await request("/api/inquiries", {
+    method: "POST",
+    body: {
+      name: "Second Test User",
+      phone: "+15551234568",
+      message: "Company: Example Co\nWork email: second@example.test\nDetails: Notification failure test"
+    }
+  });
+  assert.equal(inquiryWithFailedNotification.response.status, 201);
+  assert.equal(telegramMessages.length, 2);
+  telegramProviderStatus = 200;
 
   const deniedInquiryRead = await request("/inquiries");
   assert.equal(deniedInquiryRead.response.status, 401);
@@ -1201,6 +1230,7 @@ test("public pages and the inquiry app remain available", async () => {
     headers: { Authorization: "Bearer test-inquiry-api-token" }
   });
   assert.equal(inquiryRead.response.status, 200);
-  assert.equal(inquiryRead.data.count, 1);
-  assert.match(inquiryRead.data.inquiries[0].message, /user@example\.test/);
+  assert.equal(inquiryRead.data.count, 2);
+  assert.ok(inquiryRead.data.inquiries.some((entry) => /user@example\.test/.test(entry.message)));
+  assert.ok(inquiryRead.data.inquiries.some((entry) => /second@example\.test/.test(entry.message)));
 });

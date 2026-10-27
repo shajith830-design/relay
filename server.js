@@ -76,7 +76,10 @@ async function sendInquiryNotification(inquiry) {
   }
 
   try {
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const telegramUrl = process.env.NODE_ENV === "test" && process.env.TELEGRAM_API_URL
+      ? process.env.TELEGRAM_API_URL
+      : `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const response = await fetch(telegramUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
