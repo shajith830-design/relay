@@ -320,6 +320,39 @@ async function loadPreferences() {
   applyAppearance();
 }
 
+async function loadAccountDeletionChoices() {
+  const summary = document.getElementById("account-deletion-summary");
+  const form = document.getElementById("account-deletion-form");
+  summary.textContent = "Loading your workspace ownership details…";
+  form.hidden = true;
+  const { workspaces } = await api("/api/product/account-deletion/workspaces");
+  if (!workspaces.length) {
+    summary.textContent = "No workspaces are linked to your account. Deleting your account will remove your account data.";
+    form.hidden = false;
+    return;
+  }
+  const workspaceRows = workspaces.map((workspace) => {
+    let impact;
+    if (workspace.member_count === 1) {
+      impact = `<p>As the only member, deleting your account will also permanently delete this workspace and its customer implementation data.</p>`;
+    } else if (workspace.role === "owner") {
+      const options = workspace.members.map((member) =>
+        `<option value="${member.userId}">${escapeHtml(member.email)}</option>`).join("");
+      impact = `<p>Choose a new owner. The workspace and its data will remain available to its members.</p>
+        <div class="field"><label for="account-delete-owner-${workspace.id}">New owner for ${escapeHtml(workspace.name)}</label>
+        <select id="account-delete-owner-${workspace.id}" data-account-delete-transfer="${workspace.id}" required>
+          <option value="">Choose a workspace member</option>${options}
+        </select></div>`;
+    } else {
+      impact = "<p>Your membership will be removed. The shared workspace and its data will remain available to its members.</p>";
+    }
+    return `<article class="account-deletion-workspace"><strong>${escapeHtml(workspace.name)}</strong>${impact}</article>`;
+  }).join("");
+  summary.innerHTML = `<p>Review the effect on each workspace before continuing:</p>${workspaceRows}
+    <p>Deletion removes your personal account data from the live Relay database and signs you out on all devices. Backup copies may persist until they expire under the service’s backup-retention policy.</p>`;
+  form.hidden = false;
+}
+
 async function savePreference(key, value) {
   const previous = state.preferences[key];
   state.preferences[key] = value;
@@ -513,6 +546,7 @@ function setView(name) {
   document.getElementById("refresh-button").hidden = name === "settings";
   globalStatus.textContent = "";
   if (name === "processes" && state.selectedProcessId) loadProcess(state.selectedProcessId).catch(showError);
+  if (name === "settings") loadAccountDeletionChoices().catch(showError);
   return true;
 }
 
@@ -1147,6 +1181,38 @@ document.getElementById("theme-mode").addEventListener("change", (event) => {
 });
 document.getElementById("theme-accent").addEventListener("change", (event) => {
   savePreference("accent", event.currentTarget.value);
+});
+document.getElementById("account-deletion-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const status = document.getElementById("account-deletion-status");
+  if (!window.confirm("Permanently delete your Relay account and apply the workspace changes listed above? This cannot be undone.")) {
+    return;
+  }
+  const button = form.querySelector('button[type="submit"]');
+  const fields = new FormData(form);
+  const transfers = [...form.querySelectorAll("[data-account-delete-transfer]")].map((select) => ({
+    workspaceId: Number(select.dataset.accountDeleteTransfer),
+    newOwnerUserId: Number(select.value)
+  }));
+  button.disabled = true;
+  status.textContent = "Deleting your account…";
+  try {
+    await api("/api/product/account", {
+      method: "DELETE",
+      body: {
+        password: fields.get("password"),
+        confirmation: fields.get("confirmation"),
+        transfers
+      }
+    });
+    form.reset();
+    showAuth("Your Relay account has been deleted.");
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
 });
 document.getElementById("signout-button").addEventListener("click", async () => {
   try {

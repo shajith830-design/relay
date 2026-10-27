@@ -298,6 +298,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .empty-state > strong { display: block; color: var(--ink); font-size: 13px; }
 .empty-state > p { margin: 5px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .empty-state .button { margin-top: 2px; }
+.account-deletion-panel { border-color: #fecaca; }
+.account-deletion-summary { color: var(--ink-subtle); font-size: 13px; line-height: 1.6; }
+.account-deletion-summary > p { margin: 8px 0 12px; }
+.account-deletion-workspace { border-top: 1px solid var(--line); padding: 12px 0; }
+.account-deletion-workspace > strong { font-size: 13px; }
+.account-deletion-workspace > p { margin: 5px 0 10px; color: var(--muted); font-size: 12px; }
+.account-deletion-panel .field { max-width: 440px; }
+.account-deletion-status { min-height: 18px; margin: 10px 0 0; color: #b91c1c; font-size: 12px; }
+.danger-button { border-color: #b91c1c; background: #b91c1c; color: #fff; }
+.danger-button:hover:not(:disabled) { border-color: #991b1b; background: #991b1b; }
+:root[data-theme="dark"] .account-deletion-panel { border-color: #7f1d1d; }
 
 @media (max-width: 900px) {
   .sidebar { width: 210px; }

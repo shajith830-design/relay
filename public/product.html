@@ -247,6 +247,22 @@
           </div>
           <p class="appearance-status" id="appearance-status" role="status" aria-live="polite"></p>
         </div>
+        <div class="panel account-deletion-panel">
+          <div class="panel-heading"><div><h2>Delete your Relay account</h2><p>This permanently removes your account and its personal data. Workspace data is handled according to the ownership choices below.</p></div></div>
+          <div class="account-deletion-summary" id="account-deletion-summary" role="status" aria-live="polite">Loading your workspace ownership details…</div>
+          <form id="account-deletion-form" hidden>
+            <div class="field">
+              <label for="account-delete-password">Current password</label>
+              <input id="account-delete-password" name="password" type="password" maxlength="128" autocomplete="current-password" required>
+            </div>
+            <div class="field">
+              <label for="account-delete-confirmation">Type DELETE to confirm</label>
+              <input id="account-delete-confirmation" name="confirmation" maxlength="6" pattern="DELETE" autocomplete="off" required>
+            </div>
+            <button class="button danger-button" type="submit">Permanently delete account</button>
+            <p class="account-deletion-status" id="account-deletion-status" role="status" aria-live="polite"></p>
+          </form>
+        </div>
       </section>
       <section class="panel" id="team-panel">
         <div class="panel-heading"><div><h2>Workspace team</h2><p>Invite a teammate and assign implementation work to a real account.</p></div></div>

@@ -1068,6 +1068,85 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   assert.equal(expiredSession.response.status, 401);
 });
 
+test("account deletion removes sole-member workspaces and transfers shared ownership", async () => {
+  const password = "account-deletion-test-password";
+  const signup = await request("/api/product/auth/signup", {
+    method: "POST",
+    body: { email: "delete-owner@relaytest.example", password, workspaceName: "Shared deletion workspace" }
+  });
+  assert.equal(signup.response.status, 201);
+  const ownerCookie = signup.response.headers.get("set-cookie").split(";")[0];
+  const ownerId = signup.data.user.id;
+  const sharedWorkspaceId = signup.data.workspace.id;
+  const database = new Database(path.join(tempDirectory, "test.db"));
+  database.pragma("foreign_keys = ON");
+
+  const member = database.prepare(
+    "INSERT INTO product_users (email, password_hash) VALUES (?, ?) RETURNING id"
+  ).get("retained-member@relaytest.example", "test-only-hash");
+  database.prepare(
+    "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES (?, ?, 'member')"
+  ).run(sharedWorkspaceId, member.id);
+  const process = database.prepare(
+    "INSERT INTO product_processes (workspace_id, name) VALUES (?, ?) RETURNING id"
+  ).get(sharedWorkspaceId, "Shared process");
+  database.prepare(`
+    INSERT INTO product_process_steps (process_id, title, position, assignee_user_id)
+    VALUES (?, ?, ?, ?)
+  `).run(process.id, "Assigned step", 0, ownerId);
+  const soloWorkspace = database.prepare(
+    "INSERT INTO product_workspaces (name) VALUES (?) RETURNING id"
+  ).get("Workspace to remove");
+  database.prepare(
+    "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES (?, ?, 'owner')"
+  ).run(soloWorkspace.id, ownerId);
+  database.close();
+
+  const choices = await request("/api/product/account-deletion/workspaces", { cookie: ownerCookie });
+  assert.equal(choices.response.status, 200);
+  assert.deepEqual(choices.data.workspaces.map(({ name, member_count }) => ({ name, member_count })), [
+    { name: "Shared deletion workspace", member_count: 2 },
+    { name: "Workspace to remove", member_count: 1 }
+  ]);
+  assert.equal(choices.data.workspaces[0].members[0].userId, member.id);
+
+  const wrongPassword = await request("/api/product/account", {
+    method: "DELETE",
+    cookie: ownerCookie,
+    body: { password: "wrong-password", confirmation: "DELETE", transfers: [{ workspaceId: sharedWorkspaceId, newOwnerUserId: member.id }] }
+  });
+  assert.equal(wrongPassword.response.status, 401);
+  const missingTransfer = await request("/api/product/account", {
+    method: "DELETE",
+    cookie: ownerCookie,
+    body: { password, confirmation: "DELETE", transfers: [] }
+  });
+  assert.equal(missingTransfer.response.status, 409);
+
+  const deletion = await request("/api/product/account", {
+    method: "DELETE",
+    cookie: ownerCookie,
+    body: {
+      password,
+      confirmation: "DELETE",
+      transfers: [{ workspaceId: sharedWorkspaceId, newOwnerUserId: member.id }]
+    }
+  });
+  assert.equal(deletion.response.status, 200, JSON.stringify(deletion.data));
+  assert.match(deletion.response.headers.get("set-cookie"), /Max-Age=0/);
+
+  const retained = new Database(path.join(tempDirectory, "test.db"));
+  assert.equal(retained.prepare("SELECT COUNT(*) AS count FROM product_users WHERE id = ?").get(ownerId).count, 0);
+  assert.equal(retained.prepare("SELECT COUNT(*) AS count FROM product_workspaces WHERE id = ?").get(soloWorkspace.id).count, 0);
+  assert.equal(retained.prepare("SELECT role FROM product_memberships WHERE workspace_id = ? AND user_id = ?")
+    .get(sharedWorkspaceId, member.id).role, "owner");
+  assert.equal(retained.prepare("SELECT assignee_user_id FROM product_process_steps WHERE process_id = ?")
+    .get(process.id).assignee_user_id, null);
+  assert.equal(retained.prepare("SELECT COUNT(*) AS count FROM product_sessions WHERE user_id = ?").get(ownerId).count, 0);
+  retained.close();
+  assert.equal((await request("/api/product/workspace", { cookie: ownerCookie })).response.status, 401);
+});
+
 test("public pages and the inquiry app remain available", async () => {
   for (const page of [
     "/index.html", "/about.html", "/contact.html", "/dashboard.html", "/demo.html",
@@ -1097,6 +1176,7 @@ test("public pages and the inquiry app remain available", async () => {
   assert.match(productHtml, /data-view="settings"/);
   assert.match(productHtml, /id="theme-mode"/);
   assert.match(productHtml, /id="getting-started"/);
+  assert.match(productHtml, /id="account-deletion-form"/);
   const productScript = await fetch(`${baseUrl}/product.js`).then((response) => response.text());
   assert.match(productScript, /data-workflow-action/);
   const productStyles = await fetch(`${baseUrl}/product.css`).then((response) => response.text());

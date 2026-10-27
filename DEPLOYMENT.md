@@ -66,7 +66,7 @@ docker compose exec -T relay node scripts/backup-database.js /app/data/relay-bac
 docker compose cp relay:/app/data/relay-backup.db .\relay-backup.db
 ```
 
-The copied backup must not live only in the same host or volume as the service. Restrict access and encrypt it using the chosen backup storage. Establish an appropriate schedule and retention policy outside the application.
+The copied backup must not live only in the same host or volume as the service. Restrict access and encrypt it using the chosen backup storage. Configure protected backups to expire no later than 30 days after creation. Maintain a restricted deletion ledger outside the application database and backup snapshots, containing only the account identifier and deletion date needed to replay removals. Before restoring a snapshot, apply every later deletion request so deleted records are not returned to service. Remove ledger entries after all backups that could contain the deleted data have expired. These backup and restore controls are operational responsibilities outside the application and must be exercised before onboarding customers.
 
 ## Restore exercise
 
@@ -96,6 +96,6 @@ Practice with a non-production copy before relying on a backup:
 - Review `inquiry_notification_failed`, `password_reset_email_failed`, and `request_failed` events. Inquiry records are stored even if notification delivery fails.
 - After explicit consent, Relay Help sends the user's question and recent private conversation to the configured AI service. The assistant receives only a curated user-facing Relay guide, never account or customer workspace records. Users can clear their own help history and withdraw consent in the chat panel.
 - Set a person and monitored support channel responsible for customer requests and incidents.
-- Decide and document data retention and deletion handling. The product currently has no self-service account/data deletion control.
+- Account deletion is available in Settings. It removes the account from the live database, deletes workspaces where that account was the sole member, and removes a departing member from shared workspaces; an owner must transfer ownership to a remaining member. Configure backup expiry at 30 days or less and reapply post-snapshot deletion requests before restoring a database.
 - Before charging customers, have the service provider, pricing, billing, renewal, cancellation/refund terms, governing law, privacy obligations, and support commitments reviewed and stated in writing.
 - Keep release artifacts and backups separate from the working directory and user-local database.

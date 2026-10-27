@@ -530,6 +530,127 @@ function installProductRoutes(app, db, isProduction) {
     workspace: { id: req.product.workspaceId, name: req.product.workspaceName, role: req.product.role }
   }));
 
+  app.get("/api/product/account-deletion/workspaces", requireSession, (req, res) => {
+    const workspaces = database.prepare(`
+      SELECT w.id, w.name, m.role,
+        (SELECT COUNT(*) FROM product_memberships all_members WHERE all_members.workspace_id = w.id) AS member_count
+      FROM product_memberships m
+      JOIN product_workspaces w ON w.id = m.workspace_id
+      WHERE m.user_id = ?
+      ORDER BY w.name COLLATE NOCASE, w.id
+    `).all(req.product.userId);
+    const members = database.prepare(`
+      SELECT workspace_id, user_id, email
+      FROM product_memberships m
+      JOIN product_users u ON u.id = m.user_id
+      WHERE m.workspace_id IN (
+        SELECT workspace_id FROM product_memberships WHERE user_id = ?
+      ) AND m.user_id != ?
+      ORDER BY email COLLATE NOCASE
+    `).all(req.product.userId, req.product.userId);
+    const membersByWorkspace = new Map();
+    for (const member of members) {
+      const workspaceMembers = membersByWorkspace.get(member.workspace_id) || [];
+      workspaceMembers.push({ userId: member.user_id, email: member.email });
+      membersByWorkspace.set(member.workspace_id, workspaceMembers);
+    }
+    return res.json({
+      workspaces: workspaces.map((workspace) => ({
+        ...workspace,
+        members: membersByWorkspace.get(workspace.id) || []
+      }))
+    });
+  });
+
+  app.delete("/api/product/account", sameOrigin, limitRequests(
+    "account-deletion", 5, 15 * 60 * 1000, "Too many deletion attempts. Please wait and try again."
+  ), requireSession, async (req, res) => {
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (password.length < 1 || password.length > 128 || req.body.confirmation !== "DELETE") {
+      return sendError(res, 400, "Enter your password and type DELETE to confirm account deletion.");
+    }
+
+    const user = database.prepare("SELECT password_hash FROM product_users WHERE id = ?")
+      .get(req.product.userId);
+    if (!user || !(await checkPassword(password, user.password_hash))) {
+      return sendError(res, 401, "Your password is incorrect. Your account has not been deleted.");
+    }
+
+    const requestedTransfers = req.body.transfers;
+    if (!Array.isArray(requestedTransfers) || requestedTransfers.length > 100) {
+      return sendError(res, 400, "Review your workspace ownership choices and try again.");
+    }
+    const transferByWorkspace = new Map();
+    for (const transfer of requestedTransfers) {
+      const workspaceId = validId(transfer?.workspaceId);
+      const newOwnerUserId = validId(transfer?.newOwnerUserId);
+      if (!workspaceId || !newOwnerUserId || transferByWorkspace.has(workspaceId)) {
+        return sendError(res, 400, "Review your workspace ownership choices and try again.");
+      }
+      transferByWorkspace.set(workspaceId, newOwnerUserId);
+    }
+
+    const deleteAccount = database.transaction(() => {
+      const memberships = database.prepare(`
+        SELECT m.workspace_id, m.role,
+          (SELECT COUNT(*) FROM product_memberships all_members
+            WHERE all_members.workspace_id = m.workspace_id) AS member_count
+        FROM product_memberships m
+        WHERE m.user_id = ?
+        ORDER BY m.workspace_id
+      `).all(req.product.userId);
+      const requiredTransfers = new Set();
+      for (const membership of memberships) {
+        if (membership.member_count <= 1) continue;
+        if (membership.role !== "owner") continue;
+        requiredTransfers.add(membership.workspace_id);
+        const newOwnerUserId = transferByWorkspace.get(membership.workspace_id);
+        const newOwner = newOwnerUserId && database.prepare(`
+          SELECT user_id FROM product_memberships
+          WHERE workspace_id = ? AND user_id = ? AND user_id != ?
+        `).get(membership.workspace_id, newOwnerUserId, req.product.userId);
+        if (!newOwner) {
+          throw new Error("Choose a remaining workspace member to become the owner before deleting your account.");
+        }
+      }
+      if ([...transferByWorkspace.keys()].some((workspaceId) => !requiredTransfers.has(workspaceId))) {
+        throw new Error("A workspace ownership choice is no longer valid. Refresh and try again.");
+      }
+
+      for (const membership of memberships) {
+        if (membership.member_count <= 1) {
+          database.prepare("DELETE FROM product_workspaces WHERE id = ?").run(membership.workspace_id);
+          continue;
+        }
+        if (membership.role === "owner") {
+          database.prepare(`
+            UPDATE product_memberships SET role = 'owner'
+            WHERE workspace_id = ? AND user_id = ?
+          `).run(membership.workspace_id, transferByWorkspace.get(membership.workspace_id));
+        }
+        database.prepare("DELETE FROM product_memberships WHERE workspace_id = ? AND user_id = ?")
+          .run(membership.workspace_id, req.product.userId);
+      }
+
+      database.prepare("UPDATE product_process_steps SET assignee_user_id = NULL WHERE assignee_user_id = ?")
+        .run(req.product.userId);
+      database.prepare("UPDATE product_implementation_steps SET assignee_user_id = NULL WHERE assignee_user_id = ?")
+        .run(req.product.userId);
+      database.prepare("DELETE FROM product_users WHERE id = ?").run(req.product.userId);
+    });
+
+    try {
+      deleteAccount();
+    } catch (error) {
+      if (error instanceof Error && /workspace member|ownership choice/.test(error.message)) {
+        return sendError(res, 409, error.message);
+      }
+      throw error;
+    }
+    clearSessionCookie(res, isProduction);
+    return res.json({ success: true });
+  });
+
   app.get("/api/product/onboarding", requireSession, (req, res) => {
     const onboarding = database.prepare(
       "SELECT dismissed FROM product_user_onboarding WHERE user_id = ?"
