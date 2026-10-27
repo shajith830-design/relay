@@ -1,6 +1,8 @@
 "use strict";
 
 (() => {
+  if (document.body && document.body.classList.contains("product-page")) return;
+
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const scrollProgress = document.createElement("div");
   scrollProgress.className = "scroll-progress";

@@ -21,6 +21,7 @@
     <section class="section"><div class="wrap content-grid">
       <article class="offer plain-list"><p class="eyebrow">Information processed</p><h2>Information you provide or create.</h2><ul>
         <li>Account email addresses and password hashes used for access.</li>
+        <li>Per-account appearance preferences, including display mode and accent color.</li>
         <li>Workspace names, team invitations, process steps, templates, implementation tasks, and statuses.</li>
         <li>Information customers submit through a private setup link, according to the fields the workspace requests.</li>
         <li>Inquiry form name, phone number, company, email, and message. Company and email are included in the stored inquiry message.</li>
@@ -30,12 +31,13 @@
         <li>Relay uses account and workspace information to provide sign-in and implementation workflows.</li>
         <li>Password recovery uses an email delivery provider to send a one-time recovery link. Recovery tokens are stored as hashes and expire after 30 minutes.</li>
         <li>Inquiry submissions are stored in the Relay database. When configured, inquiry details are also sent to the service operator’s messaging destination for follow-up.</li>
+        <li>After the user consents in the chat panel, Ray sends the question and recent messages in that account’s conversation to the configured external AI service to generate an answer. The service may process this information according to its own terms. Conversation history (up to 50 messages) and the consent record are stored per user account in the Relay database until that user clears the history; clearing also withdraws consent. Relay does not send workspace records or customer implementation data as assistant context.</li>
         <li>Relay does not ask customers to submit passwords, payment card data, or other secrets through setup forms.</li>
       </ul></article>
     </div></section>
     <section class="section tint"><div class="wrap content-grid">
       <div><p class="eyebrow">Storage and access</p><h2>Service configuration matters.</h2><p class="muted">The application stores workspace and inquiry data in a SQLite database on the configured server storage. The hosting provider, storage region, retention schedule, and access controls depend on the production deployment and are not determined by the application code. The service operator should confirm those details in the written service terms.</p></div>
-      <article class="offer plain-list"><p class="eyebrow">Your requests</p><h3>Ask about your information.</h3><p class="muted">The application does not include a self-service account or data deletion control. Use the <a href="contact.html">Contact page</a> to ask the service operator about access, correction, or deletion requests and to report a privacy concern.</p></article>
+      <article class="offer plain-list"><p class="eyebrow">Your requests</p><h3>Manage your help history.</h3><p class="muted">Signed-in users can clear their Ray conversation from the chat panel. The application does not include a self-service account or general data deletion control. Use the <a href="contact.html">Contact page</a> to ask the service operator about other access, correction, or deletion requests and to report a privacy concern.</p></article>
     </div></section>
     <section class="section"><div class="wrap content-grid">
       <div><p class="eyebrow">Cookies and security</p><h2>Session access is protected.</h2><p class="muted">The product uses an HTTP-only session cookie with a 14-day expiry; production cookies are marked Secure and SameSite=Strict. Passwords are stored as scrypt hashes. These controls do not remove the need to protect account credentials and customer links.</p></div>

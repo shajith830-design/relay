@@ -26,6 +26,8 @@ Set these values in the deployment secret manager or an appropriately protected 
 | `AUTH_EMAIL_FROM` | Sender address verified with the email provider. |
 | `PUBLIC_BASE_URL` | Public HTTPS origin used in password recovery links. |
 | `TRUST_PROXY_HOPS` | Number of trusted reverse proxies in front of Relay. Compose defaults to one local host proxy; only use this when the application port is not directly reachable by untrusted clients. |
+| `OPENAI_API_KEY` | Server-side secret used by Relay Help to request focused product-support answers from the configured AI service. Never expose this value to browser code. |
+| `OPENAI_MODEL` | AI model identifier used for Relay Help; defaults to `gpt-4o-mini`. |
 
 Do not put any secret in browser code, page source, screenshots, support messages, or source control. Use unique production credentials and rotate them if exposed.
 
@@ -92,6 +94,7 @@ Practice with a non-production copy before relying on a backup:
 
 - Configure external uptime and log monitoring; the health endpoint is a probe, not an alerting service.
 - Review `inquiry_notification_failed`, `password_reset_email_failed`, and `request_failed` events. Inquiry records are stored even if notification delivery fails.
+- After explicit consent, Relay Help sends the user's question and recent private conversation to the configured AI service. The assistant receives only a curated user-facing Relay guide, never account or customer workspace records. Users can clear their own help history and withdraw consent in the chat panel.
 - Set a person and monitored support channel responsible for customer requests and incidents.
 - Decide and document data retention and deletion handling. The product currently has no self-service account/data deletion control.
 - Before charging customers, have the service provider, pricing, billing, renewal, cancellation/refund terms, governing law, privacy obligations, and support commitments reviewed and stated in writing.

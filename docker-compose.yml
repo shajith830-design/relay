@@ -19,6 +19,8 @@ services:
       AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM:?Set a verified AUTH_EMAIL_FROM address}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set the public HTTPS URL}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set the AI service API key for Relay Help}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
     volumes:
       - relay-data:/app/data
     read_only: true

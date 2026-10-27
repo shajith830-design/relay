@@ -10,6 +10,7 @@ const authTabs = {
 const authStatus = document.getElementById("auth-status");
 const globalStatus = document.getElementById("global-status");
 const toast = document.getElementById("toast");
+let appearanceSaveQueue = Promise.resolve();
 const state = {
   authMode: "login",
   inviteToken: new URLSearchParams(window.location.search).get("invite") || "",
@@ -23,15 +24,26 @@ const state = {
   editingStepId: null,
   selectedImplementationId: null,
   customerTokens: new Map(),
-  handoverGuide: ""
+  handoverGuide: "",
+  helpMessages: [],
+  helpConsented: false,
+  onboardingDismissed: false,
+  preferences: { theme: "light", accent: "blue" },
+  implementationFilters: { search: "", status: "all", owner: "all", attention: "all" }
 };
+const dirtyScopes = new Map();
+const dirtyScopeBaselines = new WeakMap();
+const pendingFormButtons = new WeakMap();
+let activeSubmissionForm = null;
+let nextFieldErrorId = 0;
 
 const titles = {
   overview: ["Your workspace", "Overview"],
   processes: ["Plan your work", "Process map"],
   templates: ["Reuse what works", "Templates"],
   implementations: ["Run customer work", "Implementations"],
-  requirements: ["Get customer-ready", "Customer information"]
+  requirements: ["Get customer-ready", "Customer information"],
+  settings: ["Personalize your workspace", "Settings"]
 };
 
 function escapeHtml(value) {
@@ -66,20 +78,222 @@ async function api(url, options = {}) {
     throw new Error("Relay returned an unexpected response. Please try again.");
   }
   if (!response.ok) throw new Error(result.error || "The request could not be completed.");
+  if (activeSubmissionForm) {
+    finishForm(activeSubmissionForm, "Saved.");
+    activeSubmissionForm = null;
+  }
   return result;
 }
 
 function showToast(message, error = false) {
+  if (!error && activeSubmissionForm?.isConnected) {
+    finishForm(activeSubmissionForm, "Saved.");
+    activeSubmissionForm = null;
+  }
   toast.textContent = message;
   toast.style.background = error ? "#991b1b" : "";
+  toast.setAttribute("role", error ? "alert" : "status");
+  toast.setAttribute("aria-live", error ? "assertive" : "polite");
   toast.classList.add("show");
   window.clearTimeout(showToast.timeout);
   showToast.timeout = window.setTimeout(() => toast.classList.remove("show"), 3600);
 }
 
+function formStatus(form) {
+  let status = form.querySelector(":scope > .form-status");
+  if (!status) {
+    status = document.createElement("p");
+    status.className = "form-status";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    form.append(status);
+  }
+  return status;
+}
+
+function setFormBusy(form, label = "Saving...", snapshot = scopeValues(form)) {
+  const button = form.querySelector('button[type="submit"], button[data-save-task], button:not([type])');
+  if (!button || pendingFormButtons.has(form)) return;
+  const controls = form instanceof HTMLFormElement
+    ? [...form.elements]
+    : [...form.querySelectorAll("button, input, select, textarea")];
+  pendingFormButtons.set(form, {
+    button,
+    text: button.textContent,
+    controls: controls.map((control) => ({ control, disabled: control.disabled })),
+    snapshot
+  });
+  controls.forEach((control) => { control.disabled = true; });
+  button.textContent = label;
+  form.setAttribute("aria-busy", "true");
+  formStatus(form).textContent = label;
+}
+
+function finishForm(form, message = "") {
+  const pending = pendingFormButtons.get(form);
+  if (pending) {
+    pending.button.textContent = pending.text;
+    pending.controls.forEach(({ control, disabled }) => { control.disabled = disabled; });
+    pendingFormButtons.delete(form);
+  }
+  form.removeAttribute("aria-busy");
+  if (message === "Saved.") formStatus(form).setAttribute("role", "status");
+  let statusMessage = message;
+  if (message === "Saved." && pending?.snapshot && scopeValues(form) !== pending.snapshot) {
+    dirtyScopeBaselines.set(form, pending.snapshot);
+    dirtyScopes.set(form, true);
+    statusMessage = "Saved. Changes made while saving are still unsaved.";
+  } else if (message === "Saved.") {
+    clearDirtyScope(form);
+  }
+  formStatus(form).textContent = statusMessage;
+}
+
+function failForm(form, error) {
+  const message = error instanceof Error ? error.message : "The request could not be completed. Please try again.";
+  finishForm(form, message);
+  const messageText = message.toLocaleLowerCase();
+  formStatus(form).setAttribute("role", "alert");
+  const fields = form instanceof HTMLFormElement ? [...form.elements] : [...form.querySelectorAll("input, select, textarea")];
+  const labelled = fields.find((element) => {
+    const label = element.labels?.[0]?.textContent?.toLocaleLowerCase() || "";
+    const name = `${element.name || ""} ${element.id || ""}`.toLocaleLowerCase();
+    const terms = `${label} ${name}`.split(/[^a-z]+/).filter((term) => term.length > 3);
+    return terms.some((term) => messageText.includes(term));
+  });
+  const blockerField = messageText.includes("blocker details")
+    ? form.querySelector('[data-task-reason], [data-task-action]')
+    : null;
+  const invalid = blockerField || labelled || fields.find((element) => element.willValidate && !element.checkValidity());
+  if (invalid) {
+    invalid.setAttribute("aria-invalid", "true");
+    let errorId = invalid.getAttribute("aria-describedby");
+    let fieldError = errorId && document.getElementById(errorId);
+    if (!fieldError || !form.contains(fieldError)) {
+      errorId = `relay-field-error-${++nextFieldErrorId}`;
+      fieldError = document.createElement("small");
+      fieldError.id = errorId;
+      fieldError.className = "field-error";
+      invalid.insertAdjacentElement("afterend", fieldError);
+    }
+    fieldError.textContent = message;
+    invalid.setAttribute("aria-describedby", errorId);
+    invalid.focus();
+  }
+}
+
+function scopeValues(scope) {
+  const controls = scope instanceof HTMLFormElement ? [...scope.elements] : [...scope.querySelectorAll("input, select, textarea")];
+  return JSON.stringify(controls.map((control) => ({
+    key: control.name || control.id || control.dataset.stepStatus || control.dataset.taskOwner || "",
+    value: control.value,
+    checked: "checked" in control ? control.checked : undefined,
+    selected: control instanceof HTMLSelectElement && control.multiple
+      ? [...control.selectedOptions].map((option) => option.value)
+      : undefined
+  })));
+}
+
+function clearDirtyScope(scope) {
+  dirtyScopes.delete(scope);
+  dirtyScopeBaselines.delete(scope);
+}
+
+function confirmDiscardChanges() {
+  if (!dirtyScopes.size) return true;
+  if (!window.confirm("You have unsaved changes. Discard them and continue?")) return false;
+  for (const scope of dirtyScopes.keys()) {
+    const baseline = JSON.parse(dirtyScopeBaselines.get(scope) || "[]");
+    const controls = scope instanceof HTMLFormElement ? [...scope.elements] : [...scope.querySelectorAll("input, select, textarea")];
+    controls.forEach((control, index) => {
+      const saved = baseline[index];
+      if (!saved) return;
+      control.value = saved.value;
+      if (saved.checked !== undefined) control.checked = saved.checked;
+      if (saved.selected && control instanceof HTMLSelectElement) {
+        [...control.options].forEach((option) => { option.selected = saved.selected.includes(option.value); });
+      }
+      control.removeAttribute("aria-invalid");
+      const errorId = control.getAttribute("aria-describedby");
+      const fieldError = errorId && document.getElementById(errorId);
+      if (fieldError) fieldError.remove();
+      if (errorId) control.removeAttribute("aria-describedby");
+    });
+    const status = scope.querySelector(":scope > .form-status");
+    if (status) {
+      status.textContent = "";
+      status.setAttribute("role", "status");
+    }
+    dirtyScopeBaselines.delete(scope);
+  }
+  dirtyScopes.clear();
+  return true;
+}
+
+appShell.addEventListener("focusin", (event) => {
+  if (!event.target.matches("input, select, textarea")) return;
+  const scope = event.target.closest("form, .step-card");
+  if (scope && !dirtyScopeBaselines.has(scope)) dirtyScopeBaselines.set(scope, scopeValues(scope));
+});
+appShell.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || !form.closest(".main-content")) return;
+  if (pendingFormButtons.has(form)) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return;
+  }
+  activeSubmissionForm = form;
+  setFormBusy(form);
+}, true);
+function clearFieldFeedback(event) {
+  const target = event.target;
+  target.removeAttribute("aria-invalid");
+  const errorId = target.getAttribute("aria-describedby");
+  const fieldError = errorId && document.getElementById(errorId);
+  if (fieldError) fieldError.remove();
+  if (errorId) target.removeAttribute("aria-describedby");
+  const scope = target.closest("form, .step-card");
+  const status = scope?.querySelector(":scope > .form-status");
+  if (status?.getAttribute("role") === "alert") {
+    status.textContent = "";
+    status.setAttribute("role", "status");
+  }
+}
+appShell.addEventListener("input", clearFieldFeedback);
+appShell.addEventListener("change", clearFieldFeedback);
+appShell.addEventListener("input", (event) => updateDirtyScope(event.target));
+appShell.addEventListener("change", (event) => updateDirtyScope(event.target));
+
+function updateDirtyScope(target) {
+  if (!target.matches("input, select, textarea")) return;
+  const scope = target.closest("form, .step-card");
+  if (!scope) return;
+  if (!dirtyScopeBaselines.has(scope)) dirtyScopeBaselines.set(scope, scopeValues(scope));
+  if (dirtyScopeBaselines.get(scope) === scopeValues(scope)) {
+    dirtyScopes.delete(scope);
+    const status = scope.querySelector(":scope > .form-status");
+    if (status?.textContent === "Unsaved changes.") status.textContent = "";
+  } else {
+    dirtyScopes.set(scope, true);
+    const status = formStatus(scope);
+    status.setAttribute("role", "status");
+    status.textContent = "Unsaved changes.";
+  }
+}
+
+window.addEventListener("beforeunload", (event) => {
+  if (!dirtyScopes.size) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
 function showAuth(message = "") {
   state.user = null;
   state.workspace = null;
+  state.onboardingDismissed = false;
+  state.preferences = { theme: "light", accent: "blue" };
+  applyAppearance();
   authScreen.hidden = false;
   appShell.hidden = true;
   authStatus.textContent = message;
@@ -90,6 +304,81 @@ function showProduct() {
   appShell.hidden = false;
   document.getElementById("workspace-name-display").textContent = state.workspace.name;
   document.getElementById("user-email").textContent = state.user.email;
+}
+
+function applyAppearance() {
+  document.documentElement.dataset.theme = state.preferences.theme;
+  document.documentElement.dataset.accent = state.preferences.accent;
+  const mode = document.getElementById("theme-mode");
+  const accent = document.getElementById("theme-accent");
+  if (mode) mode.value = state.preferences.theme;
+  if (accent) accent.value = state.preferences.accent;
+}
+
+async function loadPreferences() {
+  state.preferences = await api("/api/product/preferences");
+  applyAppearance();
+}
+
+async function savePreference(key, value) {
+  const previous = state.preferences[key];
+  state.preferences[key] = value;
+  applyAppearance();
+  const status = document.getElementById("appearance-status");
+  status.textContent = "Saving your appearance...";
+  appearanceSaveQueue = appearanceSaveQueue.catch(() => {}).then(async () => {
+    try {
+      state.preferences = await api("/api/product/preferences", {
+        method: "PATCH",
+        body: { [key]: value }
+      });
+      applyAppearance();
+      status.textContent = "Your appearance is saved to your account.";
+    } catch (error) {
+      state.preferences[key] = previous;
+      applyAppearance();
+      status.textContent = error.message;
+    }
+  });
+  return appearanceSaveQueue;
+}
+
+function renderHelpMessages() {
+  const container = document.getElementById("help-messages");
+  container.replaceChildren();
+  if (!state.helpMessages.length) {
+    const empty = document.createElement("p");
+    empty.className = "help-empty";
+    empty.textContent = "Hi! I’m Ray. I can explain Relay’s features and guide you through using them. What would you like help with?";
+    container.append(empty);
+    return;
+  }
+  for (const message of state.helpMessages) {
+    const article = document.createElement("article");
+    article.className = `help-message ${message.role === "assistant" ? "assistant" : "user"}`;
+    const label = document.createElement("strong");
+    label.textContent = message.role === "assistant" ? "Ray" : "You";
+    if (message.role === "assistant") {
+      const logo = document.createElement("img");
+      logo.className = "ray-message-logo";
+      logo.src = "assets/Ray%20Robot%20Mascot%20Logo%20%281%29.png";
+      logo.alt = "";
+      article.append(logo);
+    }
+    const text = document.createElement("p");
+    text.textContent = message.content;
+    article.append(label, text);
+    container.append(article);
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+async function loadHelpHistory() {
+  const result = await api("/api/product/help-chat");
+  state.helpMessages = result.messages;
+  state.helpConsented = result.consented;
+  document.getElementById("help-consent-wrap").hidden = state.helpConsented;
+  renderHelpMessages();
 }
 
 function setAuthMode(mode) {
@@ -133,24 +422,107 @@ function showPasswordResetPanel(panelId) {
 }
 
 async function loadWorkspace() {
+  if (dirtyScopes.size && !confirmDiscardChanges()) return false;
   const data = await api("/api/product/workspace");
   state.data = data;
   renderWorkspace();
+  return true;
+}
+
+async function loadOnboarding() {
+  const result = await api("/api/product/onboarding");
+  state.onboardingDismissed = result.dismissed;
+}
+
+function emptyStateMarkup(title, description, actionLabel, action) {
+  return `<strong>${escapeHtml(title)}</strong><p>${escapeHtml(description)}</p><button class="button secondary" type="button" data-workflow-action="${escapeHtml(action)}">${escapeHtml(actionLabel)}</button>`;
+}
+
+function getNextWorkflowAction() {
+  if (!state.data.processes.length) return { action: "map-process", label: "Create a process map" };
+  if (!state.data.processes.some((process) => process.steps_count > 0)) {
+    return { action: "map-process", label: "Add process steps" };
+  }
+  if (!state.data.processes.some((process) => process.checked)) {
+    return { action: "check-process", label: "Check a process" };
+  }
+  if (!state.data.templates.length) return { action: "save-template", label: "Save a template" };
+  return { action: "start-implementation", label: "Start an implementation" };
+}
+
+function renderGettingStarted() {
+  const guide = document.getElementById("getting-started");
+  if (!guide) return;
+  const steps = [
+    {
+      title: "Map a process and add at least one step",
+      description: "Start with the work your team already does for a new customer.",
+      complete: state.data.processes.some((process) => process.steps_count > 0),
+      action: "map-process",
+      actionLabel: state.data.processes.length ? "Open a process map" : "Create a process map"
+    },
+    {
+      title: "Check that process",
+      description: "The check points out missing instructions, roles, and workflow issues before reuse.",
+      complete: state.data.processes.some((process) => process.checked),
+      action: "check-process",
+      actionLabel: "Check a process"
+    },
+    {
+      title: "Save a reusable template",
+      description: "A template is a checked snapshot that becomes the starting point for customer work.",
+      complete: state.data.templates.length > 0,
+      action: "save-template",
+      actionLabel: "Save a template"
+    },
+    {
+      title: "Start an implementation",
+      description: "Choose the template and enter a customer company to create its work plan.",
+      complete: state.data.implementations.length > 0,
+      action: "start-implementation",
+      actionLabel: "Start an implementation"
+    }
+  ];
+  const nextIndex = steps.findIndex((step) => !step.complete);
+  guide.hidden = state.onboardingDismissed;
+  document.getElementById("show-getting-started").hidden = !state.onboardingDismissed;
+  document.getElementById("getting-started-list").innerHTML = steps.map((step, index) => {
+    const waiting = !step.complete && index > nextIndex;
+    return `<li class="getting-started-step ${step.complete ? "complete" : waiting ? "waiting" : "current"}">
+      <span class="getting-started-check" aria-hidden="true">${step.complete ? "✓" : index + 1}</span>
+      <div class="getting-started-copy"><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.description)}</p>
+        ${index === nextIndex ? `<button class="text-button" type="button" data-workflow-action="${step.action}">${escapeHtml(step.actionLabel)} →</button>` : waiting ? '<small>Complete the previous step to continue.</small>' : ""}
+      </div>
+      <span class="getting-started-state">${step.complete ? "Complete" : waiting ? "Next" : "Up next"}</span>
+    </li>`;
+  }).join("");
+  const status = document.getElementById("getting-started-status");
+  status.textContent = nextIndex < 0
+    ? "You’ve completed the first implementation path. You can dismiss this guide or keep it as a reference."
+    : `${steps.filter((step) => step.complete).length} of ${steps.length} steps complete.`;
 }
 
 function setView(name) {
   if (!titles[name]) return;
+  const activeView = document.querySelector(".view.active");
+  if (activeView?.id !== `view-${name}` && !confirmDiscardChanges()) return false;
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === name));
   document.getElementById("view-eyebrow").textContent = titles[name][0];
   document.getElementById("view-title").textContent = titles[name][1];
+  document.getElementById("refresh-button").hidden = name === "settings";
   globalStatus.textContent = "";
   if (name === "processes" && state.selectedProcessId) loadProcess(state.selectedProcessId).catch(showError);
-  window.relayRefreshMotion?.();
+  return true;
 }
 
 function showError(error) {
   const message = error instanceof Error ? error.message : "Something went wrong. Please try again.";
+  if (activeSubmissionForm?.isConnected) {
+    failForm(activeSubmissionForm, error);
+    activeSubmissionForm = null;
+    return;
+  }
   globalStatus.textContent = message;
   showToast(message, true);
 }
@@ -169,6 +541,51 @@ function blockerSummary(implementation) {
   return reasons.length ? reasons.join(" · ") : "No configured readiness issues detected";
 }
 
+function implementationStatus(implementation) {
+  if (implementation.total_steps > 0 && implementation.completed_steps === implementation.total_steps) return "complete";
+  if (implementation.in_progress_steps > 0 || implementation.completed_steps > 0) return "in_progress";
+  return "not_started";
+}
+
+function implementationNeedsAttention(implementation, filter = "yes") {
+  const attention = {
+    blocked: implementation.blocked_steps > 0,
+    overdue: implementation.overdue_steps > 0,
+    waiting: implementation.waiting_steps > 0,
+    missing: implementation.missing_inputs > 0,
+    unassigned: implementation.unowned_steps > 0
+  };
+  if (filter === "yes") return Object.values(attention).some(Boolean);
+  return Boolean(attention[filter]);
+}
+
+function filteredImplementations() {
+  const { search, status, owner, attention } = state.implementationFilters;
+  const query = search.trim().toLocaleLowerCase();
+  return state.data.implementations.filter((implementation) => {
+    if (query && !`${implementation.customer_name} ${implementation.template_name}`.toLocaleLowerCase().includes(query)) return false;
+    if (status !== "all" && implementationStatus(implementation) !== status) return false;
+    const assignedIds = (implementation.assigned_member_ids || "").split(",").filter(Boolean);
+    if (owner === "unassigned" && implementation.unowned_steps === 0) return false;
+    if (owner !== "all" && owner !== "unassigned" && !assignedIds.includes(owner)) return false;
+    if (attention !== "all" && !implementationNeedsAttention(implementation, attention)) return false;
+    return true;
+  });
+}
+
+function renderAttentionBadges(implementation) {
+  const issues = [
+    ["blocked", "Blocked", implementation.blocked_steps, implementation.blocked_step_names],
+    ["overdue", "Overdue", implementation.overdue_steps, implementation.overdue_step_names],
+    ["waiting", "Waiting", implementation.waiting_steps, implementation.waiting_step_names],
+    ["missing", "Info missing", implementation.missing_inputs, implementation.missing_input_names],
+    ["unassigned", "Unassigned", implementation.unowned_steps, implementation.unowned_step_names]
+  ].filter(([, , count]) => count > 0);
+  return issues.length
+    ? issues.map(([key, label, count, names]) => `<span class="attention-chip ${key}" title="${escapeHtml(names || label)}">${label} · ${count}</span>`).join("")
+    : '<span class="badge ready">On track</span>';
+}
+
 function renderOverview() {
   const { implementations, templates, processes } = state.data;
   const needsAttention = implementations.filter((item) => item.missing_inputs > 0 || item.unowned_steps > 0
@@ -179,30 +596,65 @@ function renderOverview() {
     ["Needs attention", needsAttention, "Missing information, blockers, overdue work, or dependencies"]
   ].map(([label, value, detail]) => `<article class="metric"><strong>${value}</strong><span>${escapeHtml(label)} · ${escapeHtml(detail)}</span></article>`).join("");
   document.getElementById("overview-implementations").innerHTML = implementations.length
-    ? renderImplementationTable(implementations.slice(0, 6))
+    ? renderImplementationTable(implementations.slice(0, 6), true)
     : "";
   const emptyState = document.getElementById("overview-empty");
   emptyState.hidden = implementations.length > 0;
-  emptyState.textContent = processes.length === 0
-    ? "Start by mapping your onboarding process, then save it as a template."
-    : templates.length === 0
-      ? "Finish and test a process, then save it as a template to start an implementation."
-      : "Choose a template to start your first customer implementation.";
+  if (!implementations.length) {
+    const next = getNextWorkflowAction();
+    const copy = {
+      "map-process": ["Start with your team's process", "Map the steps your team follows so Relay can check the workflow and turn it into a reusable template."],
+      "check-process": ["Check your process", "Run a workflow check before saving it as a template."],
+      "save-template": ["Save a reusable template", "A template gives each customer a consistent starting point."],
+      "start-implementation": ["Start your first implementation", "Choose a template and enter the customer company to create a customer-specific work plan."]
+    }[next.action];
+    emptyState.innerHTML = emptyStateMarkup(copy[0], copy[1], next.label, next.action);
+  }
+  renderGettingStarted();
 }
 
-function renderImplementationTable(implementations) {
-  if (!implementations.length) return '<p class="empty-state">No customer implementations yet. Save a template, then start with your first customer.</p>';
-  return `<table class="data-table"><thead><tr><th>Customer</th><th>Template</th><th>Open tasks</th><th>Readiness</th><th></th></tr></thead><tbody>${implementations.map((item) => {
-    const attention = item.missing_inputs > 0 || item.unowned_steps > 0 || item.blocked_steps > 0
-      || item.overdue_steps > 0 || item.waiting_steps > 0;
-    return `<tr><td>${escapeHtml(item.customer_name)}</td><td>${escapeHtml(item.template_name)}</td><td>${item.open_steps}</td><td><span class="badge ${attention ? "attention" : "ready"}">${escapeHtml(blockerSummary(item))}</span></td><td><button class="row-button" type="button" data-open-implementation="${item.id}">Open</button></td></tr>`;
+function renderImplementationTable(implementations, compact = false) {
+  if (!implementations.length) {
+    const next = getNextWorkflowAction();
+    return `<div class="empty-state"><strong>No customer implementations yet</strong><p>${state.data.templates.length
+      ? "Start from a saved template to create the first customer-specific work plan."
+      : "Follow the next setup step to prepare a reusable starting point before customer work."}</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
+  }
+  const ownerLabels = (item) => {
+    const assignedIds = (item.assigned_member_ids || "").split(",").filter(Boolean);
+    const names = state.data.members.filter((member) => assignedIds.includes(String(member.id))).map((member) => member.email);
+    return names.length ? names.map(escapeHtml).join(", ") : "No assigned owners";
+  };
+  const headings = compact
+    ? "<th>Customer</th><th>Status</th><th>Open tasks</th><th>Attention</th><th></th>"
+    : "<th>Customer</th><th>Template</th><th>Status</th><th>Owners</th><th>Open tasks</th><th>Attention</th><th></th>";
+  return `<table class="data-table implementation-table ${compact ? "compact" : ""}"><thead><tr>${headings}</tr></thead><tbody>${implementations.map((item) => {
+    const status = implementationStatus(item);
+    const statusLabel = { not_started: "Not started", in_progress: "In progress", complete: "Complete" }[status];
+    return compact
+      ? `<tr>
+          <td><strong>${escapeHtml(item.customer_name)}</strong></td>
+          <td><span class="badge status-${status}">${statusLabel}</span></td>
+          <td>${item.open_steps} open</td>
+          <td><div class="attention-chips">${renderAttentionBadges(item)}</div></td>
+          <td><button class="row-button" type="button" data-open-implementation="${item.id}">Open</button></td>
+        </tr>`
+      : `<tr>
+          <td><strong>${escapeHtml(item.customer_name)}</strong></td>
+          <td>${escapeHtml(item.template_name)}</td>
+          <td><span class="badge status-${status}">${statusLabel}</span></td>
+          <td class="implementation-owners">${ownerLabels(item)}</td>
+          <td>${item.open_steps} open / ${item.total_steps} total</td>
+          <td><div class="attention-chips">${renderAttentionBadges(item)}</div></td>
+          <td><button class="row-button" type="button" data-open-implementation="${item.id}">Open</button></td>
+        </tr>`;
   }).join("")}</tbody></table>`;
 }
 
 function renderProcesses() {
   const container = document.getElementById("process-list");
   if (!state.data.processes.length) {
-    container.innerHTML = '<p class="empty-state">No process maps yet. Start with the steps your team already follows.</p>';
+    container.innerHTML = `<div class="empty-state"><strong>No process maps yet</strong><p>Capture the steps your team already follows. You can check the workflow before reusing it for customers.</p><button class="button secondary" type="button" data-workflow-action="create-process">Create your first process map</button></div>`;
     return;
   }
   container.innerHTML = state.data.processes.map((process) => `
@@ -235,6 +687,7 @@ function renderTeam() {
 }
 
 async function loadProcess(processId) {
+  if (dirtyScopes.size && !confirmDiscardChanges()) return false;
   const { process } = await api(`/api/product/processes/${processId}`);
   state.process = process;
   state.selectedProcessId = process.id;
@@ -247,6 +700,10 @@ async function loadProcess(processId) {
   document.getElementById("process-actions").hidden = false;
   const result = document.getElementById("process-test-result");
   result.hidden = true;
+  document.getElementById("save-template").disabled = !process.checked;
+  document.getElementById("save-template").title = process.checked
+    ? ""
+    : "Run a successful process check before saving a template.";
   document.getElementById("step-dependencies").innerHTML = process.steps.map((step) =>
     `<option value="${step.id}" ${step.id === state.editingStepId ? "disabled" : ""}>${escapeHtml(step.title)}</option>`
   ).join("");
@@ -267,13 +724,12 @@ async function loadProcess(processId) {
           <button class="text-button" type="button" data-delete-step="${step.id}">Delete</button>
         </div>
       </article>`).join("")
-    : "Add the first step to start mapping this customer journey.";
+    : `<div class="empty-state"><strong>This process map has no steps yet</strong><p>Add the first task your team completes for a new customer. Include clear instructions and a responsible role.</p><button class="button secondary" type="button" data-workflow-action="focus-step">Add the first step</button></div>`;
   const templateScope = document.getElementById("requirement-template");
   const selectedScope = templateScope.value;
   templateScope.innerHTML = '<option value="">Every implementation</option>' + state.data.templates
     .map((template) => `<option value="${template.id}">${escapeHtml(template.name)}</option>`).join("");
   if ([...templateScope.options].some((option) => option.value === selectedScope)) templateScope.value = selectedScope;
-  window.relayRefreshMotion?.();
 }
 
 function renderTemplates() {
@@ -285,7 +741,8 @@ function renderTemplates() {
   requirementTemplate.innerHTML = '<option value="">Every implementation</option>' + state.data.templates
     .map((template) => `<option value="${template.id}">${escapeHtml(template.name)}</option>`).join("");
   if (!state.data.templates.length) {
-    container.innerHTML = '<p class="empty-state">Your reusable templates will appear here. First map and test a process.</p>';
+    const next = getNextWorkflowAction();
+    container.innerHTML = `<div class="empty-state"><strong>No templates yet</strong><p>A checked process becomes a reusable starting point for each new customer implementation.</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
     return;
   }
   container.innerHTML = state.data.templates.map((template) => `
@@ -310,13 +767,40 @@ function renderTemplates() {
 }
 
 function renderImplementations() {
-  document.getElementById("implementation-list").innerHTML = renderImplementationTable(state.data.implementations);
+  const form = document.getElementById("implementation-form");
+  const prerequisite = document.getElementById("implementation-prerequisite");
+  form.hidden = state.data.templates.length === 0;
+  prerequisite.hidden = state.data.templates.length > 0;
+  if (!prerequisite.hidden) {
+    const next = getNextWorkflowAction();
+    prerequisite.innerHTML = emptyStateMarkup(
+      "A template is needed first",
+      "Templates are checked process snapshots. Create a process map, add its steps, run the check, then save it as a template.",
+      next.label,
+      next.action
+    );
+  }
+  const ownerFilter = document.getElementById("implementation-owner-filter");
+  const selectedOwner = state.implementationFilters.owner;
+  ownerFilter.innerHTML = '<option value="all">All owners</option><option value="unassigned">Has unassigned tasks</option>'
+    + state.data.members.map((member) => `<option value="${member.id}">${escapeHtml(member.email)}</option>`).join("");
+  ownerFilter.value = [...ownerFilter.options].some((option) => option.value === selectedOwner) ? selectedOwner : "all";
+  const filtered = filteredImplementations();
+  const filterActive = state.implementationFilters.search || state.implementationFilters.status !== "all"
+    || state.implementationFilters.owner !== "all" || state.implementationFilters.attention !== "all";
+  document.getElementById("implementation-filter-summary").textContent =
+    `${filtered.length} of ${state.data.implementations.length} implementation${state.data.implementations.length === 1 ? "" : "s"} shown`;
+  document.getElementById("implementation-list").innerHTML = filtered.length
+    ? renderImplementationTable(filtered)
+    : state.data.implementations.length && filterActive
+      ? `<div class="empty-state"><strong>No implementations match these filters</strong><p>Try changing a filter or clear them to see every customer.</p><button class="button secondary" type="button" data-clear-implementation-filters>Clear filters</button></div>`
+      : renderImplementationTable(filtered);
 }
 
 function renderRequirements() {
   const container = document.getElementById("requirement-list");
   if (!state.data.requirements.length) {
-    container.innerHTML = '<p class="empty-state">Add the specific information needed to configure your product for a customer.</p>';
+    container.innerHTML = `<div class="empty-state"><strong>No customer information requests yet</strong><p>Add only the specific information a customer needs to provide during setup. You can make a request optional or limit it to one template.</p><button class="button secondary" type="button" data-workflow-action="add-requirement">Create an information request</button></div>`;
     return;
   }
   container.innerHTML = state.data.requirements.map((requirement) => `
@@ -342,10 +826,11 @@ function renderWorkspace() {
   renderImplementations();
   renderRequirements();
   renderTeam();
-  window.relayRefreshMotion?.();
+  renderGettingStarted();
 }
 
 async function openImplementation(implementationId) {
+  if (dirtyScopes.size && !confirmDiscardChanges()) return false;
   const { implementation } = await api(`/api/product/implementations/${implementationId}`);
   state.selectedImplementationId = implementation.id;
   const panel = document.getElementById("implementation-detail");
@@ -392,7 +877,7 @@ async function openImplementation(implementationId) {
         <span class="badge ${requirement.value.trim() ? "ready" : requirement.required ? "attention" : ""}">${requirement.value.trim() ? "Received" : requirement.required ? "Required · not received" : "Optional · not received"}</span>
         ${requirement.value ? `<p>${escapeHtml(requirement.value)}</p>` : ""}
       </article>`).join("")
-    : '<p class="empty-state">No customer information has been requested yet. Add requirements to share them with this customer.</p>';
+    : '<div class="empty-state"><strong>No customer information requested</strong><p>Add a specific request if this customer needs to provide setup details.</p><button class="button secondary" type="button" data-workflow-action="add-requirement">Create an information request</button></div>';
   const token = state.customerTokens.get(implementation.id);
   const linkBox = document.getElementById("customer-link-box");
   linkBox.hidden = false;
@@ -404,15 +889,16 @@ async function openImplementation(implementationId) {
   } else {
     linkBox.innerHTML = `<strong>Customer information link</strong><br>Create a private link for this customer to submit the information you requested.<br><button class="text-button" type="button" data-create-customer-link>Create customer link</button>`;
   }
-  window.relayRefreshMotion?.();
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  return true;
 }
 
 async function refreshWorkspace() {
-  await loadWorkspace();
+  if (!await loadWorkspace()) return false;
   if (state.selectedImplementationId && !document.getElementById("implementation-detail").hidden) {
-    await openImplementation(state.selectedImplementationId);
+    return openImplementation(state.selectedImplementationId);
   }
+  return true;
 }
 
 authTabs.login.addEventListener("click", () => setAuthMode("login"));
@@ -492,12 +978,15 @@ authForm.addEventListener("submit", async (event) => {
     });
     state.user = data.user;
     state.workspace = data.workspace;
+    await loadPreferences();
     if (state.inviteToken) {
       state.inviteToken = "";
       window.history.replaceState(null, "", window.location.pathname);
     }
     showProduct();
+    await loadOnboarding();
     await loadWorkspace();
+    await loadHelpHistory();
   } catch (error) {
     authStatus.textContent = error.message;
   } finally {
@@ -523,7 +1012,7 @@ document.getElementById("team-invite-form").addEventListener("submit", async (ev
 
 document.getElementById("team-invite-list").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-revoke-invite]");
-  if (!button || !window.confirm("Revoke this pending invitation?")) return;
+  if (!button || !window.confirm("Revoke this pending invitation?") || !confirmDiscardChanges()) return;
   try {
     await api(`/api/product/invites/${button.dataset.revokeInvite}`, { method: "DELETE" });
     state.inviteUrl = "";
@@ -548,12 +1037,198 @@ document.getElementById("invite-result").addEventListener("click", async (event)
 document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
 document.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.go)));
 document.getElementById("refresh-button").addEventListener("click", () => refreshWorkspace().catch(showError));
+document.getElementById("implementation-search").addEventListener("input", (event) => {
+  state.implementationFilters.search = event.currentTarget.value;
+  renderImplementations();
+});
+document.getElementById("implementation-status-filter").addEventListener("change", (event) => {
+  state.implementationFilters.status = event.currentTarget.value;
+  renderImplementations();
+});
+document.getElementById("implementation-owner-filter").addEventListener("change", (event) => {
+  state.implementationFilters.owner = event.currentTarget.value;
+  renderImplementations();
+});
+document.getElementById("implementation-attention-filter").addEventListener("change", (event) => {
+  state.implementationFilters.attention = event.currentTarget.value;
+  renderImplementations();
+});
+document.getElementById("clear-implementation-filters").addEventListener("click", clearImplementationFilters);
+
+function clearImplementationFilters() {
+  state.implementationFilters = { search: "", status: "all", owner: "all", attention: "all" };
+  document.getElementById("implementation-search").value = "";
+  document.getElementById("implementation-status-filter").value = "all";
+  document.getElementById("implementation-owner-filter").value = "all";
+  document.getElementById("implementation-attention-filter").value = "all";
+  renderImplementations();
+}
+
+document.getElementById("implementation-list").addEventListener("click", (event) => {
+  if (event.target.closest("[data-clear-implementation-filters]")) clearImplementationFilters();
+});
+document.getElementById("dismiss-getting-started").addEventListener("click", async () => {
+  const status = document.getElementById("getting-started-status");
+  try {
+    const result = await api("/api/product/onboarding", { method: "PATCH", body: { dismissed: true } });
+    state.onboardingDismissed = result.dismissed;
+    renderGettingStarted();
+  } catch (error) {
+    status.textContent = error.message;
+  }
+});
+document.getElementById("show-getting-started").addEventListener("click", async () => {
+  const status = document.getElementById("getting-started-status");
+  try {
+    const result = await api("/api/product/onboarding", { method: "PATCH", body: { dismissed: false } });
+    state.onboardingDismissed = result.dismissed;
+    renderGettingStarted();
+  } catch (error) {
+    status.textContent = error.message;
+  }
+});
+appShell.addEventListener("click", async (event) => {
+  const actionButton = event.target.closest("[data-workflow-action]");
+  if (!actionButton) return;
+  const action = actionButton.dataset.workflowAction;
+  if (action === "create-process") {
+    if (!setView("processes")) return;
+    document.getElementById("process-name").focus();
+    return;
+  }
+  if (action === "map-process" || action === "focus-step" || action === "check-process" || action === "save-template") {
+    const process = action === "save-template"
+      ? state.data.processes.find((item) => item.checked) || state.data.processes[0]
+      : action === "check-process"
+        ? state.data.processes.find((item) => item.steps_count > 0 && !item.checked)
+          || state.data.processes.find((item) => item.steps_count > 0)
+          || state.data.processes[0]
+        : state.data.processes.find((item) => item.steps_count === 0)
+          || state.data.processes[0];
+    if (!process) {
+      if (!setView("processes")) return;
+      document.getElementById("process-name").focus();
+      return;
+    }
+    try {
+      if (!setView("processes")) return;
+      await loadProcess(process.id);
+      if (action === "check-process") {
+        document.getElementById("test-process").focus();
+      } else if (action === "save-template" && process.checked) {
+        document.getElementById("save-template").focus();
+      } else if (process.steps_count === 0) {
+        document.getElementById("step-title").focus();
+      } else {
+        document.getElementById("process-step-list").focus();
+      }
+    } catch (error) {
+      showError(error);
+    }
+    return;
+  }
+  if (action === "start-implementation") {
+    if (!state.data.templates.length) {
+      if (!setView("processes")) return;
+      document.getElementById("process-name").focus();
+      return;
+    }
+    if (!setView("implementations")) return;
+    document.getElementById("implementation-customer").focus();
+    return;
+  }
+  if (action === "add-requirement") {
+    if (!setView("requirements")) return;
+    document.getElementById("requirement-name").focus();
+  }
+});
+document.getElementById("theme-mode").addEventListener("change", (event) => {
+  savePreference("theme", event.currentTarget.value);
+});
+document.getElementById("theme-accent").addEventListener("change", (event) => {
+  savePreference("accent", event.currentTarget.value);
+});
 document.getElementById("signout-button").addEventListener("click", async () => {
   try {
     await api("/api/product/auth/logout", { method: "POST", body: {} });
+    state.helpMessages = [];
+    renderHelpMessages();
     showAuth("You have signed out.");
   } catch (error) {
     showError(error);
+  }
+});
+
+document.getElementById("help-open").addEventListener("click", async () => {
+  const panel = document.getElementById("help-panel");
+  const open = panel.hidden;
+  panel.hidden = !open;
+  document.getElementById("help-open").setAttribute("aria-expanded", String(open));
+  if (open) {
+    try {
+      await loadHelpHistory();
+      document.getElementById("help-input").focus();
+    } catch (error) {
+      document.getElementById("help-status").textContent = error.message;
+    }
+  }
+});
+
+document.getElementById("help-close").addEventListener("click", () => {
+  document.getElementById("help-panel").hidden = true;
+  document.getElementById("help-open").setAttribute("aria-expanded", "false");
+  document.getElementById("help-open").focus();
+});
+
+document.getElementById("help-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = document.getElementById("help-input");
+  const button = document.getElementById("help-send");
+  const status = document.getElementById("help-status");
+  const message = input.value.trim();
+  if (!message) return;
+  button.disabled = true;
+  status.textContent = "Ray is preparing an answer...";
+  try {
+    const result = await api("/api/product/help-chat", {
+      method: "POST",
+      body: {
+        message,
+        consentAccepted: !state.helpConsented && document.getElementById("help-consent").checked
+      }
+    });
+    state.helpMessages.push({ role: "user", content: message }, result.message);
+    if (state.helpMessages.length > 50) state.helpMessages = state.helpMessages.slice(-50);
+    state.helpConsented = true;
+    document.getElementById("help-consent-wrap").hidden = true;
+    input.value = "";
+    status.textContent = "";
+    renderHelpMessages();
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+    input.focus();
+  }
+});
+
+document.getElementById("help-clear").addEventListener("click", async () => {
+  if (!window.confirm("Clear your Ray conversation history for this account?")) return;
+  const button = document.getElementById("help-clear");
+  const status = document.getElementById("help-status");
+  button.disabled = true;
+  try {
+    await api("/api/product/help-chat", { method: "DELETE" });
+    state.helpMessages = [];
+    state.helpConsented = false;
+    document.getElementById("help-consent").checked = false;
+    document.getElementById("help-consent-wrap").hidden = false;
+    renderHelpMessages();
+    status.textContent = "Your help history was cleared.";
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
 });
 
@@ -566,6 +1241,7 @@ document.getElementById("process-form").addEventListener("submit", async (event)
     event.target.reset();
     await loadWorkspace();
     await loadProcess(process.id);
+    document.getElementById("step-title").focus();
     showToast("Process map created.");
   } catch (error) {
     showError(error);
@@ -575,12 +1251,14 @@ document.getElementById("process-form").addEventListener("submit", async (event)
 document.getElementById("process-list").addEventListener("click", (event) => {
   const openButton = event.target.closest("[data-select-process]");
   if (openButton) {
-    state.editingStepId = null;
-    loadProcess(openButton.dataset.selectProcess).catch(showError);
+    loadProcess(openButton.dataset.selectProcess).then((loaded) => {
+      if (loaded) state.editingStepId = null;
+    }).catch(showError);
     return;
   }
   const deleteButton = event.target.closest("[data-delete-process]");
-  if (!deleteButton || !window.confirm("Delete this process map? Saved templates must be deleted first.")) return;
+  if (!deleteButton || !window.confirm("Delete this process map? Saved templates must be deleted first.")
+    || !confirmDiscardChanges()) return;
   api(`/api/product/processes/${deleteButton.dataset.deleteProcess}`, { method: "DELETE" })
     .then(async () => {
       if (state.selectedProcessId === Number(deleteButton.dataset.deleteProcess)) {
@@ -590,7 +1268,7 @@ document.getElementById("process-list").addEventListener("click", (event) => {
         document.getElementById("step-form").hidden = true;
         document.getElementById("process-actions").hidden = true;
         document.getElementById("process-editor-title").textContent = "Select a process";
-        document.getElementById("process-step-list").textContent = "Choose a process map or create one to begin.";
+        document.getElementById("process-step-list").innerHTML = '<strong>No process selected</strong><p>Choose an existing process map or create your first one to start outlining the work.</p><button class="button secondary" type="button" data-workflow-action="create-process">Create a process map</button>';
       }
       await loadWorkspace();
       showToast("Process map deleted.");
@@ -609,6 +1287,7 @@ document.getElementById("process-meta-form").addEventListener("submit", async (e
         description: document.getElementById("process-edit-description").value
       }
     });
+    clearDirtyScope(form);
     await loadWorkspace();
     await loadProcess(state.selectedProcessId);
     showToast("Process details saved.");
@@ -648,6 +1327,7 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
 });
 
 document.getElementById("cancel-step-edit").addEventListener("click", () => {
+  if (dirtyScopes.size && !confirmDiscardChanges()) return;
   state.editingStepId = null;
   const form = document.getElementById("step-form");
   form.reset();
@@ -661,6 +1341,7 @@ document.getElementById("cancel-step-edit").addEventListener("click", () => {
 document.getElementById("process-step-list").addEventListener("click", async (event) => {
   const edit = event.target.closest("[data-edit-step]");
   if (edit && state.process) {
+    if (dirtyScopes.size && !confirmDiscardChanges()) return;
     const step = state.process.steps.find((item) => item.id === Number(edit.dataset.editStep));
     if (!step) return;
     state.editingStepId = step.id;
@@ -681,7 +1362,8 @@ document.getElementById("process-step-list").addEventListener("click", async (ev
   }
   const deleteStep = event.target.closest("[data-delete-step]");
   if (deleteStep) {
-    if (!window.confirm("Delete this process step? Its prerequisite links will also be removed.")) return;
+    if (!window.confirm("Delete this process step? Its prerequisite links will also be removed.")
+      || !confirmDiscardChanges()) return;
     try {
       await api(`/api/product/processes/${state.selectedProcessId}/steps/${deleteStep.dataset.deleteStep}`, { method: "DELETE" });
       state.editingStepId = null;
@@ -695,6 +1377,7 @@ document.getElementById("process-step-list").addEventListener("click", async (ev
   }
   const move = event.target.closest("[data-step-up], [data-step-down]");
   if (move && state.process) {
+    if (dirtyScopes.size && !confirmDiscardChanges()) return;
     const stepId = Number(move.dataset.stepUp || move.dataset.stepDown);
     const ordered = state.process.steps.map((step) => step.id);
     const index = ordered.indexOf(stepId);
@@ -734,6 +1417,12 @@ document.getElementById("test-process").addEventListener("click", async () => {
     result.innerHTML = check.result === "ready"
       ? `Workflow check passed: ${stepsChecked} steps have instructions, responsible roles, valid prerequisites, and an ordered schedule.<ol>${handover.map((step) => `<li><strong>${escapeHtml(step.title)}</strong> — ${escapeHtml(step.stage)} · ${escapeHtml(step.owner)} · due ${step.dueOffsetDays} days after start<br>${escapeHtml(step.description)}${step.dependsOn.length ? `<br>After: ${escapeHtml(step.dependsOn.join(", "))}` : ""}</li>`).join("")}</ol><button class="text-button" type="button" data-copy-handover>Copy handover guide</button>`
       : `<strong>Setup needs attention.</strong><ul>${findings.map((finding) => `<li>${escapeHtml(finding)}</li>`).join("")}</ul>`;
+    state.process.checked = check.result === "ready";
+    document.getElementById("save-template").disabled = !state.process.checked;
+    document.getElementById("save-template").title = state.process.checked
+      ? ""
+      : "Fix the check findings and run the check again before saving a template.";
+    await loadWorkspace();
     showToast(check.result === "ready" ? "Setup check passed." : "Setup check found items to fix.", check.result !== "ready");
   } catch (error) {
     showError(error);
@@ -761,10 +1450,9 @@ document.getElementById("template-list").addEventListener("submit", async (event
   if (!form) return;
   event.preventDefault();
   try {
-    const data = new FormData(form);
     await api(`/api/product/templates/${form.dataset.editTemplate}`, {
       method: "PATCH",
-      body: { name: data.get("name") }
+      body: { name: form.querySelector('[name="name"]').value }
     });
     await loadWorkspace();
     showToast("Template name saved.");
@@ -814,8 +1502,8 @@ document.getElementById("template-list").addEventListener("click", async (event)
   }
   const refreshButton = event.target.closest("[data-refresh-template]");
   if (refreshButton) {
-    const template = state.data.templates.find((item) => item.id === Number(refreshButton.dataset.refreshTemplate));
-    const name = refreshButton.closest(".template-card").querySelector(`[name="name"]`).value;
+    const form = refreshButton.closest(".template-card").querySelector("form");
+    const name = form.querySelector(`[name="name"]`).value;
     try {
       await api(`/api/product/templates/${refreshButton.dataset.refreshTemplate}`, {
         method: "PATCH",
@@ -830,7 +1518,8 @@ document.getElementById("template-list").addEventListener("click", async (event)
   }
   const deleteButton = event.target.closest("[data-delete-template]");
   if (deleteButton) {
-    if (!window.confirm("Delete this template? Existing implementations cannot be deleted with it.")) return;
+    if (!window.confirm("Delete this template? Existing implementations cannot be deleted with it.")
+      || !confirmDiscardChanges()) return;
     try {
       await api(`/api/product/templates/${deleteButton.dataset.deleteTemplate}`, { method: "DELETE" });
       await loadWorkspace();
@@ -869,43 +1558,26 @@ document.getElementById("implementation-list").addEventListener("click", (event)
 document.getElementById("overview-implementations").addEventListener("click", (event) => {
   const button = event.target.closest("[data-open-implementation]");
   if (button) {
-    setView("implementations");
+    if (!setView("implementations")) return;
     openImplementation(button.dataset.openImplementation).catch(showError);
   }
 });
 document.getElementById("close-implementation").addEventListener("click", () => {
+  if (dirtyScopes.size && !confirmDiscardChanges()) return;
   state.selectedImplementationId = null;
   document.getElementById("implementation-detail").hidden = true;
 });
-document.getElementById("implementation-step-list").addEventListener("change", async (event) => {
-  const select = event.target.closest("[data-step-status]");
-  if (!select || !state.selectedImplementationId) return;
-  select.disabled = true;
-  try {
-    await api(`/api/product/implementations/${state.selectedImplementationId}/steps/${select.dataset.stepStatus}`, {
-      method: "PATCH",
-      body: { status: select.value }
-    });
-    await refreshWorkspace();
-    showToast("Task status updated.");
-  } catch (error) {
-    showError(error);
-    await openImplementation(state.selectedImplementationId).catch(showError);
-  } finally {
-    select.disabled = false;
-  }
-});
-
 document.getElementById("implementation-step-list").addEventListener("click", async (event) => {
   const save = event.target.closest("[data-save-task]");
   if (!save || !state.selectedImplementationId) return;
   const stepId = save.dataset.saveTask;
   const root = save.closest(".step-card");
-  save.disabled = true;
+  setFormBusy(root);
   try {
     await api(`/api/product/implementations/${state.selectedImplementationId}/steps/${stepId}`, {
       method: "PATCH",
       body: {
+        status: root.querySelector(`[data-step-status="${stepId}"]`).value,
         owner: root.querySelector(`[data-task-owner="${stepId}"]`).value,
         assigneeUserId: root.querySelector(`[data-task-assignee="${stepId}"]`).value || null,
         dueAt: root.querySelector(`[data-task-due="${stepId}"]`).value,
@@ -914,13 +1586,11 @@ document.getElementById("implementation-step-list").addEventListener("click", as
         blockerNextAction: root.querySelector(`[data-task-action="${stepId}"]`).value
       }
     });
+    finishForm(root, "Saved.");
     await refreshWorkspace();
     showToast("Task details saved.");
   } catch (error) {
-    showError(error);
-    await openImplementation(state.selectedImplementationId).catch(showError);
-  } finally {
-    save.disabled = false;
+    failForm(root, error);
   }
 });
 
@@ -950,15 +1620,14 @@ document.getElementById("requirement-list").addEventListener("submit", async (ev
   const form = event.target.closest("[data-edit-requirement]");
   if (!form) return;
   event.preventDefault();
-  const data = new FormData(form);
   try {
     await api(`/api/product/requirements/${form.dataset.editRequirement}`, {
       method: "PATCH",
       body: {
-        name: data.get("name"),
-        description: data.get("description"),
-        inputType: data.get("inputType"),
-        required: data.has("required")
+        name: form.querySelector('[name="name"]').value,
+        description: form.querySelector('[name="description"]').value,
+        inputType: form.querySelector('[name="inputType"]').value,
+        required: form.querySelector('[name="required"]').checked
       }
     });
     await refreshWorkspace();
@@ -970,7 +1639,8 @@ document.getElementById("requirement-list").addEventListener("submit", async (ev
 
 document.getElementById("requirement-list").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete-requirement]");
-  if (!button || !window.confirm("Delete this request and its saved customer responses?")) return;
+  if (!button || !window.confirm("Delete this request and its saved customer responses?")
+    || !confirmDiscardChanges()) return;
   try {
     await api(`/api/product/requirements/${button.dataset.deleteRequirement}`, { method: "DELETE" });
     await refreshWorkspace();
@@ -1029,8 +1699,11 @@ async function initialize() {
     const session = await api("/api/product/me");
     state.user = session.user;
     state.workspace = session.workspace;
+    await loadPreferences();
+    await loadOnboarding();
     showProduct();
     await loadWorkspace();
+    await loadHelpHistory();
   } catch (error) {
     if (error.message !== "Sign in to continue." && !error.message.startsWith("Your session expired.")) {
       authStatus.textContent = error.message;

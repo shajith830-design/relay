@@ -69,6 +69,34 @@ database.exec(`
   );
   CREATE INDEX IF NOT EXISTS product_password_resets_expiry_idx ON product_password_resets(expires_at);
 
+  CREATE TABLE IF NOT EXISTS product_help_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES product_users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL CHECK (length(content) BETWEEN 1 AND 4000),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS product_help_messages_user_idx
+    ON product_help_messages(user_id, id DESC);
+
+  CREATE TABLE IF NOT EXISTS product_help_consents (
+    user_id INTEGER PRIMARY KEY REFERENCES product_users(id) ON DELETE CASCADE,
+    accepted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS product_user_preferences (
+    user_id INTEGER PRIMARY KEY REFERENCES product_users(id) ON DELETE CASCADE,
+    theme TEXT NOT NULL DEFAULT 'light' CHECK (theme IN ('light', 'dark')),
+    accent TEXT NOT NULL DEFAULT 'blue' CHECK (accent IN ('blue', 'teal', 'violet', 'rose')),
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS product_user_onboarding (
+    user_id INTEGER PRIMARY KEY REFERENCES product_users(id) ON DELETE CASCADE,
+    dismissed INTEGER NOT NULL DEFAULT 0 CHECK (dismissed IN (0, 1)),
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS product_workspace_invites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id INTEGER NOT NULL REFERENCES product_workspaces(id) ON DELETE CASCADE,

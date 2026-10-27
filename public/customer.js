@@ -52,7 +52,6 @@ async function loadRequest() {
         ${requirement.description ? `<small>${escapeHtml(requirement.description)}</small>` : ""}
       </div>`).join("");
   }
-  window.relayRefreshMotion?.();
   loading.hidden = true;
   form.hidden = false;
 }

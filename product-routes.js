@@ -7,6 +7,7 @@ const {
   timingSafeEqual
 } = require("node:crypto");
 const { promisify } = require("node:util");
+const { assistantInstructions } = require("./relay-help-content");
 
 const scrypt = promisify(scryptCallback);
 const SESSION_COOKIE = "relay_session";
@@ -529,17 +530,222 @@ function installProductRoutes(app, db, isProduction) {
     workspace: { id: req.product.workspaceId, name: req.product.workspaceName, role: req.product.role }
   }));
 
+  app.get("/api/product/onboarding", requireSession, (req, res) => {
+    const onboarding = database.prepare(
+      "SELECT dismissed FROM product_user_onboarding WHERE user_id = ?"
+    ).get(req.product.userId);
+    return res.json({ dismissed: Boolean(onboarding?.dismissed) });
+  });
+
+  app.patch("/api/product/onboarding", sameOrigin, requireSession, (req, res) => {
+    if (typeof req.body.dismissed !== "boolean") {
+      return sendError(res, 400, "Choose whether to show or dismiss the getting-started guide.");
+    }
+    database.prepare(`
+      INSERT INTO product_user_onboarding (user_id, dismissed, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET
+        dismissed = excluded.dismissed,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(req.product.userId, Number(req.body.dismissed));
+    return res.json({ dismissed: req.body.dismissed });
+  });
+
+  app.get("/api/product/preferences", requireSession, (req, res) => {
+    const preferences = database.prepare(`
+      SELECT theme, accent FROM product_user_preferences WHERE user_id = ?
+    `).get(req.product.userId);
+    return res.json(preferences || { theme: "light", accent: "blue" });
+  });
+
+  app.patch("/api/product/preferences", sameOrigin, requireSession, (req, res) => {
+    const { theme, accent } = req.body;
+    if (theme === undefined && accent === undefined) {
+      return sendError(res, 400, "Choose a theme mode or accent color to update.");
+    }
+    if (theme !== undefined && !["light", "dark"].includes(theme)) {
+      return sendError(res, 400, "Choose light or dark mode.");
+    }
+    if (accent !== undefined && !["blue", "teal", "violet", "rose"].includes(accent)) {
+      return sendError(res, 400, "Choose one of the available accent colors.");
+    }
+    const current = database.prepare(`
+      SELECT theme, accent FROM product_user_preferences WHERE user_id = ?
+    `).get(req.product.userId) || { theme: "light", accent: "blue" };
+    const next = {
+      theme: theme ?? current.theme,
+      accent: accent ?? current.accent
+    };
+    database.prepare(`
+      INSERT INTO product_user_preferences (user_id, theme, accent, updated_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET
+        theme = excluded.theme,
+        accent = excluded.accent,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(req.product.userId, next.theme, next.accent);
+    return res.json(next);
+  });
+
+  app.get("/api/product/help-chat", requireSession, (req, res) => {
+    const messages = database.prepare(`
+      SELECT id, role, content, created_at
+      FROM (
+        SELECT id, role, content, created_at
+        FROM product_help_messages
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT 50
+      )
+      ORDER BY id
+    `).all(req.product.userId);
+    const consent = database.prepare(
+      "SELECT 1 FROM product_help_consents WHERE user_id = ?"
+    ).get(req.product.userId);
+    return res.json({ messages, consented: Boolean(consent) });
+  });
+
+  app.delete("/api/product/help-chat", sameOrigin, requireSession, (req, res) => {
+    const clearHistory = database.transaction(() => {
+      database.prepare("DELETE FROM product_help_messages WHERE user_id = ?").run(req.product.userId);
+      database.prepare("DELETE FROM product_help_consents WHERE user_id = ?").run(req.product.userId);
+    });
+    clearHistory();
+    return res.json({ success: true });
+  });
+
+  app.post("/api/product/help-chat", sameOrigin, requireSession, async (req, res) => {
+    const userId = req.product.userId;
+    const message = requiredText(req.body.message, 1200);
+    if (!message) return sendError(res, 400, "Enter a Relay question up to 1,200 characters.");
+
+    const alreadyConsented = database.prepare(
+      "SELECT 1 FROM product_help_consents WHERE user_id = ?"
+    ).get(userId);
+    if (!alreadyConsented && req.body.consentAccepted !== true) {
+      return sendError(res, 403, "Confirm that your help messages and recent chat history may be processed by Relay’s AI service.");
+    }
+
+    const rateLimitResult = rateLimit(`help-chat-user:${userId}`, 12, 10 * 60 * 1000,
+      "You’ve sent several help questions. Please wait a few minutes and try again.");
+    if (rateLimitResult.limited) return sendError(res, 429, rateLimitResult.message);
+
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+    if (!apiKey) {
+      console.error("Relay Help is not configured: OPENAI_API_KEY is missing.");
+      return sendError(res, 503, "Ray is temporarily unavailable. Please contact Relay support.");
+    }
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(model)) {
+      console.error("Relay Help is not configured: OPENAI_MODEL is invalid.");
+      return sendError(res, 503, "Ray is temporarily unavailable. Please contact Relay support.");
+    }
+
+    if (!alreadyConsented) {
+      database.prepare("INSERT INTO product_help_consents (user_id) VALUES (?)").run(userId);
+    }
+
+    const previousMessages = database.prepare(`
+      SELECT role, content
+      FROM (
+        SELECT role, content, id
+        FROM product_help_messages
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT 12
+      )
+      ORDER BY id
+    `).all(userId);
+
+    let response;
+    try {
+      const apiUrl = process.env.NODE_ENV === "test" && process.env.RELAY_HELP_API_URL
+        ? process.env.RELAY_HELP_API_URL
+        : "https://api.openai.com/v1/chat/completions";
+      response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: assistantInstructions },
+            ...previousMessages,
+            { role: "user", content: message }
+          ],
+          max_completion_tokens: 500
+        }),
+        signal: AbortSignal.timeout(20000)
+      });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "relay_help_provider_failed",
+        reason: error.name === "TimeoutError" ? "timeout" : "request_error",
+        message: error.message
+      }));
+      return sendError(res, 503, "Ray could not connect right now. Please try again shortly.");
+    }
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error(JSON.stringify({
+        event: "relay_help_provider_failed",
+        provider_status: response.status
+      }));
+      return sendError(res, 503, "Ray could not answer right now. Please try again shortly.");
+    }
+    const answer = result.choices?.[0]?.message?.content;
+    if (typeof answer !== "string" || !answer.trim() || answer.length > 4000) {
+      console.error(JSON.stringify({ event: "relay_help_provider_invalid_response" }));
+      return sendError(res, 502, "Ray received an invalid answer. Please try again.");
+    }
+
+    const saveMessages = database.transaction(() => {
+      const insert = database.prepare(
+        "INSERT INTO product_help_messages (user_id, role, content) VALUES (?, ?, ?)"
+      );
+      insert.run(userId, "user", message);
+      const assistantMessage = insert.run(userId, "assistant", answer.trim());
+      database.prepare(`
+        DELETE FROM product_help_messages
+        WHERE user_id = ? AND id NOT IN (
+          SELECT id FROM product_help_messages WHERE user_id = ? ORDER BY id DESC LIMIT 50
+        )
+      `).run(userId, userId);
+      return database.prepare(
+        "SELECT id, role, content, created_at FROM product_help_messages WHERE id = ? AND user_id = ?"
+      ).get(assistantMessage.lastInsertRowid, userId);
+    });
+
+    return res.json({ message: saveMessages() });
+  });
+
   app.get("/api/product/workspace", requireSession, (req, res) => {
     const workspaceId = req.product.workspaceId;
-    const processes = database.prepare(
-      "SELECT id, name, description, updated_at FROM product_processes WHERE workspace_id = ? ORDER BY updated_at DESC, id DESC"
-    ).all(workspaceId);
+    const processes = database.prepare(`
+      SELECT p.id, p.name, p.description, p.updated_at,
+        (SELECT COUNT(*) FROM product_process_steps s WHERE s.process_id = p.id) AS steps_count,
+        EXISTS (
+          SELECT 1 FROM product_setup_checks c
+          WHERE c.process_id = p.id AND c.process_revision = p.revision AND c.result = 'ready'
+        ) AS checked
+      FROM product_processes p
+      WHERE p.workspace_id = ?
+      ORDER BY p.updated_at DESC, p.id DESC
+    `).all(workspaceId);
     const templates = database.prepare(
       "SELECT id, name, created_at, updated_at, revision, (SELECT COUNT(*) FROM json_each(steps_json)) AS step_count FROM product_templates WHERE workspace_id = ? ORDER BY created_at DESC, id DESC"
     ).all(workspaceId);
     const implementations = database.prepare(`
       SELECT i.id, i.template_id, i.customer_name, i.created_at, t.name AS template_name,
+        (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id) AS total_steps,
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status != 'done') AS open_steps,
+        (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status = 'done') AS completed_steps,
+        (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status = 'in_progress') AS in_progress_steps,
+        (SELECT GROUP_CONCAT(DISTINCT s.assignee_user_id) FROM product_implementation_steps s
+          WHERE s.implementation_id = i.id AND s.assignee_user_id IS NOT NULL) AS assigned_member_ids,
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status != 'done' AND s.assignee_user_id IS NULL) AS unowned_steps,
         (SELECT GROUP_CONCAT(s.title, ', ') FROM product_implementation_steps s
           WHERE s.implementation_id = i.id AND s.status != 'done' AND s.assignee_user_id IS NULL) AS unowned_step_names,
@@ -683,9 +889,15 @@ function installProductRoutes(app, db, isProduction) {
   app.get("/api/product/processes/:processId", requireSession, (req, res) => {
     const processId = validId(req.params.processId);
     if (!processId) return sendError(res, 400, "Invalid process.");
-    const process = database.prepare(
-      "SELECT id, name, description, revision, updated_at FROM product_processes WHERE id = ? AND workspace_id = ?"
-    ).get(processId, req.product.workspaceId);
+    const process = database.prepare(`
+      SELECT p.id, p.name, p.description, p.revision, p.updated_at,
+        EXISTS (
+          SELECT 1 FROM product_setup_checks c
+          WHERE c.process_id = p.id AND c.process_revision = p.revision AND c.result = 'ready'
+        ) AS checked
+      FROM product_processes p
+      WHERE p.id = ? AND p.workspace_id = ?
+    `).get(processId, req.product.workspaceId);
     if (!process) return sendError(res, 404, "Process not found.");
     process.steps = processSteps(processId);
     return res.json({ process });

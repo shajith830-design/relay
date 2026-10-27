@@ -7,10 +7,9 @@
   <meta name="referrer" content="no-referrer">
   <title>Relay | Customer implementation workspace</title>
   <link rel="stylesheet" href="product.css">
-  <script src="relay-motion.js" defer></script>
   <script src="product.js" defer></script>
 </head>
-<body>
+<body class="product-page">
   <main id="auth-screen" class="auth-screen">
     <a class="wordmark" href="index.html" aria-label="Relay Automation home"><img class="wordmark-logo" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="wordmark-name"><span>Relay</span><small>Automation</small></span></a>
     <section class="auth-card" aria-labelledby="auth-title">
@@ -82,6 +81,7 @@
         <button class="nav-item" data-view="templates"><span>▤</span> Templates</button>
         <button class="nav-item" data-view="implementations"><span>◷</span> Implementations</button>
         <button class="nav-item" data-view="requirements"><span>✓</span> Customer information</button>
+        <button class="nav-item" data-view="settings"><span>⚙</span> Settings</button>
       </nav>
       <div class="sidebar-bottom">
         <div class="principles-note"><strong>Implementation, made clear</strong><span>Clear steps. Useful next actions. Work together in Relay.</span></div>
@@ -100,11 +100,20 @@
           <div><p class="eyebrow">A clear view of the work</p><h2>Keep every implementation moving.</h2><p>Relay highlights missing information, blocked or overdue tasks, and work waiting on prerequisites. Open an implementation to review the details and next action.</p></div>
           <button class="button primary" data-go="implementations" type="button">Start an implementation</button>
         </div>
+        <section class="panel getting-started" id="getting-started" aria-labelledby="getting-started-title" hidden>
+          <div class="panel-heading">
+            <div><p class="eyebrow">A quick start for your workspace</p><h2 id="getting-started-title">Your first implementation, step by step</h2><p>Follow the checklist at your own pace. Relay will keep your progress up to date.</p></div>
+            <button class="text-button" id="dismiss-getting-started" type="button">Hide guide</button>
+          </div>
+          <ol class="getting-started-list" id="getting-started-list"></ol>
+          <p class="getting-started-status" id="getting-started-status" role="status" aria-live="polite"></p>
+        </section>
+        <button class="text-button show-getting-started" id="show-getting-started" type="button" hidden>Show getting-started guide</button>
         <div class="metric-grid" id="overview-metrics"></div>
         <div class="panel">
           <div class="panel-heading"><div><h2>Customer implementations</h2><p>See what is progressing and what may need attention.</p></div><button class="text-button" data-go="implementations" type="button">View all →</button></div>
           <div id="overview-implementations" class="table-wrap"></div>
-          <p id="overview-empty" class="empty-state" hidden>Start by mapping your onboarding process, then save it as a template.</p>
+          <div id="overview-empty" class="empty-state" hidden></div>
         </div>
       </section>
 
@@ -129,7 +138,7 @@
               <button class="button secondary" type="submit">Save process details</button>
               <button class="text-button" id="delete-process" type="button">Delete process</button>
             </form>
-            <div id="process-step-list" class="step-list empty-state">Choose a process map or create one to begin.</div>
+            <div id="process-step-list" class="step-list empty-state" tabindex="-1"><strong>No process selected</strong><p>Choose an existing process map or create your first one to start outlining the work.</p><button class="button secondary" type="button" data-workflow-action="create-process">Create a process map</button></div>
             <form id="step-form" class="subform" hidden>
               <h3>Add a process step</h3>
               <div class="field"><label for="step-title">Step</label><input id="step-title" maxlength="120" placeholder="e.g. Configure the workspace" required></div>
@@ -168,9 +177,18 @@
             <div class="field"><label for="implementation-template">Template</label><select id="implementation-template" required><option value="">Choose a template</option></select></div>
             <button class="button primary" type="submit">Start implementation</button>
           </form>
+          <div id="implementation-prerequisite" class="empty-state" hidden></div>
         </div>
         <div class="panel">
           <div class="panel-heading"><div><h2>All implementations</h2><p>Open a customer to update tasks or check required information.</p></div></div>
+          <div class="implementation-filters" role="search" aria-label="Filter implementations">
+            <div class="field"><label for="implementation-search">Find a customer</label><input id="implementation-search" type="search" placeholder="Search customer or template" autocomplete="off"></div>
+            <div class="field"><label for="implementation-status-filter">Status</label><select id="implementation-status-filter"><option value="all">All statuses</option><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="complete">Complete</option></select></div>
+            <div class="field"><label for="implementation-owner-filter">Owner</label><select id="implementation-owner-filter"><option value="all">All owners</option><option value="unassigned">Has unassigned tasks</option></select></div>
+            <div class="field"><label for="implementation-attention-filter">Needs attention</label><select id="implementation-attention-filter"><option value="all">All implementations</option><option value="yes">Any attention needed</option><option value="blocked">Blocked</option><option value="overdue">Overdue</option><option value="waiting">Waiting on prerequisites</option><option value="missing">Missing information</option><option value="unassigned">Unassigned tasks</option></select></div>
+            <button class="button secondary" id="clear-implementation-filters" type="button">Clear filters</button>
+          </div>
+          <p id="implementation-filter-summary" class="filter-summary" role="status" aria-live="polite"></p>
           <div id="implementation-list" class="table-wrap"></div>
         </div>
         <div class="panel" id="implementation-detail" hidden>
@@ -203,6 +221,33 @@
           </div>
         </div>
       </section>
+      <section class="view" id="view-settings">
+        <div class="section-intro"><h2>Make Relay feel like yours</h2><p>Choose a comfortable display mode and accent color. Your choices are saved to your account and follow you across devices.</p></div>
+        <div class="panel appearance-panel">
+          <div class="panel-heading"><div><h2>Appearance</h2><p>Changes apply across the product right away.</p></div></div>
+          <div class="appearance-controls">
+            <div class="field">
+              <label for="theme-mode">Display mode</label>
+              <select id="theme-mode">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+              <small>Dark mode uses a darker workspace and panels.</small>
+            </div>
+            <div class="field">
+              <label for="theme-accent">Accent color</label>
+              <select id="theme-accent">
+                <option value="blue">Ocean blue</option>
+                <option value="teal">Teal</option>
+                <option value="violet">Violet</option>
+                <option value="rose">Rose</option>
+              </select>
+              <small>Used for buttons, links, and active navigation.</small>
+            </div>
+          </div>
+          <p class="appearance-status" id="appearance-status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
       <section class="panel" id="team-panel">
         <div class="panel-heading"><div><h2>Workspace team</h2><p>Invite a teammate and assign implementation work to a real account.</p></div></div>
         <div class="two-column">
@@ -224,6 +269,32 @@
       </section>
       <footer class="app-footer">Relay helps teams run clear, dependable customer implementations.</footer>
     </main>
+    <div class="help-widget" id="help-widget">
+      <section class="help-panel" id="help-panel" aria-labelledby="help-title" hidden>
+        <header class="help-panel-header">
+          <div class="help-brand"><img class="ray-logo" src="assets/Ray%20Robot%20Mascot%20Logo%20%281%29.png" alt=""><span><p class="eyebrow">Your Relay guide</p><h2 id="help-title">Ask Ray</h2></span></div>
+          <button class="help-icon-button" id="help-close" type="button" aria-label="Close Ray">×</button>
+        </header>
+        <p class="help-privacy-note">Ask about using Relay. Messages and recent chat history are processed by Relay’s AI service. Don’t share passwords, secrets, or confidential customer information.</p>
+        <label class="help-consent" id="help-consent-wrap" hidden>
+          <input id="help-consent" type="checkbox">
+          <span>I agree that my questions to Ray and recent chat history may be sent to an external AI service to generate answers. I will not include secrets or confidential customer information.</span>
+        </label>
+        <div class="help-messages" id="help-messages" role="log" aria-live="polite" aria-relevant="additions text">
+          <p class="help-empty">Hi! I can explain Relay’s features and guide you through using them. What would you like help with?</p>
+        </div>
+        <p class="help-status" id="help-status" role="status" aria-live="polite"></p>
+        <form class="help-form" id="help-form">
+          <label class="help-sr-only" for="help-input">Ask Ray a question about Relay</label>
+          <textarea id="help-input" maxlength="1200" rows="2" placeholder="How do I start an implementation?" required></textarea>
+          <button class="button primary" id="help-send" type="submit">Send</button>
+        </form>
+        <button class="text-button help-clear" id="help-clear" type="button">Clear my help history</button>
+      </section>
+      <button class="help-launcher" id="help-open" type="button" aria-expanded="false" aria-controls="help-panel">
+        <img class="ray-logo" src="assets/Ray%20Robot%20Mascot%20Logo%20%281%29.png" alt=""> Ray
+      </button>
+    </div>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
