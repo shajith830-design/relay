@@ -46,20 +46,115 @@ jobs:
         run: |
           set -eu
           trap 'docker rm -f relay-smoke >/dev/null 2>&1 || true; docker volume rm relay-smoke-data >/dev/null 2>&1 || true' EXIT
-          docker run -d --name relay-smoke -p 127.0.0.1:3000:3000 \
+          docker run -d --name relay-smoke \
+            --read-only \
+            --tmpfs /tmp \
+            --security-opt no-new-privileges:true \
+            --cap-drop ALL \
+            -p 127.0.0.1:3000:3000 \
             -e NODE_ENV=production \
             -e DATABASE_PATH=/app/data/relay.db \
             -e INQUIRIES_API_TOKEN=ci-test-token \
             -v relay-smoke-data:/app/data \
             "$RELAY_IMAGE"
+          test "$(docker inspect --format '{{.Config.User}}' relay-smoke)" = "node"
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' relay-smoke)" = "true"
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:3000/healthz; then
-              curl --fail --silent http://127.0.0.1:3000/product.html >/dev/null
-              curl --fail --silent --head http://127.0.0.1:3000/product.html \
-                | grep --ignore-case '^strict-transport-security:'
-              exit 0
+            if curl --fail --silent http://127.0.0.1:3000/healthz >/dev/null; then
+              break
             fi
             sleep 2
           done
-          docker logs relay-smoke
-          exit 1
+          if ! curl --fail --silent http://127.0.0.1:3000/healthz >/dev/null; then
+            docker logs relay-smoke
+            exit 1
+          fi
+          curl --fail --silent http://127.0.0.1:3000/product.html >/dev/null || {
+            docker logs relay-smoke
+            exit 1
+          }
+          curl --fail --silent --head http://127.0.0.1:3000/product.html \
+            | grep --ignore-case '^strict-transport-security:' || {
+              docker logs relay-smoke
+              exit 1
+            }
+          response_headers="$(mktemp)"
+          trap 'docker rm -f relay-smoke >/dev/null 2>&1 || true; docker volume rm relay-smoke-data >/dev/null 2>&1 || true; rm -f "$response_headers"' EXIT
+          curl --fail --silent --show-error \
+            -H 'Origin: http://127.0.0.1:3000' \
+            -H 'Content-Type: application/json' \
+            -D "$response_headers" \
+            -d '{"email":"smoke@example.test","password":"ci-smoke-password-long","workspaceName":"CI smoke workspace"}' \
+            http://127.0.0.1:3000/api/product/auth/signup > signup.json || {
+              docker logs relay-smoke
+              exit 1
+            }
+          grep -q '"workspace":{"id":' signup.json || {
+            docker logs relay-smoke
+            exit 1
+          }
+          grep --ignore-case -q '^set-cookie: relay_session=.*HttpOnly;.*SameSite=Strict;.*Secure' "$response_headers" || {
+            docker logs relay-smoke
+            exit 1
+          }
+          session_cookie="$(sed -nE 's/^[Ss]et-[Cc]ookie: (relay_session=[^;]+).*/\1/p' "$response_headers")"
+          test -n "$session_cookie" || {
+            docker logs relay-smoke
+            exit 1
+          }
+          curl --fail --silent --show-error -H "Cookie: $session_cookie" \
+            http://127.0.0.1:3000/api/product/workspace > workspace.json || {
+              docker logs relay-smoke
+              exit 1
+            }
+          grep -q '"role":"owner"' workspace.json || {
+            docker logs relay-smoke
+            exit 1
+          }
+          docker restart relay-smoke >/dev/null
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/healthz >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent --show-error -H "Cookie: $session_cookie" \
+            http://127.0.0.1:3000/api/product/me > session.json || {
+              docker logs relay-smoke
+              exit 1
+            }
+          grep -q '"name":"CI smoke workspace"' session.json || {
+            docker logs relay-smoke
+            exit 1
+          }
+          ray_status="$(curl --silent --show-error --output ray.json --write-out '%{http_code}' \
+            -H "Cookie: $session_cookie" \
+            -H 'Origin: http://127.0.0.1:3000' \
+            -H 'Content-Type: application/json' \
+            -d '{"message":"How do I create a process map?","consentAccepted":true}' \
+            http://127.0.0.1:3000/api/product/help-chat)"
+          test "$ray_status" = "503" || {
+            docker logs relay-smoke
+            exit 1
+          }
+          grep -q 'Ray is temporarily unavailable' ray.json || {
+            docker logs relay-smoke
+            exit 1
+          }
+          curl --silent --show-error \
+            -H 'Origin: http://127.0.0.1:3000' \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"smoke@example.test"}' \
+            http://127.0.0.1:3000/api/product/auth/password-reset/request > reset.json
+          grep -q '"error":"Password recovery is not available right now' reset.json || {
+            docker logs relay-smoke
+            exit 1
+          }
+          curl --silent --show-error \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"CI smoke","phone":"+15551234567","message":"Synthetic deployment smoke test"}' \
+            http://127.0.0.1:3000/api/inquiries > inquiry.json
+          grep -q '"success":true' inquiry.json || {
+            docker logs relay-smoke
+            exit 1
+          }

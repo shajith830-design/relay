@@ -49,7 +49,7 @@ Do not put any secret in browser code, page source, screenshots, support message
 6. Submit an inquiry using the public form. Confirm the response is successful, the inquiry is available to the authorized dashboard, and the notification arrives. Check logs for notification failures. Do not use real customer data for this smoke test.
 7. Restart the service and repeat the health check and sign-in check. Confirm the named volume still contains the database.
 
-The GitHub Actions workflow runs the tests, validates Compose without an AI provider key, builds the production image, starts it with an isolated test volume, and checks its health, product page, and production HSTS header on every push and pull request. Treat a successful workflow run as the Docker build verification; the local test suite does not replace it.
+The GitHub Actions workflow runs the tests, validates Compose without an AI provider key, builds the production image, and starts it with an isolated volume under the Compose read-only, non-root, dropped-capability runtime constraints. Its smoke test checks health, static product delivery, production HSTS and cookie attributes, account creation and authenticated access, session/data persistence after container restart, graceful password-recovery and Ray behavior without provider keys, and inquiry acceptance with no Telegram provider. It does not send data to real third-party providers. Treat a successful workflow run as the Docker build verification; the local test suite does not replace it.
 
 ## SQLite backup
 
