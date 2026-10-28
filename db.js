@@ -2,9 +2,13 @@
 
 const path = require("node:path");
 const fs = require("node:fs");
+const os = require("node:os");
 const Database = require("better-sqlite3");
 
-const databasePath = path.resolve(process.env.DATABASE_PATH || path.join(__dirname, "relay.db"));
+const defaultDatabasePath = process.env.VERCEL === "1"
+  ? path.join(os.tmpdir(), "relay.db")
+  : path.join(__dirname, "relay.db");
+const databasePath = path.resolve(process.env.DATABASE_PATH || defaultDatabasePath);
 fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 const database = new Database(databasePath);
 
