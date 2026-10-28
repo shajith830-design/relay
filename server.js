@@ -211,19 +211,23 @@ app.use((error, _req, res, _next) => {
   res.status(error.status && error.status < 500 ? error.status : 500).send("Internal server error");
 });
 
-const server = app.listen(config.port, () => {
-  console.info(`Relay Automation server listening on port ${config.port}.`);
-});
-
-for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => {
-    server.close((error) => {
-      if (error) {
-        console.error(`Failed to shut down cleanly: ${error.message}`);
-        process.exit(1);
-      }
-      db.close();
-      process.exit(0);
-    });
+if (require.main === module) {
+  const server = app.listen(config.port, () => {
+    console.info(`Relay Automation server listening on port ${config.port}.`);
   });
+
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    process.on(signal, () => {
+      server.close((error) => {
+        if (error) {
+          console.error(`Failed to shut down cleanly: ${error.message}`);
+          process.exit(1);
+        }
+        db.close();
+        process.exit(0);
+      });
+    });
+  }
 }
+
+module.exports = app;
