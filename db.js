@@ -12,7 +12,7 @@ if (!connectionString) {
 
 const connectionUrl = new URL(connectionString);
 const usesSupabase = /supabase\.(co|com)$/i.test(connectionUrl.hostname);
-const sslMode = connectionUrl.searchParams.get("sslmode")?.toLowerCase();
+const sslMode = connectionUrl.searchParams.get("sslmode")?.toLowerCase() || (usesSupabase ? "require" : undefined);
 const requiresTls = usesSupabase || ["require", "verify-ca", "verify-full"].includes(sslMode);
 const poolConnectionUrl = new URL(connectionString);
 if (usesSupabase) {

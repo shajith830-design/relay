@@ -6,7 +6,7 @@ Relay requires PostgreSQL. It does not create, copy, or fall back to a local SQL
 
 1. Create a Supabase project and choose the production region and backup/PITR plan.
 2. In **Connect**, select the **Transaction pooler** connection string (port `6543`) for the serverless application. The username is usually `postgres.<project-ref>`. Do not use the project database password placeholder; use the password generated for the project.
-3. Use the URL form below as a reference and replace every bracketed value. Supabase connections always use TLS. With `sslmode=require`, traffic is encrypted but the server certificate is not verified, matching PostgreSQL's `require` mode and supporting poolers with self-signed certificate chains. This is a compatibility setting; use a trusted CA and certificate-verification mode for deployments that require protection against server impersonation.
+3. Use the URL form below as a reference and replace every bracketed value. Supabase connections always use TLS. Relay defaults Supabase connections to `sslmode=require` if the URL omits it: traffic is encrypted but the server certificate is not verified, matching PostgreSQL's `require` mode and supporting poolers with self-signed certificate chains. This is a compatibility setting; use a trusted CA and certificate-verification mode for deployments that require protection against server impersonation.
 
    ```text
    postgresql://postgres.<project-ref>:<database-password>@<region>.pooler.supabase.com:6543/postgres?sslmode=require
