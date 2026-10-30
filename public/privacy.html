@@ -11,7 +11,7 @@
 <body>
   <header class="topbar"><div class="wrap nav">
     <a class="brand" href="index.html" aria-label="Relay Automation home"><img src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="brand-name"><span class="brand-relay">Relay</span><span class="brand-automation">Automation</span></span></a>
-    <div class="nav-actions"><a class="button nav-demo" href="contact.html">Contact Relay <span aria-hidden="true">→</span></a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-menu" aria-label="Open menu"><span></span><span></span><span></span></button></div>
+    <div class="nav-actions"><a class="nav-login" href="product.html">Log in</a><a class="button nav-demo" href="contact.html">Contact Relay <span aria-hidden="true">→</span></a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-menu" aria-label="Open menu"><span></span><span></span><span></span></button></div>
     <nav class="menu-panel" id="site-menu" aria-label="Main menu">
       <a href="index.html">Home</a><a href="features-services.html">Our Solutions</a><a href="pricing.html">Pricing</a><a href="contact.html">Contact</a>
     </nav>
@@ -36,7 +36,7 @@
       </ul></article>
     </div></section>
     <section class="section tint"><div class="wrap content-grid">
-      <div><p class="eyebrow">Storage and access</p><h2>Service configuration matters.</h2><p class="muted">The application stores workspace and inquiry data in a SQLite database on the configured server storage. The hosting provider, storage region, retention schedule, and access controls depend on the production deployment and are not determined by the application code. The service operator should confirm those details in the written service terms.</p></div>
+      <div><p class="eyebrow">Storage and access</p><h2>Service configuration matters.</h2><p class="muted">The application stores workspace and inquiry data in a PostgreSQL database configured by the service operator. The hosting provider, storage region, retention schedule, and access controls depend on the production deployment and are not determined by the application code. The service operator should confirm those details in the written service terms.</p></div>
       <article class="offer plain-list"><p class="eyebrow">Your requests</p><h3>Manage or delete your account.</h3><p class="muted">Signed-in users can clear their Ray conversation from the chat panel or delete their account in Settings after confirming their password. Deleting the only member of a workspace also deletes that workspace and its customer records. A member leaving a shared workspace does not delete shared records; an owner must transfer ownership to a remaining member. Deletion removes account data from the live database. Protected backups must expire within 30 days; the operator must confirm the hosting provider’s retention and restore procedures before production use. Use the <a href="contact.html">Contact page</a> for other access, correction, or deletion requests and privacy concerns.</p></article>
     </div></section>
     <section class="section"><div class="wrap content-grid">

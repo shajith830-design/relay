@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f8fafc">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="referrer" content="no-referrer">
+  <title>Owner Console | Relay</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { color-scheme: light; font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #f8fafc; color: #0f172a; -webkit-font-smoothing: antialiased; }
+    button, input { font: inherit; }
+    button:focus-visible, input:focus-visible { outline: 3px solid rgb(2 132 199 / 35%); outline-offset: 2px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+    <header class="mb-7">
+      <p class="text-xs font-bold uppercase tracking-[.16em] text-sky-700">Relay · private owner tools</p>
+      <h1 class="mt-2 text-3xl font-bold tracking-tight text-slate-950">Owner console</h1>
+      <p class="mt-2 text-sm text-slate-600">Approve paid clients and manage their workspace access.</p>
+    </header>
+
+    <section id="admin-login" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="admin-login-title">
+      <h2 id="admin-login-title" class="font-semibold">Admin sign in</h2>
+      <p class="mt-1 text-sm text-slate-600">Enter your private owner token. Never share it with clients.</p>
+      <form id="admin-login-form" class="mt-4 flex flex-col gap-3 sm:flex-row">
+        <label class="sr-only" for="admin-token">Owner admin token</label>
+        <input id="admin-token" type="password" autocomplete="current-password" required class="min-h-11 flex-1 rounded-lg border border-slate-300 px-3 text-sm" placeholder="Owner admin token">
+        <button id="admin-login-submit" type="submit" class="min-h-11 rounded-lg bg-sky-700 px-5 text-sm font-semibold text-white hover:bg-sky-800 disabled:opacity-60">Continue</button>
+      </form>
+      <p id="admin-login-status" class="mt-3 text-sm text-rose-700" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="owner-tools" class="mt-6 space-y-6" hidden>
+      <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,.8fr)]">
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="approve-heading">
+          <h2 id="approve-heading" class="font-semibold">Approve a paid client</h2>
+          <p class="mt-1 text-sm text-slate-600">Confirm payment first. Approval creates an owner account and starts one calendar month immediately.</p>
+          <form id="provision-form" class="mt-5 grid gap-4">
+            <div>
+              <label for="workspace-name" class="mb-1 block text-sm font-medium text-slate-700">Client or workspace name</label>
+              <input id="workspace-name" name="workspaceName" maxlength="100" required class="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
+            </div>
+            <div>
+              <label for="client-email" class="mb-1 block text-sm font-medium text-slate-700">Client owner’s email</label>
+              <input id="client-email" name="email" type="email" maxlength="254" autocomplete="email" required class="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
+            </div>
+            <button id="provision-submit" type="submit" class="min-h-11 justify-self-start rounded-lg bg-sky-700 px-5 text-sm font-semibold text-white hover:bg-sky-800 disabled:opacity-60">Approve payment & create access</button>
+            <p id="provision-status" class="text-sm" role="status" aria-live="polite"></p>
+          </form>
+          <div id="provision-result" class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4" hidden role="status">
+            <strong class="block text-sm text-emerald-900">Workspace created</strong>
+            <p id="provision-details" class="mt-1 text-sm text-emerald-800"></p>
+            <p class="mt-3 text-xs text-emerald-900">This initial password is displayed only once. Share it securely with the client; it is not emailed.</p>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <code id="provision-password" class="break-all rounded bg-white px-2 py-1 text-sm text-slate-900"></code>
+              <button id="copy-password" type="button" class="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900">Copy password</button>
+            </div>
+            <p id="copy-status" class="mt-1 text-xs text-emerald-900" aria-live="polite"></p>
+          </div>
+        </section>
+
+        <aside class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 class="font-semibold">Simple approval steps</h2>
+          <ol class="mt-3 list-inside list-decimal space-y-2 text-sm text-slate-600">
+            <li>Collect payment outside Relay.</li>
+            <li>Enter the client name and owner's email here.</li>
+            <li>Approve to create their one-month workspace.</li>
+            <li>Securely send the login page and initial password.</li>
+            <li>After renewal payment, choose “Add 1 month.”</li>
+          </ol>
+          <p class="mt-4 text-xs leading-5 text-slate-500">A client owner can invite teammates without extra payment in the current setup. Everyone in the workspace loses access when its subscription expires.</p>
+        </aside>
+      </div>
+
+      <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="workspaces-heading">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 sm:px-6">
+          <div>
+            <h2 id="workspaces-heading" class="font-semibold">Client workspaces</h2>
+            <p class="mt-1 text-xs text-slate-500">Renewal adds a month after the current expiry, or starts now if expired.</p>
+          </div>
+          <button id="refresh-workspaces" type="button" class="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">Refresh list</button>
+        </div>
+        <p id="workspace-status" class="px-5 pt-3 text-sm text-slate-600 sm:px-6" role="status" aria-live="polite"></p>
+        <div class="overflow-x-auto p-3 sm:p-5">
+          <table class="w-full min-w-[620px] border-collapse text-left text-sm">
+            <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th scope="col" class="px-3 py-2 font-semibold">Workspace</th>
+                <th scope="col" class="px-3 py-2 font-semibold">Owner</th>
+                <th scope="col" class="px-3 py-2 font-semibold">Access until</th>
+                <th scope="col" class="px-3 py-2 font-semibold">Status</th>
+                <th scope="col" class="px-3 py-2 font-semibold">Renewal</th>
+              </tr>
+            </thead>
+            <tbody id="workspaces-body" class="divide-y divide-slate-100">
+              <tr><td colspan="5" class="px-3 py-7 text-center text-sm text-slate-500">Loading paid workspaces…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <button id="admin-logout" type="button" class="text-sm font-medium text-slate-500 underline hover:text-slate-800">Sign out of owner console</button>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+    const tokenKey = "relay-owner-admin-token";
+    const loginPanel = document.getElementById("admin-login");
+    const loginStatus = document.getElementById("admin-login-status");
+    const ownerTools = document.getElementById("owner-tools");
+    const workspaceBody = document.getElementById("workspaces-body");
+    const workspaceStatus = document.getElementById("workspace-status");
+
+    function formatDate(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+    }
+
+    async function ownerRequest(url, options = {}) {
+      const headers = { Accept: "application/json", Authorization: `Bearer ${sessionStorage.getItem(tokenKey) || ""}` };
+      if (options.body !== undefined) headers["Content-Type"] = "application/json";
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        cache: "no-store"
+      });
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("Relay returned an invalid response.");
+      }
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 503) signOut(data.error);
+        throw new Error(data.error || `The request failed (HTTP ${response.status}).`);
+      }
+      return data;
+    }
+
+    function signOut(message = "") {
+      sessionStorage.removeItem(tokenKey);
+      ownerTools.hidden = true;
+      loginPanel.hidden = false;
+      loginStatus.textContent = message;
+      document.getElementById("admin-token").value = "";
+    }
+
+    function renderWorkspaces(workspaces) {
+      workspaceBody.replaceChildren();
+      if (!workspaces.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 5;
+        cell.className = "px-3 py-7 text-center text-sm text-slate-500";
+        cell.textContent = "No paid workspaces yet. Create one after confirming your first client's payment.";
+        row.append(cell);
+        workspaceBody.append(row);
+        return;
+      }
+      for (const workspace of workspaces) {
+        const row = document.createElement("tr");
+        const values = [`${workspace.name} (#${workspace.id})`, workspace.owner_email, formatDate(workspace.expires_at)];
+        for (const value of values) {
+          const cell = document.createElement("td");
+          cell.className = "px-3 py-3 align-top text-slate-700";
+          cell.textContent = value;
+          row.append(cell);
+        }
+        const statusCell = document.createElement("td");
+        statusCell.className = `px-3 py-3 align-top font-semibold ${workspace.active ? "text-emerald-700" : "text-rose-700"}`;
+        statusCell.textContent = workspace.active ? "Active" : "Expired";
+        row.append(statusCell);
+        const actionCell = document.createElement("td");
+        actionCell.className = "px-3 py-3 align-top";
+        const renewButton = document.createElement("button");
+        renewButton.type = "button";
+        renewButton.dataset.renewId = String(workspace.id);
+        renewButton.className = "rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60";
+        renewButton.textContent = "Add 1 month";
+        actionCell.append(renewButton);
+        row.append(actionCell);
+        workspaceBody.append(row);
+      }
+    }
+
+    async function refreshWorkspaces() {
+      workspaceStatus.textContent = "Loading workspaces…";
+      try {
+        const data = await ownerRequest("/admin/workspaces");
+        renderWorkspaces(data.workspaces);
+        workspaceStatus.textContent = "";
+      } catch (error) {
+        workspaceStatus.textContent = error.message;
+      }
+    }
+
+    async function unlockConsole(token) {
+      sessionStorage.setItem(tokenKey, token);
+      try {
+        const data = await ownerRequest("/admin/workspaces");
+        loginPanel.hidden = true;
+        ownerTools.hidden = false;
+        renderWorkspaces(data.workspaces);
+        workspaceStatus.textContent = "";
+        loginStatus.textContent = "";
+      } catch (error) {
+        signOut(error.message);
+      }
+    }
+
+    document.getElementById("admin-login-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = document.getElementById("admin-login-submit");
+      button.disabled = true;
+      loginStatus.textContent = "Checking access…";
+      await unlockConsole(document.getElementById("admin-token").value.trim());
+      button.disabled = false;
+    });
+
+    document.getElementById("provision-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const button = document.getElementById("provision-submit");
+      const status = document.getElementById("provision-status");
+      const result = document.getElementById("provision-result");
+      const values = new FormData(form);
+      button.disabled = true;
+      status.className = "text-sm text-slate-600";
+      status.textContent = "Creating paid workspace…";
+      result.hidden = true;
+      try {
+        const data = await ownerRequest("/admin/workspaces", {
+          method: "POST",
+          body: { workspaceName: values.get("workspaceName"), email: values.get("email") }
+        });
+        document.getElementById("provision-details").textContent =
+          `${data.workspace.name} (#${data.workspace.id}) · ${data.workspace.ownerEmail} · access until ${formatDate(data.workspace.expires_at)}`;
+        document.getElementById("provision-password").textContent = data.initialPassword;
+        document.getElementById("copy-status").textContent = "";
+        result.hidden = false;
+        form.reset();
+        status.textContent = "Access is active for one calendar month.";
+        await refreshWorkspaces();
+      } catch (error) {
+        status.className = "text-sm text-rose-700";
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("copy-password").addEventListener("click", async () => {
+      const password = document.getElementById("provision-password").textContent;
+      const status = document.getElementById("copy-status");
+      try {
+        await navigator.clipboard.writeText(password);
+        status.textContent = "Copied. Share it with the client securely.";
+      } catch {
+        status.textContent = "Copy was blocked. Select and copy the password above.";
+      }
+    });
+
+    document.getElementById("refresh-workspaces").addEventListener("click", refreshWorkspaces);
+    workspaceBody.addEventListener("click", async (event) => {
+      const button = event.target instanceof Element ? event.target.closest("button[data-renew-id]") : null;
+      if (!button) return;
+      button.disabled = true;
+      workspaceStatus.textContent = "Renewing access…";
+      try {
+        await ownerRequest(`/admin/workspaces/${encodeURIComponent(button.dataset.renewId)}/renew`, { method: "POST" });
+        workspaceStatus.textContent = "Access renewed for one month.";
+        await refreshWorkspaces();
+      } catch (error) {
+        workspaceStatus.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("admin-logout").addEventListener("click", () => signOut());
+    const savedToken = sessionStorage.getItem(tokenKey);
+    if (savedToken) unlockConsole(savedToken);
+  </script>
+</body>
+</html>

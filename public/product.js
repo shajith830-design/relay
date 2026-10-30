@@ -11,6 +11,7 @@ const authStatus = document.getElementById("auth-status");
 const globalStatus = document.getElementById("global-status");
 const toast = document.getElementById("toast");
 let appearanceSaveQueue = Promise.resolve();
+let subscriptionExpiryTimer;
 const state = {
   authMode: "login",
   inviteToken: new URLSearchParams(window.location.search).get("invite") || "",
@@ -77,7 +78,11 @@ async function api(url, options = {}) {
   } catch {
     throw new Error("Relay returned an unexpected response. Please try again.");
   }
-  if (!response.ok) throw new Error(result.error || "The request could not be completed.");
+  if (!response.ok) {
+    const error = new Error(result.error || "The request could not be completed.");
+    if (result.code === "subscription_expired") showAuth(error.message);
+    throw error;
+  }
   if (activeSubmissionForm) {
     finishForm(activeSubmissionForm, "Saved.");
     activeSubmissionForm = null;
@@ -289,6 +294,7 @@ window.addEventListener("beforeunload", (event) => {
 });
 
 function showAuth(message = "") {
+  window.clearTimeout(subscriptionExpiryTimer);
   state.user = null;
   state.workspace = null;
   state.onboardingDismissed = false;
@@ -299,11 +305,36 @@ function showAuth(message = "") {
   authStatus.textContent = message;
 }
 
+function scheduleSubscriptionExpiry(expiresAt) {
+  window.clearTimeout(subscriptionExpiryTimer);
+  const expiresAtMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresAtMs)) {
+    showAuth("Relay could not verify your subscription. Please sign in again.");
+    return;
+  }
+  const untilExpiry = expiresAtMs - Date.now();
+  const remaining = untilExpiry <= 0 ? 30_000 : untilExpiry;
+  subscriptionExpiryTimer = window.setTimeout(async () => {
+    if (Date.now() < expiresAtMs) {
+      scheduleSubscriptionExpiry(expiresAt);
+      return;
+    }
+    try {
+      const session = await api("/api/product/me");
+      state.workspace = session.workspace;
+      scheduleSubscriptionExpiry(session.workspace.subscriptionExpiresAt);
+    } catch (error) {
+      showAuth(error.message);
+    }
+  }, Math.min(remaining, 2147000000));
+}
+
 function showProduct() {
   authScreen.hidden = true;
   appShell.hidden = false;
   document.getElementById("workspace-name-display").textContent = state.workspace.name;
   document.getElementById("user-email").textContent = state.user.email;
+  scheduleSubscriptionExpiry(state.workspace.subscriptionExpiresAt);
 }
 
 function applyAppearance() {
@@ -419,26 +450,24 @@ function setAuthMode(mode) {
   document.getElementById("password-reset-request").hidden = true;
   document.getElementById("password-reset-complete").hidden = true;
   document.getElementById("auth-form").hidden = false;
-  document.getElementById("auth-tabs").hidden = false;
+  document.getElementById("auth-tabs").hidden = !state.inviteToken;
   document.getElementById("forgot-password").hidden = mode !== "login";
   const isSignup = mode === "signup";
   authTabs.login.classList.toggle("active", !isSignup);
   authTabs.signup.classList.toggle("active", isSignup);
   authTabs.login.setAttribute("aria-selected", String(!isSignup));
   authTabs.signup.setAttribute("aria-selected", String(isSignup));
-  document.getElementById("workspace-field").hidden = !isSignup || Boolean(state.inviteToken);
-  document.getElementById("workspace-name").required = isSignup && !state.inviteToken;
   document.getElementById("auth-password").autocomplete = isSignup ? "new-password" : "current-password";
   document.getElementById("password-hint").textContent = isSignup
     ? "Use at least 12 characters."
     : "Enter your workspace password.";
   authTabs.login.textContent = state.inviteToken ? "Existing account" : "Sign in";
-  authTabs.signup.textContent = state.inviteToken ? "New account" : "Create workspace";
+  authTabs.signup.textContent = "Create invited account";
   document.getElementById("auth-submit").textContent = isSignup
-    ? state.inviteToken ? "Join workspace" : "Create workspace"
+    ? "Create account & join"
     : state.inviteToken ? "Sign in & join" : "Sign in";
   document.getElementById("auth-title").textContent = isSignup
-    ? state.inviteToken ? "Join your Relay workspace." : "Start your Relay workspace."
+    ? "Join your Relay workspace."
     : state.inviteToken ? "Sign in to join your Relay workspace." : "Make onboarding easier to run.";
   document.getElementById("auth-intro").textContent = state.inviteToken
     ? "Your invitation is ready. Use the invited email address to continue."
@@ -1006,7 +1035,6 @@ authForm.addEventListener("submit", async (event) => {
       body: {
         email: form.get("email"),
         password: form.get("password"),
-        workspaceName: form.get("workspaceName"),
         inviteToken: state.inviteToken || undefined
       }
     });

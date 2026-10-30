@@ -2,14 +2,11 @@
 
 const {
   createHash,
-  randomBytes,
-  scrypt: scryptCallback,
-  timingSafeEqual
+  randomBytes
 } = require("node:crypto");
-const { promisify } = require("node:util");
+const { makePasswordHash, checkPassword } = require("./product-auth");
 const { assistantInstructions } = require("./relay-help-content");
 
-const scrypt = promisify(scryptCallback);
 const SESSION_COOKIE = "relay_session";
 const SESSION_DAYS = 14;
 const rateLimitBuckets = new Map();
@@ -85,22 +82,6 @@ function limitRequests(key, limit, windowMs, message) {
   };
 }
 
-async function makePasswordHash(password) {
-  const salt = randomBytes(16);
-  const derivedKey = await scrypt(password, salt, 64);
-  return `scrypt:${salt.toString("hex")}:${derivedKey.toString("hex")}`;
-}
-
-async function checkPassword(password, encodedHash) {
-  const [algorithm, saltHex, keyHex] = encodedHash.split(":");
-  if (algorithm !== "scrypt" || !/^[a-f0-9]{32}$/i.test(saltHex) || !/^[a-f0-9]{128}$/i.test(keyHex)) {
-    return false;
-  }
-  const expected = Buffer.from(keyHex, "hex");
-  const actual = await scrypt(password, Buffer.from(saltHex, "hex"), expected.length);
-  return timingSafeEqual(expected, actual);
-}
-
 function sendError(res, status, message) {
   return res.status(status).json({ error: message });
 }
@@ -151,49 +132,61 @@ function hasCycle(steps) {
   return [...graph.keys()].some(visit);
 }
 
+function asyncRoute(handler) {
+  return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+}
+
 function installProductRoutes(app, db, isProduction) {
   const database = db.database;
 
-  function processSteps(processId) {
-    const steps = database.prepare(
+  for (const method of ["get", "post", "put", "patch", "delete"]) {
+    const register = app[method].bind(app);
+    app[method] = (route, ...handlers) => register(
+      route,
+      ...handlers.map((handler) => typeof handler === "function" ? asyncRoute(handler) : handler)
+    );
+  }
+
+  async function processSteps(processId) {
+    const steps = await (database.prepare(
       `SELECT s.id, s.title, s.description, s.owner, s.position, s.stage, s.due_offset_days,
         s.assignee_user_id, u.email AS assignee_email
        FROM product_process_steps s
        JOIN product_processes p ON p.id = s.process_id
        LEFT JOIN product_users u ON u.id = s.assignee_user_id
-       WHERE s.process_id = ? ORDER BY s.position, s.id`
-    ).all(processId);
-    const dependencies = database.prepare(`
+       WHERE s.process_id = $1 ORDER BY s.position, s.id`
+    ).all(processId));
+    const dependencies = await (database.prepare(`
       SELECT d.process_step_id AS stepId, d.depends_on_step_id AS dependsOn
       FROM product_process_step_dependencies d
       JOIN product_process_steps s ON s.id = d.process_step_id
-      WHERE s.process_id = ?
-    `).all(processId);
+      WHERE s.process_id = $1
+    `).all(processId));
     const byStep = new Map(steps.map((step) => [step.id, step]));
     for (const step of steps) step.dependsOn = [];
     for (const dependency of dependencies) byStep.get(dependency.stepId)?.dependsOn.push(dependency.dependsOn);
     return steps;
   }
 
-  function workspaceAssignee(workspaceId, value) {
+  async function workspaceAssignee(workspaceId, value) {
     if (value === null || value === undefined || value === "") return { id: null, valid: true };
     const id = validId(value);
     if (!id) return { id: null, valid: false };
-    const member = database.prepare(
-      "SELECT user_id FROM product_memberships WHERE workspace_id = ? AND user_id = ?"
-    ).get(workspaceId, id);
+    const member = await (database.prepare(
+      "SELECT user_id FROM product_memberships WHERE workspace_id = $1 AND user_id = $2"
+    ).get(workspaceId, id));
     return { id, valid: Boolean(member) };
   }
 
-  function implementationRequirements(implementationId, workspaceId, templateId) {
-    return database.prepare(`
+  async function implementationRequirements(implementationId, workspaceId, templateId) {
+    return await (database.prepare(`
       SELECT r.id, r.name, r.description, r.required, r.input_type,
         COALESCE(c.value, '') AS value
       FROM product_requirements r
-      LEFT JOIN product_customer_inputs c ON c.requirement_id = r.id AND c.implementation_id = ?
-      WHERE r.workspace_id = ? AND (r.template_id IS NULL OR r.template_id = ?)
+      LEFT JOIN product_customer_inputs c ON c.requirement_id = r.id AND c.implementation_id = $1
+      WHERE r.workspace_id = $2 AND (r.template_id IS NULL OR r.template_id = $3)
       ORDER BY r.id
-    `).all(implementationId, workspaceId, templateId);
+    `).all(implementationId, workspaceId, templateId));
   }
 
   app.use("/api/product", (req, res, next) => {
@@ -207,71 +200,76 @@ function installProductRoutes(app, db, isProduction) {
     async (req, res) => {
     const email = requiredText(req.body.email, 254).toLowerCase();
     const password = typeof req.body.password === "string" ? req.body.password : "";
-    const workspaceName = requiredText(req.body.workspaceName, 100);
     const inviteToken = typeof req.body.inviteToken === "string" ? req.body.inviteToken : "";
-    const isInvitedSignup = inviteToken.length > 0;
+    if (!inviteToken) {
+      return sendError(res, 403, "Workspace signup is closed. Contact Relay to request access.");
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 12 || password.length > 128
-      || (!isInvitedSignup && !workspaceName) || (isInvitedSignup && !/^[A-Za-z0-9_-]{40,60}$/.test(inviteToken))) {
+      || !/^[A-Za-z0-9_-]{40,60}$/.test(inviteToken)) {
       return sendError(res, 400, "Enter valid account details and a password of at least 12 characters.");
     }
-    const invite = isInvitedSignup ? database.prepare(`
-      SELECT id, workspace_id, invited_email
-      FROM product_workspace_invites
-      WHERE token_hash = ? AND accepted_at IS NULL AND expires_at > ?
-    `).get(hashToken(inviteToken), new Date().toISOString()) : null;
-    if (isInvitedSignup && (!invite || invite.invited_email.toLowerCase() !== email)) {
+    const invite = await (database.prepare(`
+      SELECT i.id, i.workspace_id, i.invited_email
+      FROM product_workspace_invites i
+      JOIN product_workspace_subscriptions s ON s.workspace_id = i.workspace_id
+      WHERE i.token_hash = $1 AND i.accepted_at IS NULL AND i.expires_at > $2
+        AND s.expires_at > CURRENT_TIMESTAMP
+    `).get(hashToken(inviteToken), new Date().toISOString()));
+    if (!invite || invite.invited_email.toLowerCase() !== email) {
       return sendError(res, 400, "This invitation is invalid, expired, or addressed to a different email.");
     }
 
     try {
       const passwordHash = await makePasswordHash(password);
-      const createAccount = database.transaction(() => {
-        const user = database.prepare(
-          "INSERT INTO product_users (email, password_hash) VALUES (?, ?) RETURNING id, email"
-        ).get(email, passwordHash);
-        let workspace;
-        if (invite) {
-          const accepted = database.prepare(`
-            UPDATE product_workspace_invites SET accepted_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND accepted_at IS NULL AND expires_at > ?
-          `).run(invite.id, new Date().toISOString());
-          if (!accepted.changes) {
-            const error = new Error("This invitation has already been used or has expired.");
-            error.code = "INVITE_INVALID";
-            throw error;
-          }
-          database.prepare(
-            "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES (?, ?, 'member')"
-          ).run(invite.workspace_id, user.id);
-          workspace = database.prepare(
-            "SELECT id, name FROM product_workspaces WHERE id = ?"
-          ).get(invite.workspace_id);
-        } else {
-          workspace = database.prepare(
-            "INSERT INTO product_workspaces (name) VALUES (?) RETURNING id, name"
-          ).get(workspaceName);
-          database.prepare(
-            "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES (?, ?, 'owner')"
-          ).run(workspace.id, user.id);
+      const createAccount = database.transaction(async () => {
+        const user = await (database.prepare(
+          "INSERT INTO product_users (email, password_hash) VALUES ($1, $2) RETURNING id, email"
+        ).get(email, passwordHash));
+        const accepted = await (database.prepare(`
+          UPDATE product_workspace_invites SET accepted_at = CURRENT_TIMESTAMP
+          WHERE id = $1 AND accepted_at IS NULL AND expires_at > $2
+            AND EXISTS (
+              SELECT 1 FROM product_workspace_subscriptions
+              WHERE workspace_id = $3 AND expires_at > CURRENT_TIMESTAMP
+            )
+        `).run(invite.id, new Date().toISOString(), invite.workspace_id));
+        if (!accepted.changes) {
+          const error = new Error("This invitation is invalid or has expired.");
+          error.code = "INVITE_INVALID";
+          throw error;
         }
+        await (database.prepare(
+          "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'member')"
+        ).run(invite.workspace_id, user.id));
+        const workspace = await (database.prepare(`
+          SELECT w.id, w.name, s.expires_at AS subscription_expires_at
+          FROM product_workspaces w
+          JOIN product_workspace_subscriptions s ON s.workspace_id = w.id
+          WHERE w.id = $1
+        `).get(invite.workspace_id));
         return { user, workspace };
       });
-      const { user, workspace } = createAccount();
+      const { user, workspace } = await createAccount();
       const rawToken = randomBytes(32).toString("base64url");
       const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString();
-      database.prepare(
-        "INSERT INTO product_sessions (token_hash, user_id, workspace_id, expires_at) VALUES (?, ?, ?, ?)"
-      ).run(hashToken(rawToken), user.id, workspace.id, expiresAt);
+      await (database.prepare(
+        "INSERT INTO product_sessions (token_hash, user_id, workspace_id, expires_at) VALUES ($1, $2, $3, $4)"
+      ).run(hashToken(rawToken), user.id, workspace.id, expiresAt));
       setSessionCookie(res, rawToken, isProduction);
       return res.status(201).json({
         user,
-        workspace: { ...workspace, role: invite ? "member" : "owner" }
+        workspace: {
+          id: workspace.id,
+          name: workspace.name,
+          role: "member",
+          subscriptionExpiresAt: workspace.subscription_expires_at
+        }
       });
     } catch (error) {
       if (error.code === "INVITE_INVALID") {
         return sendError(res, 409, error.message);
       }
-      if (error.code === "SQLITE_CONSTRAINT_UNIQUE") {
+      if (error.code === "23505") {
         return sendError(res, 409, "An account with this email already exists. Sign in instead.");
       }
       console.error("Product account creation failed:", error.message);
@@ -310,17 +308,17 @@ function installProductRoutes(app, db, isProduction) {
       }
 
       try {
-        database.prepare("DELETE FROM product_password_resets WHERE expires_at <= ?")
-          .run(new Date().toISOString());
-        const user = database.prepare("SELECT id, email FROM product_users WHERE email = ?").get(email);
+        await (database.prepare("DELETE FROM product_password_resets WHERE expires_at <= $1")
+          .run(new Date().toISOString()));
+        const user = await (database.prepare("SELECT id, email FROM product_users WHERE email = $1").get(email));
         if (user) {
           const rawToken = randomBytes(32).toString("base64url");
           const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-          database.prepare("DELETE FROM product_password_resets WHERE user_id = ?").run(user.id);
+          await (database.prepare("DELETE FROM product_password_resets WHERE user_id = $1").run(user.id));
           const tokenHash = hashToken(rawToken);
-          database.prepare(
-            "INSERT INTO product_password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)"
-          ).run(tokenHash, user.id, expiresAt);
+          await (database.prepare(
+            "INSERT INTO product_password_resets (token_hash, user_id, expires_at) VALUES ($1, $2, $3)"
+          ).run(tokenHash, user.id, expiresAt));
           const resetUrl = new URL(`/product.html?reset=${encodeURIComponent(rawToken)}`, parsedBaseUrl).toString();
           let response;
           try {
@@ -339,12 +337,12 @@ function installProductRoutes(app, db, isProduction) {
               signal: AbortSignal.timeout(10000)
             });
           } catch (error) {
-            database.prepare("DELETE FROM product_password_resets WHERE token_hash = ?").run(tokenHash);
+            await (database.prepare("DELETE FROM product_password_resets WHERE token_hash = $1").run(tokenHash));
             throw error;
           }
           const result = await response.json().catch(() => ({}));
           if (!response.ok) {
-            database.prepare("DELETE FROM product_password_resets WHERE token_hash = ?").run(tokenHash);
+            await (database.prepare("DELETE FROM product_password_resets WHERE token_hash = $1").run(tokenHash));
             console.error(JSON.stringify({
               event: "password_reset_email_failed",
               provider_status: response.status
@@ -352,7 +350,7 @@ function installProductRoutes(app, db, isProduction) {
             return sendError(res, 502, "The recovery email could not be sent. Please try again later.");
           }
           if (result.error) {
-            database.prepare("DELETE FROM product_password_resets WHERE token_hash = ?").run(tokenHash);
+            await (database.prepare("DELETE FROM product_password_resets WHERE token_hash = $1").run(tokenHash));
             console.error(JSON.stringify({ event: "password_reset_email_failed", provider_error: String(result.error).slice(0, 200) }));
             return sendError(res, 502, "The recovery email could not be sent. Please try again later.");
           }
@@ -379,25 +377,25 @@ function installProductRoutes(app, db, isProduction) {
       }
       try {
         const tokenHash = hashToken(token);
-        const reset = database.prepare(`
+        const reset = await (database.prepare(`
           SELECT user_id FROM product_password_resets
-          WHERE token_hash = ? AND expires_at > ?
-        `).get(tokenHash, new Date().toISOString());
+          WHERE token_hash = $1 AND expires_at > $2
+        `).get(tokenHash, new Date().toISOString()));
         if (!reset) return sendError(res, 400, "This recovery link is invalid or expired. Request a new one.");
         const passwordHash = await makePasswordHash(password);
-        const completeReset = database.transaction(() => {
-          const used = database.prepare(`
+        const completeReset = database.transaction(async () => {
+          const used = await (database.prepare(`
             DELETE FROM product_password_resets
-            WHERE token_hash = ? AND expires_at > ?
-          `).run(tokenHash, new Date().toISOString());
+            WHERE token_hash = $1 AND expires_at > $2
+          `).run(tokenHash, new Date().toISOString()));
           if (!used.changes) return false;
-          database.prepare("UPDATE product_users SET password_hash = ? WHERE id = ?")
-            .run(passwordHash, reset.user_id);
-          database.prepare("DELETE FROM product_sessions WHERE user_id = ?").run(reset.user_id);
-          database.prepare("DELETE FROM product_password_resets WHERE user_id = ?").run(reset.user_id);
+          await (database.prepare("UPDATE product_users SET password_hash = $1 WHERE id = $2")
+            .run(passwordHash, reset.user_id));
+          await (database.prepare("DELETE FROM product_sessions WHERE user_id = $1").run(reset.user_id));
+          await (database.prepare("DELETE FROM product_password_resets WHERE user_id = $1").run(reset.user_id));
           return true;
         });
-        if (!completeReset()) return sendError(res, 400, "This recovery link is invalid or expired. Request a new one.");
+        if (!await completeReset()) return sendError(res, 400, "This recovery link is invalid or expired. Request a new one.");
         return res.json({ message: "Password updated. Sign in with your new password." });
       } catch (error) {
         console.error("Password reset could not be completed:", error.message);
@@ -417,74 +415,99 @@ function installProductRoutes(app, db, isProduction) {
     }
 
     try {
-      const record = database.prepare(`
-        SELECT u.id, u.email, u.password_hash, w.id AS workspace_id, w.name AS workspace_name, m.role
-        FROM product_users u
-        JOIN product_memberships m ON m.user_id = u.id
-        JOIN product_workspaces w ON w.id = m.workspace_id
-        WHERE u.email = ?
-        ORDER BY m.role = 'owner' DESC, w.id
-        LIMIT 1
-      `).get(email);
-      if (!record || !(await checkPassword(password, record.password_hash))) {
+      const user = await (database.prepare(
+        "SELECT id, email, password_hash FROM product_users WHERE email = $1"
+      ).get(email));
+      if (!user || !(await checkPassword(password, user.password_hash))) {
         return sendError(res, 401, "Email or password is incorrect.");
       }
 
-      let workspace = {
-        id: record.workspace_id,
-        name: record.workspace_name,
-        role: record.role
-      };
+      let workspace;
       if (inviteToken) {
-        const invite = database.prepare(`
-          SELECT id, workspace_id, invited_email
-          FROM product_workspace_invites
-          WHERE token_hash = ? AND accepted_at IS NULL AND expires_at > ?
-        `).get(hashToken(inviteToken), new Date().toISOString());
+        const invite = await (database.prepare(`
+          SELECT i.id, i.workspace_id, i.invited_email
+          FROM product_workspace_invites i
+          JOIN product_workspace_subscriptions s ON s.workspace_id = i.workspace_id
+          WHERE i.token_hash = $1 AND i.accepted_at IS NULL AND i.expires_at > $2
+            AND s.expires_at > CURRENT_TIMESTAMP
+        `).get(hashToken(inviteToken), new Date().toISOString()));
         if (!invite || invite.invited_email.toLowerCase() !== email) {
           return sendError(res, 400, "This invitation is invalid, expired, or addressed to a different email.");
         }
-        const acceptInvite = database.transaction(() => {
-          const accepted = database.prepare(`
+        const acceptInvite = database.transaction(async () => {
+          const accepted = await (database.prepare(`
             UPDATE product_workspace_invites SET accepted_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND accepted_at IS NULL AND expires_at > ?
-          `).run(invite.id, new Date().toISOString());
+            WHERE id = $1 AND accepted_at IS NULL AND expires_at > $2
+              AND EXISTS (
+                SELECT 1 FROM product_workspace_subscriptions
+                WHERE workspace_id = $3 AND expires_at > CURRENT_TIMESTAMP
+              )
+          `).run(invite.id, new Date().toISOString(), invite.workspace_id));
           if (!accepted.changes) {
             const error = new Error("This invitation has already been used or has expired.");
             error.code = "INVITE_INVALID";
             throw error;
           }
-          database.prepare(
-            "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES (?, ?, 'member')"
-          ).run(invite.workspace_id, record.id);
-          return database.prepare(
-            "SELECT id, name FROM product_workspaces WHERE id = ?"
-          ).get(invite.workspace_id);
+          await (database.prepare(
+            "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'member')"
+          ).run(invite.workspace_id, user.id));
+          return await (database.prepare(`
+            SELECT w.id, w.name, s.expires_at AS subscription_expires_at
+            FROM product_workspaces w
+            JOIN product_workspace_subscriptions s ON s.workspace_id = w.id
+            WHERE w.id = $1
+          `).get(invite.workspace_id));
           });
         try {
-          const joinedWorkspace = acceptInvite();
+          const joinedWorkspace = await acceptInvite();
           workspace = { ...joinedWorkspace, role: "member" };
         } catch (error) {
           if (error.code === "INVITE_INVALID") return sendError(res, 409, error.message);
-          if (error.code === "SQLITE_CONSTRAINT_PRIMARYKEY") {
+          if (error.code === "23505") {
             return sendError(res, 409, "This account is already a member of the invited workspace.");
           }
           throw error;
         }
+      } else {
+        const membership = await (database.prepare(`
+          SELECT w.id, w.name, m.role, s.expires_at AS subscription_expires_at
+          FROM product_memberships m
+          JOIN product_workspaces w ON w.id = m.workspace_id
+          JOIN product_workspace_subscriptions s ON s.workspace_id = w.id
+          WHERE m.user_id = $1 AND s.expires_at > CURRENT_TIMESTAMP
+          ORDER BY m.role = 'owner' DESC, w.id
+          LIMIT 1
+        `).get(user.id));
+        if (!membership) {
+          return res.status(403).json({
+            error: "Workspace access has expired. Contact Relay to renew your subscription.",
+            code: "subscription_expired"
+          });
+        }
+        workspace = {
+          id: membership.id,
+          name: membership.name,
+          role: membership.role,
+          subscriptionExpiresAt: membership.subscription_expires_at
+        };
+      }
+      if (workspace.subscription_expires_at) {
+        workspace.subscriptionExpiresAt = workspace.subscription_expires_at;
+        delete workspace.subscription_expires_at;
       }
 
       const rawToken = randomBytes(32).toString("base64url");
       const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString();
-      database.prepare(
-        "INSERT INTO product_sessions (token_hash, user_id, workspace_id, expires_at) VALUES (?, ?, ?, ?)"
-      ).run(hashToken(rawToken), record.id, workspace.id, expiresAt);
+      await (database.prepare(
+        "INSERT INTO product_sessions (token_hash, user_id, workspace_id, expires_at) VALUES ($1, $2, $3, $4)"
+      ).run(hashToken(rawToken), user.id, workspace.id, expiresAt));
       setSessionCookie(res, rawToken, isProduction);
       return res.json({
-        user: { id: record.id, email: record.email },
+        user: { id: user.id, email: user.email },
         workspace
       });
     } catch (error) {
-      if (error.code === "SQLITE_CONSTRAINT_PRIMARYKEY") {
+      if (error.code === "23505") {
         return sendError(res, 409, "This account is already a member of the invited workspace.");
       }
       console.error("Product sign-in failed:", error.message);
@@ -492,62 +515,78 @@ function installProductRoutes(app, db, isProduction) {
     }
   });
 
-  app.post("/api/product/auth/logout", sameOrigin, (req, res) => {
+  app.post("/api/product/auth/logout", sameOrigin, async (req, res) => {
     const token = cookieToken(req);
-    if (token) database.prepare("DELETE FROM product_sessions WHERE token_hash = ?").run(hashToken(token));
+    if (token) await (database.prepare("DELETE FROM product_sessions WHERE token_hash = $1").run(hashToken(token)));
     clearSessionCookie(res, isProduction);
     return res.json({ success: true });
   });
 
-  function requireSession(req, res, next) {
+  async function requireSession(req, res, next) {
     const token = cookieToken(req);
     if (!token) return sendError(res, 401, "Sign in to continue.");
-    const session = database.prepare(`
-      SELECT s.user_id, s.workspace_id, s.expires_at, u.email, w.name AS workspace_name, m.role
+    const session = await (database.prepare(`
+      SELECT s.user_id, s.workspace_id, s.expires_at, u.email, w.name AS workspace_name, m.role,
+        subscription.expires_at AS subscription_expires_at
       FROM product_sessions s
       JOIN product_users u ON u.id = s.user_id
       JOIN product_workspaces w ON w.id = s.workspace_id
       JOIN product_memberships m ON m.user_id = s.user_id AND m.workspace_id = s.workspace_id
-      WHERE s.token_hash = ?
-    `).get(hashToken(token));
+      LEFT JOIN product_workspace_subscriptions subscription ON subscription.workspace_id = s.workspace_id
+      WHERE s.token_hash = $1
+    `).get(hashToken(token)));
     if (!session || Date.parse(session.expires_at) <= Date.now()) {
-      if (session) database.prepare("DELETE FROM product_sessions WHERE token_hash = ?").run(hashToken(token));
+      if (session) await (database.prepare("DELETE FROM product_sessions WHERE token_hash = $1").run(hashToken(token)));
       clearSessionCookie(res, isProduction);
       return sendError(res, 401, "Your session expired. Sign in again.");
+    }
+    if (!session.subscription_expires_at || Date.parse(session.subscription_expires_at) <= Date.now()) {
+      await (database.prepare("DELETE FROM product_sessions WHERE token_hash = $1").run(hashToken(token)));
+      clearSessionCookie(res, isProduction);
+      return res.status(403).json({
+        error: "Workspace access has expired. Contact Relay to renew your subscription.",
+        code: "subscription_expired"
+      });
     }
     req.product = {
       userId: session.user_id,
       workspaceId: session.workspace_id,
       email: session.email,
       workspaceName: session.workspace_name,
-      role: session.role
+      role: session.role,
+      subscriptionExpiresAt: session.subscription_expires_at
     };
     return next();
   }
 
   app.get("/api/product/me", requireSession, (req, res) => res.json({
     user: { id: req.product.userId, email: req.product.email },
-    workspace: { id: req.product.workspaceId, name: req.product.workspaceName, role: req.product.role }
+    workspace: {
+      id: req.product.workspaceId,
+      name: req.product.workspaceName,
+      role: req.product.role,
+      subscriptionExpiresAt: req.product.subscriptionExpiresAt
+    }
   }));
 
-  app.get("/api/product/account-deletion/workspaces", requireSession, (req, res) => {
-    const workspaces = database.prepare(`
+  app.get("/api/product/account-deletion/workspaces", requireSession, async (req, res) => {
+    const workspaces = await (database.prepare(`
       SELECT w.id, w.name, m.role,
         (SELECT COUNT(*) FROM product_memberships all_members WHERE all_members.workspace_id = w.id) AS member_count
       FROM product_memberships m
       JOIN product_workspaces w ON w.id = m.workspace_id
-      WHERE m.user_id = ?
-      ORDER BY w.name COLLATE NOCASE, w.id
-    `).all(req.product.userId);
-    const members = database.prepare(`
+      WHERE m.user_id = $1
+      ORDER BY lower(w.name), w.id
+    `).all(req.product.userId));
+    const members = await (database.prepare(`
       SELECT workspace_id, user_id, email
       FROM product_memberships m
       JOIN product_users u ON u.id = m.user_id
       WHERE m.workspace_id IN (
-        SELECT workspace_id FROM product_memberships WHERE user_id = ?
-      ) AND m.user_id != ?
-      ORDER BY email COLLATE NOCASE
-    `).all(req.product.userId, req.product.userId);
+        SELECT workspace_id FROM product_memberships WHERE user_id = $1
+      ) AND m.user_id != $2
+      ORDER BY lower(email)
+    `).all(req.product.userId, req.product.userId));
     const membersByWorkspace = new Map();
     for (const member of members) {
       const workspaceMembers = membersByWorkspace.get(member.workspace_id) || [];
@@ -570,8 +609,8 @@ function installProductRoutes(app, db, isProduction) {
       return sendError(res, 400, "Enter your password and type DELETE to confirm account deletion.");
     }
 
-    const user = database.prepare("SELECT password_hash FROM product_users WHERE id = ?")
-      .get(req.product.userId);
+    const user = await (database.prepare("SELECT password_hash FROM product_users WHERE id = $1")
+      .get(req.product.userId));
     if (!user || !(await checkPassword(password, user.password_hash))) {
       return sendError(res, 401, "Your password is incorrect. Your account has not been deleted.");
     }
@@ -590,25 +629,25 @@ function installProductRoutes(app, db, isProduction) {
       transferByWorkspace.set(workspaceId, newOwnerUserId);
     }
 
-    const deleteAccount = database.transaction(() => {
-      const memberships = database.prepare(`
+    const deleteAccount = database.transaction(async () => {
+      const memberships = await (database.prepare(`
         SELECT m.workspace_id, m.role,
           (SELECT COUNT(*) FROM product_memberships all_members
             WHERE all_members.workspace_id = m.workspace_id) AS member_count
         FROM product_memberships m
-        WHERE m.user_id = ?
+        WHERE m.user_id = $1
         ORDER BY m.workspace_id
-      `).all(req.product.userId);
+      `).all(req.product.userId));
       const requiredTransfers = new Set();
       for (const membership of memberships) {
         if (membership.member_count <= 1) continue;
         if (membership.role !== "owner") continue;
         requiredTransfers.add(membership.workspace_id);
         const newOwnerUserId = transferByWorkspace.get(membership.workspace_id);
-        const newOwner = newOwnerUserId && database.prepare(`
+        const newOwner = newOwnerUserId && await (database.prepare(`
           SELECT user_id FROM product_memberships
-          WHERE workspace_id = ? AND user_id = ? AND user_id != ?
-        `).get(membership.workspace_id, newOwnerUserId, req.product.userId);
+          WHERE workspace_id = $1 AND user_id = $2 AND user_id != $3
+        `).get(membership.workspace_id, newOwnerUserId, req.product.userId));
         if (!newOwner) {
           throw new Error("Choose a remaining workspace member to become the owner before deleting your account.");
         }
@@ -619,28 +658,28 @@ function installProductRoutes(app, db, isProduction) {
 
       for (const membership of memberships) {
         if (membership.member_count <= 1) {
-          database.prepare("DELETE FROM product_workspaces WHERE id = ?").run(membership.workspace_id);
+          await (database.prepare("DELETE FROM product_workspaces WHERE id = $1").run(membership.workspace_id));
           continue;
         }
         if (membership.role === "owner") {
-          database.prepare(`
+          await (database.prepare(`
             UPDATE product_memberships SET role = 'owner'
-            WHERE workspace_id = ? AND user_id = ?
-          `).run(membership.workspace_id, transferByWorkspace.get(membership.workspace_id));
+            WHERE workspace_id = $1 AND user_id = $2
+          `).run(membership.workspace_id, transferByWorkspace.get(membership.workspace_id)));
         }
-        database.prepare("DELETE FROM product_memberships WHERE workspace_id = ? AND user_id = ?")
-          .run(membership.workspace_id, req.product.userId);
+        await (database.prepare("DELETE FROM product_memberships WHERE workspace_id = $1 AND user_id = $2")
+          .run(membership.workspace_id, req.product.userId));
       }
 
-      database.prepare("UPDATE product_process_steps SET assignee_user_id = NULL WHERE assignee_user_id = ?")
-        .run(req.product.userId);
-      database.prepare("UPDATE product_implementation_steps SET assignee_user_id = NULL WHERE assignee_user_id = ?")
-        .run(req.product.userId);
-      database.prepare("DELETE FROM product_users WHERE id = ?").run(req.product.userId);
+      await (database.prepare("UPDATE product_process_steps SET assignee_user_id = NULL WHERE assignee_user_id = $1")
+        .run(req.product.userId));
+      await (database.prepare("UPDATE product_implementation_steps SET assignee_user_id = NULL WHERE assignee_user_id = $1")
+        .run(req.product.userId));
+      await (database.prepare("DELETE FROM product_users WHERE id = $1").run(req.product.userId));
     });
 
     try {
-      deleteAccount();
+      await deleteAccount();
     } catch (error) {
       if (error instanceof Error && /workspace member|ownership choice/.test(error.message)) {
         return sendError(res, 409, error.message);
@@ -651,35 +690,35 @@ function installProductRoutes(app, db, isProduction) {
     return res.json({ success: true });
   });
 
-  app.get("/api/product/onboarding", requireSession, (req, res) => {
-    const onboarding = database.prepare(
-      "SELECT dismissed FROM product_user_onboarding WHERE user_id = ?"
-    ).get(req.product.userId);
+  app.get("/api/product/onboarding", requireSession, async (req, res) => {
+    const onboarding = await (database.prepare(
+      "SELECT dismissed FROM product_user_onboarding WHERE user_id = $1"
+    ).get(req.product.userId));
     return res.json({ dismissed: Boolean(onboarding?.dismissed) });
   });
 
-  app.patch("/api/product/onboarding", sameOrigin, requireSession, (req, res) => {
+  app.patch("/api/product/onboarding", sameOrigin, requireSession, async (req, res) => {
     if (typeof req.body.dismissed !== "boolean") {
       return sendError(res, 400, "Choose whether to show or dismiss the getting-started guide.");
     }
-    database.prepare(`
+    await (database.prepare(`
       INSERT INTO product_user_onboarding (user_id, dismissed, updated_at)
-      VALUES (?, ?, CURRENT_TIMESTAMP)
+      VALUES ($1, $2, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id) DO UPDATE SET
         dismissed = excluded.dismissed,
         updated_at = CURRENT_TIMESTAMP
-    `).run(req.product.userId, Number(req.body.dismissed));
+    `).run(req.product.userId, req.body.dismissed));
     return res.json({ dismissed: req.body.dismissed });
   });
 
-  app.get("/api/product/preferences", requireSession, (req, res) => {
-    const preferences = database.prepare(`
-      SELECT theme, accent FROM product_user_preferences WHERE user_id = ?
-    `).get(req.product.userId);
+  app.get("/api/product/preferences", requireSession, async (req, res) => {
+    const preferences = await (database.prepare(`
+      SELECT theme, accent FROM product_user_preferences WHERE user_id = $1
+    `).get(req.product.userId));
     return res.json(preferences || { theme: "light", accent: "blue" });
   });
 
-  app.patch("/api/product/preferences", sameOrigin, requireSession, (req, res) => {
+  app.patch("/api/product/preferences", sameOrigin, requireSession, async (req, res) => {
     const { theme, accent } = req.body;
     if (theme === undefined && accent === undefined) {
       return sendError(res, 400, "Choose a theme mode or accent color to update.");
@@ -690,48 +729,48 @@ function installProductRoutes(app, db, isProduction) {
     if (accent !== undefined && !["blue", "teal", "violet", "rose"].includes(accent)) {
       return sendError(res, 400, "Choose one of the available accent colors.");
     }
-    const current = database.prepare(`
-      SELECT theme, accent FROM product_user_preferences WHERE user_id = ?
-    `).get(req.product.userId) || { theme: "light", accent: "blue" };
+    const current = await (database.prepare(`
+      SELECT theme, accent FROM product_user_preferences WHERE user_id = $1
+    `).get(req.product.userId)) || { theme: "light", accent: "blue" };
     const next = {
       theme: theme ?? current.theme,
       accent: accent ?? current.accent
     };
-    database.prepare(`
+    await (database.prepare(`
       INSERT INTO product_user_preferences (user_id, theme, accent, updated_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id) DO UPDATE SET
         theme = excluded.theme,
         accent = excluded.accent,
         updated_at = CURRENT_TIMESTAMP
-    `).run(req.product.userId, next.theme, next.accent);
+    `).run(req.product.userId, next.theme, next.accent));
     return res.json(next);
   });
 
-  app.get("/api/product/help-chat", requireSession, (req, res) => {
-    const messages = database.prepare(`
+  app.get("/api/product/help-chat", requireSession, async (req, res) => {
+    const messages = await (database.prepare(`
       SELECT id, role, content, created_at
       FROM (
         SELECT id, role, content, created_at
         FROM product_help_messages
-        WHERE user_id = ?
+        WHERE user_id = $1
         ORDER BY id DESC
         LIMIT 50
       )
       ORDER BY id
-    `).all(req.product.userId);
-    const consent = database.prepare(
-      "SELECT 1 FROM product_help_consents WHERE user_id = ?"
-    ).get(req.product.userId);
+    `).all(req.product.userId));
+    const consent = await (database.prepare(
+      "SELECT 1 FROM product_help_consents WHERE user_id = $1"
+    ).get(req.product.userId));
     return res.json({ messages, consented: Boolean(consent) });
   });
 
-  app.delete("/api/product/help-chat", sameOrigin, requireSession, (req, res) => {
-    const clearHistory = database.transaction(() => {
-      database.prepare("DELETE FROM product_help_messages WHERE user_id = ?").run(req.product.userId);
-      database.prepare("DELETE FROM product_help_consents WHERE user_id = ?").run(req.product.userId);
+  app.delete("/api/product/help-chat", sameOrigin, requireSession, async (req, res) => {
+    const clearHistory = database.transaction(async () => {
+      await (database.prepare("DELETE FROM product_help_messages WHERE user_id = $1").run(req.product.userId));
+      await (database.prepare("DELETE FROM product_help_consents WHERE user_id = $1").run(req.product.userId));
     });
-    clearHistory();
+    await clearHistory();
     return res.json({ success: true });
   });
 
@@ -740,9 +779,9 @@ function installProductRoutes(app, db, isProduction) {
     const message = requiredText(req.body.message, 1200);
     if (!message) return sendError(res, 400, "Enter a Relay question up to 1,200 characters.");
 
-    const alreadyConsented = database.prepare(
-      "SELECT 1 FROM product_help_consents WHERE user_id = ?"
-    ).get(userId);
+    const alreadyConsented = await (database.prepare(
+      "SELECT 1 FROM product_help_consents WHERE user_id = $1"
+    ).get(userId));
     if (!alreadyConsented && req.body.consentAccepted !== true) {
       return sendError(res, 403, "Confirm that your help messages and recent chat history may be processed by Relay’s AI service.");
     }
@@ -763,20 +802,20 @@ function installProductRoutes(app, db, isProduction) {
     }
 
     if (!alreadyConsented) {
-      database.prepare("INSERT INTO product_help_consents (user_id) VALUES (?)").run(userId);
+      await (database.prepare("INSERT INTO product_help_consents (user_id) VALUES ($1)").run(userId));
     }
 
-    const previousMessages = database.prepare(`
+    const previousMessages = await (database.prepare(`
       SELECT role, content
       FROM (
         SELECT role, content, id
         FROM product_help_messages
-        WHERE user_id = ?
+        WHERE user_id = $1
         ORDER BY id DESC
         LIMIT 12
       )
       ORDER BY id
-    `).all(userId);
+    `).all(userId));
 
     let response;
     try {
@@ -823,29 +862,29 @@ function installProductRoutes(app, db, isProduction) {
       return sendError(res, 502, "Ray received an invalid answer. Please try again.");
     }
 
-    const saveMessages = database.transaction(() => {
+    const saveMessages = database.transaction(async () => {
       const insert = database.prepare(
-        "INSERT INTO product_help_messages (user_id, role, content) VALUES (?, ?, ?)"
+        "INSERT INTO product_help_messages (user_id, role, content) VALUES ($1, $2, $3) RETURNING id"
       );
-      insert.run(userId, "user", message);
-      const assistantMessage = insert.run(userId, "assistant", answer.trim());
-      database.prepare(`
+      await (insert.run(userId, "user", message));
+      const assistantMessage = await (insert.run(userId, "assistant", answer.trim()));
+      await (database.prepare(`
         DELETE FROM product_help_messages
-        WHERE user_id = ? AND id NOT IN (
-          SELECT id FROM product_help_messages WHERE user_id = ? ORDER BY id DESC LIMIT 50
+        WHERE user_id = $1 AND id NOT IN (
+          SELECT id FROM product_help_messages WHERE user_id = $2 ORDER BY id DESC LIMIT 50
         )
-      `).run(userId, userId);
-      return database.prepare(
-        "SELECT id, role, content, created_at FROM product_help_messages WHERE id = ? AND user_id = ?"
-      ).get(assistantMessage.lastInsertRowid, userId);
+      `).run(userId, userId));
+      return await (database.prepare(
+        "SELECT id, role, content, created_at FROM product_help_messages WHERE id = $1 AND user_id = $2"
+      ).get(assistantMessage.lastInsertRowid, userId));
     });
 
-    return res.json({ message: saveMessages() });
+    return res.json({ message: await saveMessages() });
   });
 
-  app.get("/api/product/workspace", requireSession, (req, res) => {
+  app.get("/api/product/workspace", requireSession, async (req, res) => {
     const workspaceId = req.product.workspaceId;
-    const processes = database.prepare(`
+    const processes = await (database.prepare(`
       SELECT p.id, p.name, p.description, p.updated_at,
         (SELECT COUNT(*) FROM product_process_steps s WHERE s.process_id = p.id) AS steps_count,
         EXISTS (
@@ -853,56 +892,56 @@ function installProductRoutes(app, db, isProduction) {
           WHERE c.process_id = p.id AND c.process_revision = p.revision AND c.result = 'ready'
         ) AS checked
       FROM product_processes p
-      WHERE p.workspace_id = ?
+      WHERE p.workspace_id = $1
       ORDER BY p.updated_at DESC, p.id DESC
-    `).all(workspaceId);
-    const templates = database.prepare(
-      "SELECT id, name, created_at, updated_at, revision, (SELECT COUNT(*) FROM json_each(steps_json)) AS step_count FROM product_templates WHERE workspace_id = ? ORDER BY created_at DESC, id DESC"
-    ).all(workspaceId);
-    const implementations = database.prepare(`
+    `).all(workspaceId));
+    const templates = await (database.prepare(
+      "SELECT id, name, created_at, updated_at, revision, jsonb_array_length(steps_json::jsonb) AS step_count FROM product_templates WHERE workspace_id = $1 ORDER BY created_at DESC, id DESC"
+    ).all(workspaceId));
+    const implementations = await (database.prepare(`
       SELECT i.id, i.template_id, i.customer_name, i.created_at, t.name AS template_name,
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id) AS total_steps,
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status != 'done') AS open_steps,
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status = 'done') AS completed_steps,
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status = 'in_progress') AS in_progress_steps,
-        (SELECT GROUP_CONCAT(DISTINCT s.assignee_user_id) FROM product_implementation_steps s
+        (SELECT string_agg(DISTINCT s.assignee_user_id::text, ',') FROM product_implementation_steps s
           WHERE s.implementation_id = i.id AND s.assignee_user_id IS NOT NULL) AS assigned_member_ids,
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status != 'done' AND s.assignee_user_id IS NULL) AS unowned_steps,
-        (SELECT GROUP_CONCAT(s.title, ', ') FROM product_implementation_steps s
+        (SELECT string_agg(s.title, ', ') FROM product_implementation_steps s
           WHERE s.implementation_id = i.id AND s.status != 'done' AND s.assignee_user_id IS NULL) AS unowned_step_names,
         (SELECT COUNT(*) FROM product_requirements r
           LEFT JOIN product_customer_inputs c ON c.requirement_id = r.id AND c.implementation_id = i.id
           WHERE r.workspace_id = i.workspace_id AND (r.template_id IS NULL OR r.template_id = i.template_id)
-            AND r.required = 1 AND TRIM(COALESCE(c.value, '')) = '') AS missing_inputs,
-        (SELECT GROUP_CONCAT(r.name, ', ') FROM product_requirements r
+            AND r.required = TRUE AND TRIM(COALESCE(c.value, '')) = '') AS missing_inputs,
+        (SELECT string_agg(r.name, ', ') FROM product_requirements r
           LEFT JOIN product_customer_inputs c ON c.requirement_id = r.id AND c.implementation_id = i.id
           WHERE r.workspace_id = i.workspace_id AND (r.template_id IS NULL OR r.template_id = i.template_id)
-            AND r.required = 1 AND TRIM(COALESCE(c.value, '')) = '') AS missing_input_names,
+            AND r.required = TRUE AND TRIM(COALESCE(c.value, '')) = '') AS missing_input_names,
         (SELECT COUNT(*) FROM product_implementation_steps s
-          WHERE s.implementation_id = i.id AND s.status != 'done' AND s.is_blocked = 1) AS blocked_steps,
-        (SELECT GROUP_CONCAT(s.title, ', ') FROM product_implementation_steps s
-          WHERE s.implementation_id = i.id AND s.status != 'done' AND s.is_blocked = 1) AS blocked_step_names,
+          WHERE s.implementation_id = i.id AND s.status != 'done' AND s.is_blocked = TRUE) AS blocked_steps,
+        (SELECT string_agg(s.title, ', ') FROM product_implementation_steps s
+          WHERE s.implementation_id = i.id AND s.status != 'done' AND s.is_blocked = TRUE) AS blocked_step_names,
         (SELECT COUNT(*) FROM product_implementation_steps s
           WHERE s.implementation_id = i.id AND s.status != 'done'
-            AND s.due_at != '' AND s.due_at < date('now')) AS overdue_steps,
-        (SELECT GROUP_CONCAT(s.title, ', ') FROM product_implementation_steps s
+            AND s.due_at != '' AND s.due_at < CURRENT_DATE::text) AS overdue_steps,
+        (SELECT string_agg(s.title, ', ') FROM product_implementation_steps s
           WHERE s.implementation_id = i.id AND s.status != 'done'
-            AND s.due_at != '' AND s.due_at < date('now')) AS overdue_step_names,
+            AND s.due_at != '' AND s.due_at < CURRENT_DATE::text) AS overdue_step_names,
         (SELECT COUNT(DISTINCT s.id) FROM product_implementation_steps s
           JOIN product_implementation_step_dependencies d ON d.implementation_step_id = s.id
           JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id
           WHERE s.implementation_id = i.id AND s.status != 'done' AND parent.status != 'done') AS waiting_steps,
-        (SELECT GROUP_CONCAT(DISTINCT s.title) FROM product_implementation_steps s
+        (SELECT string_agg(DISTINCT s.title, ', ') FROM product_implementation_steps s
           JOIN product_implementation_step_dependencies d ON d.implementation_step_id = s.id
           JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id
           WHERE s.implementation_id = i.id AND s.status != 'done' AND parent.status != 'done') AS waiting_step_names
       FROM product_implementations i
       JOIN product_templates t ON t.id = i.template_id
-      WHERE i.workspace_id = ?
+      WHERE i.workspace_id = $1
       ORDER BY i.created_at DESC, i.id DESC
-    `).all(workspaceId);
+    `).all(workspaceId));
     for (const implementation of implementations) {
-      const scopedRequirements = implementationRequirements(implementation.id, workspaceId, implementation.template_id);
+      const scopedRequirements = await (implementationRequirements(implementation.id, workspaceId, implementation.template_id));
       const invalid = scopedRequirements.filter((requirement) => {
         const value = requirement.value.trim();
         return value && inputValueError(requirement.input_type, value);
@@ -915,123 +954,123 @@ function installProductRoutes(app, db, isProduction) {
           .filter(Boolean).join(", ");
       }
     }
-    const requirements = database.prepare(
-      "SELECT id, name, description, required, input_type, template_id FROM product_requirements WHERE workspace_id = ? ORDER BY id"
-    ).all(workspaceId);
-    const members = database.prepare(`
+    const requirements = await (database.prepare(
+      "SELECT id, name, description, required, input_type, template_id FROM product_requirements WHERE workspace_id = $1 ORDER BY id"
+    ).all(workspaceId));
+    const members = await (database.prepare(`
       SELECT u.id, u.email, m.role
       FROM product_memberships m JOIN product_users u ON u.id = m.user_id
-      WHERE m.workspace_id = ?
+      WHERE m.workspace_id = $1
       ORDER BY m.role = 'owner' DESC, u.email
-    `).all(workspaceId);
-    const invites = database.prepare(`
+    `).all(workspaceId));
+    const invites = await (database.prepare(`
       SELECT id, invited_email, expires_at, created_at
       FROM product_workspace_invites
-      WHERE workspace_id = ? AND accepted_at IS NULL AND expires_at > ?
+      WHERE workspace_id = $1 AND accepted_at IS NULL AND expires_at > $2
       ORDER BY created_at DESC
-    `).all(workspaceId, new Date().toISOString());
+    `).all(workspaceId, new Date().toISOString()));
     return res.json({ processes, templates, implementations, requirements, members, invites, role: req.product.role });
   });
 
-  app.post("/api/product/invites", sameOrigin, requireSession, (req, res) => {
+  app.post("/api/product/invites", sameOrigin, requireSession, async (req, res) => {
     if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can invite teammates.");
     const email = requiredText(req.body.email, 254).toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return sendError(res, 400, "Enter a valid teammate email address.");
-    const existingUser = database.prepare("SELECT id FROM product_users WHERE email = ?").get(email);
-    if (existingUser && database.prepare(
-      "SELECT 1 FROM product_memberships WHERE workspace_id = ? AND user_id = ?"
-    ).get(req.product.workspaceId, existingUser.id)) {
+    const existingUser = await (database.prepare("SELECT id FROM product_users WHERE email = $1").get(email));
+    if (existingUser && await (database.prepare(
+      "SELECT 1 FROM product_memberships WHERE workspace_id = $1 AND user_id = $2"
+    ).get(req.product.workspaceId, existingUser.id))) {
       return sendError(res, 409, "This account is already a member of your workspace.");
     }
-    const activeInvite = database.prepare(`
+    const activeInvite = await (database.prepare(`
       SELECT id FROM product_workspace_invites
-      WHERE workspace_id = ? AND invited_email = ? AND accepted_at IS NULL AND expires_at > ?
-    `).get(req.product.workspaceId, email, new Date().toISOString());
+      WHERE workspace_id = $1 AND invited_email = $2 AND accepted_at IS NULL AND expires_at > $3
+    `).get(req.product.workspaceId, email, new Date().toISOString()));
     if (activeInvite) return sendError(res, 409, "An active invitation already exists for this email.");
     const rawToken = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
-    const invite = database.prepare(`
+    const invite = await (database.prepare(`
       INSERT INTO product_workspace_invites (workspace_id, invited_email, token_hash, expires_at, created_by)
-      VALUES (?, ?, ?, ?, ?) RETURNING id
-    `).get(req.product.workspaceId, email, hashToken(rawToken), expiresAt, req.product.userId);
+      VALUES ($1, $2, $3, $4, $5) RETURNING id
+    `).get(req.product.workspaceId, email, hashToken(rawToken), expiresAt, req.product.userId));
     const inviteUrl = new URL(`/product.html?invite=${encodeURIComponent(rawToken)}`, req.get("Origin")).toString();
     return res.status(201).json({ invite: { id: invite.id, email, expiresAt, inviteUrl } });
   });
 
-  app.delete("/api/product/invites/:inviteId", sameOrigin, requireSession, (req, res) => {
+  app.delete("/api/product/invites/:inviteId", sameOrigin, requireSession, async (req, res) => {
     if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can revoke invitations.");
     const inviteId = validId(req.params.inviteId);
     if (!inviteId) return sendError(res, 400, "Invalid invitation.");
-    const result = database.prepare(
-      "DELETE FROM product_workspace_invites WHERE id = ? AND workspace_id = ? AND accepted_at IS NULL"
-    ).run(inviteId, req.product.workspaceId);
+    const result = await (database.prepare(
+      "DELETE FROM product_workspace_invites WHERE id = $1 AND workspace_id = $2 AND accepted_at IS NULL"
+    ).run(inviteId, req.product.workspaceId));
     if (!result.changes) return sendError(res, 404, "Invitation not found or already accepted.");
     return res.json({ success: true });
   });
 
-  app.post("/api/product/processes", sameOrigin, requireSession, (req, res) => {
+  app.post("/api/product/processes", sameOrigin, requireSession, async (req, res) => {
     const name = requiredText(req.body.name, 100);
     const description = typeof req.body.description === "string" ? req.body.description.trim().slice(0, 500) : "";
     if (!name) return sendError(res, 400, "Give this onboarding process a name.");
-    const process = database.prepare(
-      "INSERT INTO product_processes (workspace_id, name, description) VALUES (?, ?, ?) RETURNING id, name, description, updated_at"
-    ).get(req.product.workspaceId, name, description);
+    const process = await (database.prepare(
+      "INSERT INTO product_processes (workspace_id, name, description) VALUES ($1, $2, $3) RETURNING id, name, description, updated_at"
+    ).get(req.product.workspaceId, name, description));
     return res.status(201).json({ process });
   });
 
-  app.patch("/api/product/processes/:processId", sameOrigin, requireSession, (req, res) => {
+  app.patch("/api/product/processes/:processId", sameOrigin, requireSession, async (req, res) => {
     const processId = validId(req.params.processId);
     const name = requiredText(req.body.name, 100);
     const description = typeof req.body.description === "string" ? req.body.description.trim().slice(0, 500) : "";
     if (!processId || !name) return sendError(res, 400, "Give this onboarding process a valid name.");
-    const result = database.prepare(`
-      UPDATE product_processes SET name = ?, description = ?, revision = revision + 1,
-        updated_at = CURRENT_TIMESTAMP WHERE id = ? AND workspace_id = ?
-    `).run(name, description, processId, req.product.workspaceId);
+    const result = await (database.prepare(`
+      UPDATE product_processes SET name = $1, description = $2, revision = revision + 1,
+        updated_at = CURRENT_TIMESTAMP WHERE id = $3 AND workspace_id = $4
+    `).run(name, description, processId, req.product.workspaceId));
     if (!result.changes) return sendError(res, 404, "Process not found.");
     return res.json({ success: true });
   });
 
-  app.delete("/api/product/processes/:processId", sameOrigin, requireSession, (req, res) => {
+  app.delete("/api/product/processes/:processId", sameOrigin, requireSession, async (req, res) => {
     const processId = validId(req.params.processId);
     if (!processId) return sendError(res, 400, "Invalid process.");
-    const process = database.prepare(
-      "SELECT id FROM product_processes WHERE id = ? AND workspace_id = ?"
-    ).get(processId, req.product.workspaceId);
+    const process = await (database.prepare(
+      "SELECT id FROM product_processes WHERE id = $1 AND workspace_id = $2"
+    ).get(processId, req.product.workspaceId));
     if (!process) return sendError(res, 404, "Process not found.");
-    const templateCount = database.prepare(
-      "SELECT COUNT(*) AS count FROM product_templates WHERE process_id = ?"
-    ).get(processId).count;
+    const templateCount = (await database.prepare(
+      "SELECT COUNT(*) AS count FROM product_templates WHERE process_id = $1"
+    ).get(processId)).count;
     if (templateCount) return sendError(res, 409, "This process is used by saved templates. Delete unused templates before deleting the process.");
-    database.prepare("DELETE FROM product_processes WHERE id = ?").run(processId);
+    await (database.prepare("DELETE FROM product_processes WHERE id = $1").run(processId));
     return res.json({ success: true });
   });
 
-  app.get("/api/product/processes/:processId", requireSession, (req, res) => {
+  app.get("/api/product/processes/:processId", requireSession, async (req, res) => {
     const processId = validId(req.params.processId);
     if (!processId) return sendError(res, 400, "Invalid process.");
-    const process = database.prepare(`
+    const process = await (database.prepare(`
       SELECT p.id, p.name, p.description, p.revision, p.updated_at,
         EXISTS (
           SELECT 1 FROM product_setup_checks c
           WHERE c.process_id = p.id AND c.process_revision = p.revision AND c.result = 'ready'
         ) AS checked
       FROM product_processes p
-      WHERE p.id = ? AND p.workspace_id = ?
-    `).get(processId, req.product.workspaceId);
+      WHERE p.id = $1 AND p.workspace_id = $2
+    `).get(processId, req.product.workspaceId));
     if (!process) return sendError(res, 404, "Process not found.");
-    process.steps = processSteps(processId);
+    process.steps = await (processSteps(processId));
     return res.json({ process });
   });
 
-  app.post("/api/product/processes/:processId/steps", sameOrigin, requireSession, (req, res) => {
+  app.post("/api/product/processes/:processId/steps", sameOrigin, requireSession, async (req, res) => {
     const processId = validId(req.params.processId);
     const title = requiredText(req.body.title, 120);
     const description = typeof req.body.description === "string" ? req.body.description.trim().slice(0, 500) : "";
     const owner = typeof req.body.owner === "string" ? req.body.owner.trim().slice(0, 120) : "";
     const stage = requiredText(req.body.stage || "Implementation", 100);
     const dueOffsetDays = req.body.dueOffsetDays === undefined ? 0 : req.body.dueOffsetDays;
-    const assignee = workspaceAssignee(req.product.workspaceId, req.body.assigneeUserId);
+    const assignee = await (workspaceAssignee(req.product.workspaceId, req.body.assigneeUserId));
     const dependsOn = Array.isArray(req.body.dependsOn) ? req.body.dependsOn.map(validId) : [];
     if (dependsOn.some((id) => !id) || new Set(dependsOn).size !== dependsOn.length) {
       return sendError(res, 400, "Choose valid, unique prerequisite steps.");
@@ -1039,35 +1078,35 @@ function installProductRoutes(app, db, isProduction) {
     if (!processId || !title || !stage || !assignee.valid || !Number.isInteger(dueOffsetDays) || dueOffsetDays < 0 || dueOffsetDays > 3650) {
       return sendError(res, 400, "Enter a step name, stage, and valid due-date offset.");
     }
-    const process = database.prepare(
-      "SELECT id FROM product_processes WHERE id = ? AND workspace_id = ?"
-    ).get(processId, req.product.workspaceId);
+    const process = await (database.prepare(
+      "SELECT id FROM product_processes WHERE id = $1 AND workspace_id = $2"
+    ).get(processId, req.product.workspaceId));
     if (!process) return sendError(res, 404, "Process not found.");
-    const existingSteps = processSteps(processId);
+    const existingSteps = await (processSteps(processId));
     if (dependsOn.some((id) => !existingSteps.some((step) => step.id === id))) {
       return sendError(res, 400, "A prerequisite must be another step in this process.");
     }
-    const createStep = database.transaction(() => {
-      const position = database.prepare(
-        "SELECT COALESCE(MAX(position), 0) + 1 AS position FROM product_process_steps WHERE process_id = ?"
-      ).get(processId).position;
-      const step = database.prepare(`
+    const createStep = database.transaction(async () => {
+      const position = (await database.prepare(
+        "SELECT COALESCE(MAX(position), 0) + 1 AS position FROM product_process_steps WHERE process_id = $1"
+      ).get(processId)).position;
+      const step = await (database.prepare(`
         INSERT INTO product_process_steps
           (process_id, title, description, owner, position, stage, due_offset_days, assignee_user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, title, description, owner, position, stage, due_offset_days, assignee_user_id
-      `).get(processId, title, description, owner, position, stage, dueOffsetDays, assignee.id);
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, title, description, owner, position, stage, due_offset_days, assignee_user_id
+      `).get(processId, title, description, owner, position, stage, dueOffsetDays, assignee.id));
       const addDependency = database.prepare(
-        "INSERT INTO product_process_step_dependencies (process_step_id, depends_on_step_id) VALUES (?, ?)"
+        "INSERT INTO product_process_step_dependencies (process_step_id, depends_on_step_id) VALUES ($1, $2)"
       );
-      for (const dependencyId of dependsOn) addDependency.run(step.id, dependencyId);
-      database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(processId);
+      for (const dependencyId of dependsOn) await (addDependency.run(step.id, dependencyId));
+      await (database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1").run(processId));
       return step;
     });
-    const step = createStep();
+    const step = await createStep();
     return res.status(201).json({ step });
   });
 
-  app.patch("/api/product/processes/:processId/steps/:stepId", sameOrigin, requireSession, (req, res) => {
+  app.patch("/api/product/processes/:processId/steps/:stepId", sameOrigin, requireSession, async (req, res) => {
     const processId = validId(req.params.processId);
     const stepId = validId(req.params.stepId);
     const title = requiredText(req.body.title, 120);
@@ -1075,7 +1114,7 @@ function installProductRoutes(app, db, isProduction) {
     const owner = typeof req.body.owner === "string" ? req.body.owner.trim().slice(0, 120) : "";
     const stage = requiredText(req.body.stage, 100);
     const dueOffsetDays = req.body.dueOffsetDays;
-    const assignee = workspaceAssignee(req.product.workspaceId, req.body.assigneeUserId);
+    const assignee = await (workspaceAssignee(req.product.workspaceId, req.body.assigneeUserId));
     const dependsOn = Array.isArray(req.body.dependsOn) ? req.body.dependsOn.map(validId) : null;
     if (!processId || !stepId || !title || !stage || !Number.isInteger(dueOffsetDays)
       || dueOffsetDays < 0 || dueOffsetDays > 3650 || !dependsOn
@@ -1083,9 +1122,9 @@ function installProductRoutes(app, db, isProduction) {
       || dependsOn.includes(stepId)) {
       return sendError(res, 400, "Enter valid step details and prerequisites.");
     }
-    const steps = processSteps(processId);
+    const steps = await (processSteps(processId));
     const step = steps.find((item) => item.id === stepId);
-    if (!step || !database.prepare("SELECT id FROM product_processes WHERE id = ? AND workspace_id = ?").get(processId, req.product.workspaceId)) {
+    if (!step || !await (database.prepare("SELECT id FROM product_processes WHERE id = $1 AND workspace_id = $2").get(processId, req.product.workspaceId))) {
       return sendError(res, 404, "Process step not found.");
     }
     if (dependsOn.some((id) => !steps.some((item) => item.id === id))) {
@@ -1096,53 +1135,55 @@ function installProductRoutes(app, db, isProduction) {
       dependsOn: item.id === stepId ? dependsOn : item.dependsOn
     }));
     if (hasCycle(proposed)) return sendError(res, 400, "Prerequisites cannot form a cycle.");
-    const updateStep = database.transaction(() => {
-      database.prepare(`
-        UPDATE product_process_steps SET title = ?, description = ?, owner = ?, stage = ?,
-          due_offset_days = ?, assignee_user_id = ? WHERE id = ? AND process_id = ?
-      `).run(title, description, owner, stage, dueOffsetDays, assignee.id, stepId, processId);
-      database.prepare("DELETE FROM product_process_step_dependencies WHERE process_step_id = ?").run(stepId);
+    const updateStep = database.transaction(async () => {
+      await (database.prepare(`
+        UPDATE product_process_steps SET title = $1, description = $2, owner = $3, stage = $4,
+          due_offset_days = $5, assignee_user_id = $6 WHERE id = $7 AND process_id = $8
+      `).run(title, description, owner, stage, dueOffsetDays, assignee.id, stepId, processId));
+      await (database.prepare("DELETE FROM product_process_step_dependencies WHERE process_step_id = $1").run(stepId));
       const addDependency = database.prepare(
-        "INSERT INTO product_process_step_dependencies (process_step_id, depends_on_step_id) VALUES (?, ?)"
+        "INSERT INTO product_process_step_dependencies (process_step_id, depends_on_step_id) VALUES ($1, $2)"
       );
-      for (const dependencyId of dependsOn) addDependency.run(stepId, dependencyId);
-      database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(processId);
+      for (const dependencyId of dependsOn) await (addDependency.run(stepId, dependencyId));
+      await (database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1").run(processId));
     });
-    updateStep();
+    await updateStep();
     return res.json({ success: true });
   });
 
-  app.delete("/api/product/processes/:processId/steps/:stepId", sameOrigin, requireSession, (req, res) => {
+  app.delete("/api/product/processes/:processId/steps/:stepId", sameOrigin, requireSession, async (req, res) => {
     const processId = validId(req.params.processId);
     const stepId = validId(req.params.stepId);
     if (!processId || !stepId) return sendError(res, 400, "Invalid process step.");
-    const process = database.prepare(
-      "SELECT id FROM product_processes WHERE id = ? AND workspace_id = ?"
-    ).get(processId, req.product.workspaceId);
+    const process = await (database.prepare(
+      "SELECT id FROM product_processes WHERE id = $1 AND workspace_id = $2"
+    ).get(processId, req.product.workspaceId));
     if (!process) return sendError(res, 404, "Process not found.");
-    const removeStep = database.transaction(() => {
-      const removed = database.prepare("DELETE FROM product_process_steps WHERE id = ? AND process_id = ?").run(stepId, processId);
+    const removeStep = database.transaction(async () => {
+      const removed = await (database.prepare("DELETE FROM product_process_steps WHERE id = $1 AND process_id = $2").run(stepId, processId));
       if (!removed.changes) return false;
-      const remaining = database.prepare("SELECT id FROM product_process_steps WHERE process_id = ? ORDER BY position, id").all(processId);
-      const setPosition = database.prepare("UPDATE product_process_steps SET position = ? WHERE id = ?");
-      remaining.forEach((item, index) => setPosition.run(index + 1, item.id));
-      database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(processId);
+      const remaining = await (database.prepare("SELECT id FROM product_process_steps WHERE process_id = $1 ORDER BY position, id").all(processId));
+      const setPosition = database.prepare("UPDATE product_process_steps SET position = $1 WHERE id = $2");
+      for (const [index, item] of remaining.entries()) {
+        await setPosition.run(index + 1, item.id);
+      }
+      await (database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1").run(processId));
       return true;
     });
-    if (!removeStep()) return sendError(res, 404, "Process step not found.");
+    if (!await removeStep()) return sendError(res, 404, "Process step not found.");
     return res.json({ success: true });
   });
 
-  app.put("/api/product/processes/:processId/steps/order", sameOrigin, requireSession, (req, res) => {
+  app.put("/api/product/processes/:processId/steps/order", sameOrigin, requireSession, async (req, res) => {
     const processId = validId(req.params.processId);
     const orderedIds = Array.isArray(req.body.stepIds) ? req.body.stepIds.map(validId) : null;
     if (!processId || !orderedIds || orderedIds.some((id) => !id) || new Set(orderedIds).size !== orderedIds.length) {
       return sendError(res, 400, "Provide the complete ordered list of process steps.");
     }
-    if (!database.prepare("SELECT id FROM product_processes WHERE id = ? AND workspace_id = ?").get(processId, req.product.workspaceId)) {
+    if (!await (database.prepare("SELECT id FROM product_processes WHERE id = $1 AND workspace_id = $2").get(processId, req.product.workspaceId))) {
       return sendError(res, 404, "Process not found.");
     }
-    const steps = processSteps(processId);
+    const steps = await (processSteps(processId));
     if (steps.length !== orderedIds.length || steps.some((step) => !orderedIds.includes(step.id))) {
       return sendError(res, 400, "The ordered list must contain every process step exactly once.");
     }
@@ -1152,23 +1193,23 @@ function installProductRoutes(app, db, isProduction) {
         return sendError(res, 400, "A prerequisite must appear before the step that depends on it.");
       }
     }
-    const reorder = database.transaction(() => {
-      const updatePosition = database.prepare("UPDATE product_process_steps SET position = ? WHERE id = ? AND process_id = ?");
-      for (const [id, position] of positions) updatePosition.run(position, id, processId);
-      database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(processId);
+    const reorder = database.transaction(async () => {
+      const updatePosition = database.prepare("UPDATE product_process_steps SET position = $1 WHERE id = $2 AND process_id = $3");
+      for (const [id, position] of positions) await (updatePosition.run(position, id, processId));
+      await (database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1").run(processId));
     });
-    reorder();
+    await reorder();
     return res.json({ success: true });
   });
 
-  app.post("/api/product/processes/:processId/test", sameOrigin, requireSession, (req, res) => {
+  app.post("/api/product/processes/:processId/test", sameOrigin, requireSession, async (req, res) => {
     const processId = validId(req.params.processId);
     if (!processId) return sendError(res, 400, "Invalid process.");
-    const process = database.prepare(
-      "SELECT id, revision FROM product_processes WHERE id = ? AND workspace_id = ?"
-    ).get(processId, req.product.workspaceId);
+    const process = await (database.prepare(
+      "SELECT id, revision FROM product_processes WHERE id = $1 AND workspace_id = $2"
+    ).get(processId, req.product.workspaceId));
     if (!process) return sendError(res, 404, "Process not found.");
-    const steps = processSteps(processId);
+    const steps = await (processSteps(processId));
     const findings = [];
     if (steps.length === 0) findings.push("Add at least one step before handing over this process.");
     steps.forEach((step, index) => {
@@ -1181,9 +1222,9 @@ function installProductRoutes(app, db, isProduction) {
     });
     if (hasCycle(steps)) findings.push("Resolve the circular prerequisites before handing over this process.");
     const result = steps.length > 0 && findings.length === 0 ? "ready" : "needs_attention";
-    const check = database.prepare(
-      "INSERT INTO product_setup_checks (workspace_id, process_id, process_revision, result, findings_json) VALUES (?, ?, ?, ?, ?) RETURNING id, result, created_at"
-    ).get(req.product.workspaceId, processId, process.revision, result, JSON.stringify(findings));
+    const check = await (database.prepare(
+      "INSERT INTO product_setup_checks (workspace_id, process_id, process_revision, result, findings_json) VALUES ($1, $2, $3, $4, $5) RETURNING id, result, created_at"
+    ).get(req.product.workspaceId, processId, process.revision, result, JSON.stringify(findings)));
     return res.json({
       check,
       findings,
@@ -1202,23 +1243,23 @@ function installProductRoutes(app, db, isProduction) {
     });
   });
 
-  app.post("/api/product/templates", sameOrigin, requireSession, (req, res) => {
+  app.post("/api/product/templates", sameOrigin, requireSession, async (req, res) => {
     const processId = validId(req.body.processId);
     const name = requiredText(req.body.name, 100);
     if (!processId || !name) return sendError(res, 400, "Choose a process and name the reusable template.");
-    const process = database.prepare(
-      "SELECT id, revision FROM product_processes WHERE id = ? AND workspace_id = ?"
-    ).get(processId, req.product.workspaceId);
+    const process = await (database.prepare(
+      "SELECT id, revision FROM product_processes WHERE id = $1 AND workspace_id = $2"
+    ).get(processId, req.product.workspaceId));
     if (!process) return sendError(res, 404, "Process not found.");
-    const latestCheck = database.prepare(`
+    const latestCheck = await (database.prepare(`
       SELECT result FROM product_setup_checks
-      WHERE process_id = ? AND process_revision = ?
+      WHERE process_id = $1 AND process_revision = $2
       ORDER BY id DESC LIMIT 1
-    `).get(processId, process.revision);
+    `).get(processId, process.revision));
     if (!latestCheck || latestCheck.result !== "ready") {
       return sendError(res, 409, "Run a successful setup check for the current process before saving a reusable template.");
     }
-    const steps = processSteps(processId);
+    const steps = await (processSteps(processId));
     if (steps.length === 0) return sendError(res, 400, "Add at least one process step before saving a template.");
     const stepPositions = new Map(steps.map((step) => [step.id, step.position]));
     const snapshot = steps.map((step) => ({
@@ -1232,32 +1273,32 @@ function installProductRoutes(app, db, isProduction) {
       position: step.position,
       dependsOnPositions: step.dependsOn.map((id) => stepPositions.get(id)).filter(Number.isInteger)
     }));
-    const createTemplate = database.transaction(() => {
-      const template = database.prepare(
-        "INSERT INTO product_templates (workspace_id, process_id, name, steps_json, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id, name, created_at, revision"
-      ).get(req.product.workspaceId, processId, name, JSON.stringify(snapshot));
-      database.prepare(
-        "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES (?, ?, ?, ?)"
-      ).run(template.id, template.revision, template.name, JSON.stringify(snapshot));
+    const createTemplate = database.transaction(async () => {
+      const template = await (database.prepare(
+        "INSERT INTO product_templates (workspace_id, process_id, name, steps_json, updated_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, name, created_at, revision"
+      ).get(req.product.workspaceId, processId, name, JSON.stringify(snapshot)));
+      await (database.prepare(
+        "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES ($1, $2, $3, $4)"
+      ).run(template.id, template.revision, template.name, JSON.stringify(snapshot)));
       return template;
     });
-    const template = createTemplate();
+    const template = await createTemplate();
     return res.status(201).json({ template });
   });
 
-  app.get("/api/product/templates/:templateId/versions", requireSession, (req, res) => {
+  app.get("/api/product/templates/:templateId/versions", requireSession, async (req, res) => {
     const templateId = validId(req.params.templateId);
     if (!templateId) return sendError(res, 400, "Invalid template.");
-    const template = database.prepare(
-      "SELECT id FROM product_templates WHERE id = ? AND workspace_id = ?"
-    ).get(templateId, req.product.workspaceId);
+    const template = await (database.prepare(
+      "SELECT id FROM product_templates WHERE id = $1 AND workspace_id = $2"
+    ).get(templateId, req.product.workspaceId));
     if (!template) return sendError(res, 404, "Template not found.");
-    const versions = database.prepare(`
+    const versions = (await database.prepare(`
       SELECT revision, name, steps_json, created_at
       FROM product_template_versions
-      WHERE template_id = ?
+      WHERE template_id = $1
       ORDER BY revision DESC
-    `).all(templateId).map((version) => ({
+    `).all(templateId)).map((version) => ({
       revision: version.revision,
       name: version.name,
       created_at: version.created_at,
@@ -1266,56 +1307,56 @@ function installProductRoutes(app, db, isProduction) {
     return res.json({ versions });
   });
 
-  app.post("/api/product/templates/:templateId/versions/:revision/restore", sameOrigin, requireSession, (req, res) => {
+  app.post("/api/product/templates/:templateId/versions/:revision/restore", sameOrigin, requireSession, async (req, res) => {
     const templateId = validId(req.params.templateId);
     const revision = validId(req.params.revision);
     if (!templateId || !revision) return sendError(res, 400, "Choose a valid template version.");
-    const template = database.prepare(
-      "SELECT id, revision FROM product_templates WHERE id = ? AND workspace_id = ?"
-    ).get(templateId, req.product.workspaceId);
+    const template = await (database.prepare(
+      "SELECT id, revision FROM product_templates WHERE id = $1 AND workspace_id = $2"
+    ).get(templateId, req.product.workspaceId));
     if (!template) return sendError(res, 404, "Template not found.");
-    const version = database.prepare(`
+    const version = await (database.prepare(`
       SELECT name, steps_json FROM product_template_versions
-      WHERE template_id = ? AND revision = ?
-    `).get(templateId, revision);
+      WHERE template_id = $1 AND revision = $2
+    `).get(templateId, revision));
     if (!version) return sendError(res, 404, "Template version not found.");
-    const restoreVersion = database.transaction(() => {
+    const restoreVersion = database.transaction(async () => {
       const nextRevision = template.revision + 1;
-      database.prepare(`
-        UPDATE product_templates SET name = ?, steps_json = ?, revision = ?,
-          updated_at = CURRENT_TIMESTAMP WHERE id = ? AND workspace_id = ?
-      `).run(version.name, version.steps_json, nextRevision, templateId, req.product.workspaceId);
-      database.prepare(
-        "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES (?, ?, ?, ?)"
-      ).run(templateId, nextRevision, version.name, version.steps_json);
+      await (database.prepare(`
+        UPDATE product_templates SET name = $1, steps_json = $2, revision = $3,
+          updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND workspace_id = $5
+      `).run(version.name, version.steps_json, nextRevision, templateId, req.product.workspaceId));
+      await (database.prepare(
+        "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES ($1, $2, $3, $4)"
+      ).run(templateId, nextRevision, version.name, version.steps_json));
     });
-    restoreVersion();
+    await restoreVersion();
     return res.json({ success: true });
   });
 
-  app.patch("/api/product/templates/:templateId", sameOrigin, requireSession, (req, res) => {
+  app.patch("/api/product/templates/:templateId", sameOrigin, requireSession, async (req, res) => {
     const templateId = validId(req.params.templateId);
     const name = requiredText(req.body.name, 100);
     const refreshFromProcess = req.body.refreshFromProcess === true;
     if (!templateId || !name) return sendError(res, 400, "Give this reusable template a valid name.");
-    const template = database.prepare(
-      "SELECT id, process_id, revision, steps_json FROM product_templates WHERE id = ? AND workspace_id = ?"
-    ).get(templateId, req.product.workspaceId);
+    const template = await (database.prepare(
+      "SELECT id, process_id, revision, steps_json FROM product_templates WHERE id = $1 AND workspace_id = $2"
+    ).get(templateId, req.product.workspaceId));
     if (!template) return sendError(res, 404, "Template not found.");
     let stepsJson;
     if (refreshFromProcess) {
-      const process = database.prepare(
-        "SELECT id, revision FROM product_processes WHERE id = ? AND workspace_id = ?"
-      ).get(template.process_id, req.product.workspaceId);
-      const latestCheck = database.prepare(`
+      const process = await (database.prepare(
+        "SELECT id, revision FROM product_processes WHERE id = $1 AND workspace_id = $2"
+      ).get(template.process_id, req.product.workspaceId));
+      const latestCheck = await (database.prepare(`
         SELECT result FROM product_setup_checks
-        WHERE process_id = ? AND process_revision = ?
+        WHERE process_id = $1 AND process_revision = $2
         ORDER BY id DESC LIMIT 1
-      `).get(template.process_id, process.revision);
+      `).get(template.process_id, process.revision));
       if (!latestCheck || latestCheck.result !== "ready") {
         return sendError(res, 409, "Run a successful setup check for the current process before refreshing this template.");
       }
-      const steps = processSteps(template.process_id);
+      const steps = await (processSteps(template.process_id));
       const positions = new Map(steps.map((step) => [step.id, step.position]));
       stepsJson = JSON.stringify(steps.map((step) => ({
         title: step.title,
@@ -1331,60 +1372,60 @@ function installProductRoutes(app, db, isProduction) {
     }
     const nextStepsJson = stepsJson === undefined ? template.steps_json : stepsJson;
     const nextRevision = template.revision + 1;
-    const saveVersion = database.transaction(() => {
-      database.prepare(`
-        UPDATE product_templates SET name = ?, steps_json = ?, revision = ?,
-          updated_at = CURRENT_TIMESTAMP WHERE id = ? AND workspace_id = ?
-      `).run(name, nextStepsJson, nextRevision, templateId, req.product.workspaceId);
-      database.prepare(
-        "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES (?, ?, ?, ?)"
-      ).run(templateId, nextRevision, name, nextStepsJson);
+    const saveVersion = database.transaction(async () => {
+      await (database.prepare(`
+        UPDATE product_templates SET name = $1, steps_json = $2, revision = $3,
+          updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND workspace_id = $5
+      `).run(name, nextStepsJson, nextRevision, templateId, req.product.workspaceId));
+      await (database.prepare(
+        "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES ($1, $2, $3, $4)"
+      ).run(templateId, nextRevision, name, nextStepsJson));
     });
-    saveVersion();
+    await saveVersion();
     return res.json({ success: true });
   });
 
-  app.delete("/api/product/templates/:templateId", sameOrigin, requireSession, (req, res) => {
+  app.delete("/api/product/templates/:templateId", sameOrigin, requireSession, async (req, res) => {
     const templateId = validId(req.params.templateId);
     if (!templateId) return sendError(res, 400, "Invalid template.");
-    const implementationCount = database.prepare(
-      "SELECT COUNT(*) AS count FROM product_implementations WHERE template_id = ? AND workspace_id = ?"
-    ).get(templateId, req.product.workspaceId).count;
+    const implementationCount = (await database.prepare(
+      "SELECT COUNT(*) AS count FROM product_implementations WHERE template_id = $1 AND workspace_id = $2"
+    ).get(templateId, req.product.workspaceId)).count;
     if (implementationCount) return sendError(res, 409, "This template is used by existing implementations and cannot be deleted.");
-    const result = database.prepare(
-      "DELETE FROM product_templates WHERE id = ? AND workspace_id = ?"
-    ).run(templateId, req.product.workspaceId);
+    const result = await (database.prepare(
+      "DELETE FROM product_templates WHERE id = $1 AND workspace_id = $2"
+    ).run(templateId, req.product.workspaceId));
     if (!result.changes) return sendError(res, 404, "Template not found.");
     return res.json({ success: true });
   });
 
-  app.post("/api/product/implementations", sameOrigin, requireSession, (req, res) => {
+  app.post("/api/product/implementations", sameOrigin, requireSession, async (req, res) => {
     const templateId = validId(req.body.templateId);
     const customerName = requiredText(req.body.customerName, 120);
     if (!templateId || !customerName) return sendError(res, 400, "Choose a template and enter the customer’s company name.");
-    const template = database.prepare(
-      "SELECT id, name, steps_json FROM product_templates WHERE id = ? AND workspace_id = ?"
-    ).get(templateId, req.product.workspaceId);
+    const template = await (database.prepare(
+      "SELECT id, name, steps_json FROM product_templates WHERE id = $1 AND workspace_id = $2"
+    ).get(templateId, req.product.workspaceId));
     if (!template) return sendError(res, 404, "Template not found.");
     const steps = JSON.parse(template.steps_json);
     if (!Array.isArray(steps) || steps.length === 0) return sendError(res, 409, "This template has no steps. Create a new template from a process with steps.");
 
     const rawPortalToken = randomBytes(32).toString("base64url");
-    const createImplementation = database.transaction(() => {
-      const implementation = database.prepare(
-        "INSERT INTO product_implementations (workspace_id, template_id, customer_name, portal_token_hash) VALUES (?, ?, ?, ?) RETURNING id, customer_name, created_at"
-      ).get(req.product.workspaceId, templateId, customerName, hashToken(rawPortalToken));
+    const createImplementation = database.transaction(async () => {
+      const implementation = await (database.prepare(
+        "INSERT INTO product_implementations (workspace_id, template_id, customer_name, portal_token_hash) VALUES ($1, $2, $3, $4) RETURNING id, customer_name, created_at"
+      ).get(req.product.workspaceId, templateId, customerName, hashToken(rawPortalToken)));
       const insertStep = database.prepare(
         `INSERT INTO product_implementation_steps
           (implementation_id, title, description, owner, position, due_at, stage, assignee_user_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`
       );
       const stepIdsByPosition = new Map();
       for (const step of steps) {
         const dueDate = new Date();
         dueDate.setUTCHours(0, 0, 0, 0);
         dueDate.setUTCDate(dueDate.getUTCDate() + (Number.isInteger(step.dueOffsetDays) ? step.dueOffsetDays : 0));
-        const inserted = insertStep.run(
+        const inserted = await (insertStep.run(
           implementation.id,
           step.title,
           step.description || "",
@@ -1393,91 +1434,91 @@ function installProductRoutes(app, db, isProduction) {
           Number.isInteger(step.dueOffsetDays) ? dueDate.toISOString().slice(0, 10) : "",
           step.stage || "Implementation",
           step.assigneeUserId || null
-        );
+        ));
         stepIdsByPosition.set(step.position, inserted.lastInsertRowid);
       }
       const addDependency = database.prepare(
-        "INSERT INTO product_implementation_step_dependencies (implementation_step_id, depends_on_step_id) VALUES (?, ?)"
+        "INSERT INTO product_implementation_step_dependencies (implementation_step_id, depends_on_step_id) VALUES ($1, $2)"
       );
       for (const step of steps) {
         for (const dependencyPosition of step.dependsOnPositions || []) {
           const dependencyId = stepIdsByPosition.get(dependencyPosition);
           const currentStepId = stepIdsByPosition.get(step.position);
           if (!dependencyId || !currentStepId) throw new Error("Template contains an invalid prerequisite reference.");
-          addDependency.run(currentStepId, dependencyId);
+          await (addDependency.run(currentStepId, dependencyId));
         }
       }
-      database.prepare(`
+      await (database.prepare(`
         INSERT INTO product_customer_inputs (implementation_id, requirement_id)
-        SELECT ?, id FROM product_requirements
-        WHERE workspace_id = ? AND (template_id IS NULL OR template_id = ?)
-      `).run(implementation.id, req.product.workspaceId, templateId);
+        SELECT $1, id FROM product_requirements
+        WHERE workspace_id = $2 AND (template_id IS NULL OR template_id = $3)
+      `).run(implementation.id, req.product.workspaceId, templateId));
       return implementation;
     });
-    const implementation = createImplementation();
+    const implementation = await createImplementation();
     return res.status(201).json({
       implementation: { ...implementation, template_name: template.name },
       customerPortalToken: rawPortalToken
     });
   });
 
-  app.post("/api/product/implementations/:implementationId/customer-link", sameOrigin, requireSession, (req, res) => {
+  app.post("/api/product/implementations/:implementationId/customer-link", sameOrigin, requireSession, async (req, res) => {
     const implementationId = validId(req.params.implementationId);
     if (!implementationId) return sendError(res, 400, "Invalid implementation.");
-    const implementation = database.prepare(
-      "SELECT id FROM product_implementations WHERE id = ? AND workspace_id = ?"
-    ).get(implementationId, req.product.workspaceId);
+    const implementation = await (database.prepare(
+      "SELECT id FROM product_implementations WHERE id = $1 AND workspace_id = $2"
+    ).get(implementationId, req.product.workspaceId));
     if (!implementation) return sendError(res, 404, "Implementation not found.");
     const rawToken = randomBytes(32).toString("base64url");
-    database.prepare("UPDATE product_implementations SET portal_token_hash = ? WHERE id = ?")
-      .run(hashToken(rawToken), implementationId);
+    await (database.prepare("UPDATE product_implementations SET portal_token_hash = $1 WHERE id = $2")
+      .run(hashToken(rawToken), implementationId));
     return res.json({ customerPortalToken: rawToken });
   });
 
-  app.get("/api/product/implementations/:implementationId", requireSession, (req, res) => {
+  app.get("/api/product/implementations/:implementationId", requireSession, async (req, res) => {
     const implementationId = validId(req.params.implementationId);
     if (!implementationId) return sendError(res, 400, "Invalid implementation.");
-    const implementation = database.prepare(`
+    const implementation = await (database.prepare(`
       SELECT i.id, i.customer_name, i.created_at, i.template_id, t.name AS template_name,
         i.portal_token_hash IS NOT NULL AS has_customer_link
       FROM product_implementations i
       JOIN product_templates t ON t.id = i.template_id
-      WHERE i.id = ? AND i.workspace_id = ?
-    `).get(implementationId, req.product.workspaceId);
+      WHERE i.id = $1 AND i.workspace_id = $2
+    `).get(implementationId, req.product.workspaceId));
     if (!implementation) return sendError(res, 404, "Implementation not found.");
-    implementation.steps = database.prepare(`
+    implementation.steps = await (database.prepare(`
       SELECT s.id, s.title, s.description, s.owner, s.position, s.status, s.updated_at, s.stage,
         s.assignee_user_id, u.email AS assignee_email,
         s.due_at, s.is_blocked, s.blocker_reason, s.blocker_next_action,
-        COALESCE((SELECT GROUP_CONCAT(parent.title, ', ')
+        COALESCE((SELECT string_agg(parent.title, ', ')
           FROM product_implementation_step_dependencies d
           JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id
           WHERE d.implementation_step_id = s.id AND parent.status != 'done'), '') AS waiting_on
       FROM product_implementation_steps s
       LEFT JOIN product_users u ON u.id = s.assignee_user_id
-      WHERE s.implementation_id = ?
+      WHERE s.implementation_id = $1
       ORDER BY s.position, s.id
-    `).all(implementationId);
-    implementation.requirements = implementationRequirements(implementationId, req.product.workspaceId, implementation.template_id);
+    `).all(implementationId));
+    implementation.requirements = await (implementationRequirements(implementationId, req.product.workspaceId, implementation.template_id));
     return res.json({ implementation });
   });
 
-  app.patch("/api/product/implementations/:implementationId/steps/:stepId", sameOrigin, requireSession, (req, res) => {
+  app.patch("/api/product/implementations/:implementationId/steps/:stepId", sameOrigin, requireSession, async (req, res) => {
     const implementationId = validId(req.params.implementationId);
     const stepId = validId(req.params.stepId);
     if (!implementationId || !stepId) return sendError(res, 400, "Invalid implementation task.");
-    const step = database.prepare(`
+    const step = await (database.prepare(`
       SELECT s.* FROM product_implementation_steps s
       JOIN product_implementations i ON i.id = s.implementation_id
-      WHERE s.id = ? AND s.implementation_id = ? AND i.workspace_id = ?
-    `).get(stepId, implementationId, req.product.workspaceId);
+      WHERE s.id = $1 AND s.implementation_id = $2 AND i.workspace_id = $3
+    `).get(stepId, implementationId, req.product.workspaceId));
     if (!step) return sendError(res, 404, "Implementation task not found.");
     const status = req.body.status === undefined ? step.status : req.body.status;
     const owner = req.body.owner === undefined ? step.owner : typeof req.body.owner === "string" ? req.body.owner.trim().slice(0, 120) : null;
-    const assignee = workspaceAssignee(
+    const assignee = await (workspaceAssignee(
       req.product.workspaceId,
       req.body.assigneeUserId === undefined ? step.assignee_user_id : req.body.assigneeUserId
-    );
+    ));
     const dueAt = req.body.dueAt === undefined ? step.due_at : req.body.dueAt;
     const isBlocked = req.body.isBlocked === undefined ? Boolean(step.is_blocked) : req.body.isBlocked;
     const blockerReason = req.body.blockerReason === undefined ? step.blocker_reason
@@ -1491,24 +1532,24 @@ function installProductRoutes(app, db, isProduction) {
       return sendError(res, 400, "Enter a valid task status, owner, due date, and blocker details.");
     }
     if (status === "done") {
-      const waiting = database.prepare(`
+      const waiting = await (database.prepare(`
         SELECT parent.title FROM product_implementation_step_dependencies d
         JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id
-        WHERE d.implementation_step_id = ? AND parent.status != 'done'
+        WHERE d.implementation_step_id = $1 AND parent.status != 'done'
         LIMIT 1
-      `).get(stepId);
+      `).get(stepId));
       if (waiting) return sendError(res, 409, `Complete prerequisite “${waiting.title}” before marking this task done.`);
     }
-    database.prepare(`
+    await (database.prepare(`
       UPDATE product_implementation_steps
-      SET status = ?, owner = ?, assignee_user_id = ?, due_at = ?, is_blocked = ?, blocker_reason = ?,
-        blocker_next_action = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND implementation_id = ?
-    `).run(status, owner, assignee.id, dueAt, Number(isBlocked), isBlocked ? blockerReason : "", isBlocked ? blockerNextAction : "", stepId, implementationId);
+      SET status = $1, owner = $2, assignee_user_id = $3, due_at = $4, is_blocked = $5, blocker_reason = $6,
+        blocker_next_action = $7, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $8 AND implementation_id = $9
+    `).run(status, owner, assignee.id, dueAt, isBlocked, isBlocked ? blockerReason : "", isBlocked ? blockerNextAction : "", stepId, implementationId));
     return res.json({ success: true });
   });
 
-  app.post("/api/product/requirements", sameOrigin, requireSession, (req, res) => {
+  app.post("/api/product/requirements", sameOrigin, requireSession, async (req, res) => {
     const name = requiredText(req.body.name, 120);
     const description = typeof req.body.description === "string" ? req.body.description.trim().slice(0, 500) : "";
     const templateValue = req.body.templateId;
@@ -1519,33 +1560,33 @@ function installProductRoutes(app, db, isProduction) {
     if (!name || invalidTemplate || !INPUT_TYPES.has(inputType)) {
       return sendError(res, 400, "Enter a request name, valid template scope, and supported response type.");
     }
-    if (templateId && !database.prepare(
-      "SELECT id FROM product_templates WHERE id = ? AND workspace_id = ?"
-    ).get(templateId, req.product.workspaceId)) return sendError(res, 404, "Template not found.");
-    const requirementCount = database.prepare(
-      "SELECT COUNT(*) AS count FROM product_requirements WHERE workspace_id = ?"
-    ).get(req.product.workspaceId).count;
+    if (templateId && !await (database.prepare(
+      "SELECT id FROM product_templates WHERE id = $1 AND workspace_id = $2"
+    ).get(templateId, req.product.workspaceId))) return sendError(res, 404, "Template not found.");
+    const requirementCount = (await database.prepare(
+      "SELECT COUNT(*) AS count FROM product_requirements WHERE workspace_id = $1"
+    ).get(req.product.workspaceId)).count;
     if (requirementCount >= 50) return sendError(res, 409, "A workspace can have up to 50 customer information requests.");
     if (req.body.required !== undefined && typeof req.body.required !== "boolean") {
       return sendError(res, 400, "Choose whether this information request is required.");
     }
-    const required = req.body.required === false ? 0 : 1;
-    const createRequirement = database.transaction(() => {
-      const requirement = database.prepare(
+    const required = req.body.required !== false;
+    const createRequirement = database.transaction(async () => {
+      const requirement = await (database.prepare(
         `INSERT INTO product_requirements (workspace_id, template_id, name, description, required, input_type)
-         VALUES (?, ?, ?, ?, ?, ?) RETURNING id, template_id, name, description, required, input_type`
-      ).get(req.product.workspaceId, templateId, name, description, required, inputType);
-      database.prepare(`
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, template_id, name, description, required, input_type`
+      ).get(req.product.workspaceId, templateId, name, description, required, inputType));
+      await (database.prepare(`
         INSERT INTO product_customer_inputs (implementation_id, requirement_id)
-        SELECT id, ? FROM product_implementations
-        WHERE workspace_id = ? AND (? IS NULL OR template_id = ?)
-      `).run(requirement.id, req.product.workspaceId, templateId, templateId);
+        SELECT id, $1 FROM product_implementations
+        WHERE workspace_id = $2 AND ($3::integer IS NULL OR template_id = $3)
+      `).run(requirement.id, req.product.workspaceId, templateId));
       return requirement;
     });
-    return res.status(201).json({ requirement: createRequirement() });
+    return res.status(201).json({ requirement: await createRequirement() });
   });
 
-  app.patch("/api/product/requirements/:requirementId", sameOrigin, requireSession, (req, res) => {
+  app.patch("/api/product/requirements/:requirementId", sameOrigin, requireSession, async (req, res) => {
     const requirementId = validId(req.params.requirementId);
     const name = requiredText(req.body.name, 120);
     const description = typeof req.body.description === "string" ? req.body.description.trim().slice(0, 500) : "";
@@ -1554,54 +1595,57 @@ function installProductRoutes(app, db, isProduction) {
     if (!requirementId || !name || !INPUT_TYPES.has(inputType) || typeof required !== "boolean") {
       return sendError(res, 400, "Enter a request name, supported response type, and required/optional setting.");
     }
-    const saved = database.prepare(`
+    const saved = await (database.prepare(`
       UPDATE product_requirements
-      SET name = ?, description = ?, input_type = ?, required = ?
-      WHERE id = ? AND workspace_id = ?
-    `).run(name, description, inputType, Number(required), requirementId, req.product.workspaceId);
+      SET name = $1, description = $2, input_type = $3, required = $4
+      WHERE id = $5 AND workspace_id = $6
+    `).run(name, description, inputType, required, requirementId, req.product.workspaceId));
     if (!saved.changes) return sendError(res, 404, "Customer information request not found.");
     return res.json({ success: true });
   });
 
-  app.delete("/api/product/requirements/:requirementId", sameOrigin, requireSession, (req, res) => {
+  app.delete("/api/product/requirements/:requirementId", sameOrigin, requireSession, async (req, res) => {
     const requirementId = validId(req.params.requirementId);
     if (!requirementId) return sendError(res, 400, "Invalid customer information request.");
-    const result = database.prepare(
-      "DELETE FROM product_requirements WHERE id = ? AND workspace_id = ?"
-    ).run(requirementId, req.product.workspaceId);
+    const result = await (database.prepare(
+      "DELETE FROM product_requirements WHERE id = $1 AND workspace_id = $2"
+    ).run(requirementId, req.product.workspaceId));
     if (!result.changes) return sendError(res, 404, "Customer information request not found.");
     return res.json({ success: true });
   });
 
-  app.get("/api/product/customer/:token", (req, res) => {
+  app.get("/api/product/customer/:token", async (req, res) => {
     const token = req.params.token;
     if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return sendError(res, 404, "Customer link not found.");
-    const implementation = database.prepare(
-      "SELECT id, template_id, customer_name FROM product_implementations WHERE portal_token_hash = ?"
-    ).get(hashToken(token));
+    const implementation = await (database.prepare(`
+      SELECT i.id, i.workspace_id, i.template_id, i.customer_name
+      FROM product_implementations i
+      JOIN product_workspace_subscriptions s ON s.workspace_id = i.workspace_id
+      WHERE i.portal_token_hash = $1 AND s.expires_at > CURRENT_TIMESTAMP
+    `).get(hashToken(token)));
     if (!implementation) return sendError(res, 404, "Customer link not found or no longer available.");
-    const workspaceId = database.prepare(
-      "SELECT workspace_id FROM product_implementations WHERE id = ?"
-    ).get(implementation.id).workspace_id;
-    const requirements = implementationRequirements(implementation.id, workspaceId, implementation.template_id);
+    const requirements = await (implementationRequirements(implementation.id, implementation.workspace_id, implementation.template_id));
     res.setHeader("Referrer-Policy", "no-referrer");
     return res.json({ customerName: implementation.customer_name, requirements });
   });
 
-  app.post("/api/product/customer/:token", sameOrigin, (req, res) => {
+  app.post("/api/product/customer/:token", sameOrigin, async (req, res) => {
     const token = req.params.token;
     if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return sendError(res, 404, "Customer link not found.");
     const inputs = req.body.inputs;
     if (!Array.isArray(inputs) || inputs.length > 50) return sendError(res, 400, "Submit a valid list of information.");
-    const implementation = database.prepare(
-      "SELECT id, workspace_id, template_id FROM product_implementations WHERE portal_token_hash = ?"
-    ).get(hashToken(token));
+    const implementation = await (database.prepare(`
+      SELECT i.id, i.workspace_id, i.template_id
+      FROM product_implementations i
+      JOIN product_workspace_subscriptions s ON s.workspace_id = i.workspace_id
+      WHERE i.portal_token_hash = $1 AND s.expires_at > CURRENT_TIMESTAMP
+    `).get(hashToken(token)));
     if (!implementation) return sendError(res, 404, "Customer link not found or no longer available.");
-    const validRequirements = implementationRequirements(
+    const validRequirements = (await implementationRequirements(
       implementation.id,
       implementation.workspace_id,
       implementation.template_id
-    ).map((requirement) => ({ ...requirement, current_value: requirement.value }));
+    )).map((requirement) => ({ ...requirement, current_value: requirement.value }));
     const entries = [];
     const entryIds = new Set();
     for (const input of inputs) {
@@ -1630,16 +1674,16 @@ function installProductRoutes(app, db, isProduction) {
       return value && inputValueError(requirement.input_type, value);
     });
     if (invalidSavedValue) return sendError(res, 400, `${invalidSavedValue.name} must be corrected before submission.`);
-    const saveInputs = database.transaction(() => {
+    const saveInputs = database.transaction(async () => {
       const save = database.prepare(`
         INSERT INTO product_customer_inputs (implementation_id, requirement_id, value, updated_at)
-        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
         ON CONFLICT (implementation_id, requirement_id)
         DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
       `);
-      for (const entry of entries) save.run(implementation.id, entry.requirementId, entry.value);
+      for (const entry of entries) await (save.run(implementation.id, entry.requirementId, entry.value));
     });
-    saveInputs();
+    await saveInputs();
     res.setHeader("Referrer-Policy", "no-referrer");
     return res.json({ success: true });
   });

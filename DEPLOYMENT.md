@@ -1,125 +1,140 @@
-# Relay release and operations checklist
+# Relay deployment and operations
 
-This checklist covers repository and deployment work. A successful test run or local preview does not confirm that a public deployment is ready.
+Relay requires PostgreSQL. It does not create, copy, or fall back to a local SQLite database. Set `DATABASE_URL` before starting the server; database initialization applies the checked-in, versioned SQL migrations and the health endpoint waits for that initialization to finish. `vercel.json` explicitly includes the migration SQL files in the serverless function bundle.
 
-## Before every release
+## Supabase setup
 
-- Review `git status --short`, `git diff --cached`, and `git diff`. Understand every changed file before including it; do not commit local databases, secrets, scratch files, or unrelated work.
-- Run `npm test` and `git diff --check`.
-- Build the production image with `docker compose build`.
-- Confirm `.env` is local-only and contains deployment values, not examples. Never commit `.env`, provider keys, database backups, customer exports, or production database files.
-- Confirm the intended public domain serves HTTPS and `PUBLIC_BASE_URL` exactly matches it.
-- Review `public/privacy.html` and `public/terms.html` against the real operator, hosting, provider, retention, support, legal, payment, and cancellation arrangements before accepting customer information or payment.
+1. Create a Supabase project and choose the production region and backup/PITR plan.
+2. In **Connect**, select the **Transaction pooler** connection string (port `6543`) for the serverless application. The username is usually `postgres.<project-ref>`. Do not use the project database password placeholder; use the password generated for the project.
+3. Use the URL form below as a reference and replace every bracketed value. The application enforces certificate-verified TLS for Supabase hosts, even if the URL says `sslmode=require`.
 
-## Required configuration
+   ```text
+   postgresql://postgres.<project-ref>:<database-password>@<region>.pooler.supabase.com:6543/postgres?sslmode=require
+   ```
 
-Set these values in the deployment secret manager or an appropriately protected `.env` file:
+   Keep the URL private. Do not put it in browser code, logs, screenshots, source control, or support requests. Relay uses a small `pg` connection pool (maximum three clients per process), ordinary parameterized queries with PostgreSQL `$1` placeholders, and no named/prepared statements or session state. The transaction pooler is therefore suitable for Vercel serverless deployments.
+4. Set `DATABASE_URL` in the deployment secret manager. On Vercel, add it under **Project → Settings → Environment Variables** for Production, Preview, and Development as needed. Use a separate, isolated database or explicitly separate schema for Preview/Development; never point those environments at production.
+5. Add the other required provider secrets listed below. Do not commit `.env`; `.env.example` contains placeholders only.
+
+## Configuration
 
 | Variable | Purpose |
 | --- | --- |
-| `PORT` | Application port; Compose sets this to `3000`. |
-| `DATABASE_PATH` | SQLite database path; Compose sets this to `/app/data/relay.db`. Keep `/app/data` on persistent storage. |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot credential for inquiry notifications; required by the current Compose configuration. |
-| `TELEGRAM_CHAT_ID` | Destination for inquiry notifications; required by the current Compose configuration. |
-| `INQUIRIES_API_TOKEN` | Strong random bearer token for the inquiry dashboard API. |
-| `RESEND_API_KEY` | Email provider API key used to deliver password recovery links. |
+| `DATABASE_URL` | Required PostgreSQL URL. Use Supabase's transaction pooler for Vercel/serverless. |
+| `PORT` | HTTP port; Vercel provides this automatically. Docker Compose defaults to `3000`. |
+| `INQUIRIES_API_TOKEN` | Strong random bearer token for reading website inquiries. |
+| `OWNER_ADMIN_TOKEN` | Separate strong random bearer token for the hidden owner console and paid workspace provisioning/renewal. |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional inquiry notification provider credentials. |
+| `RESEND_API_KEY` | Email provider API key for password recovery. |
 | `AUTH_EMAIL_FROM` | Sender address verified with the email provider. |
+| `INQUIRY_NOTIFICATION_EMAIL` | Inbox for contact and demo inquiry notifications. |
 | `PUBLIC_BASE_URL` | Public HTTPS origin used in password recovery links. |
-| `TRUST_PROXY_HOPS` | Number of trusted reverse proxies in front of Relay. Compose defaults to one local host proxy; only use this when the application port is not directly reachable by untrusted clients. |
-| `OPENAI_API_KEY` | Optional server-side secret for Relay Help. Leave unset to disable Ray; configure only if Ray is enabled for launch. Never expose this value to browser code. |
-| `OPENAI_MODEL` | Optional AI model identifier for Relay Help; defaults to `gpt-4o-mini` when Ray is configured. |
+| `TRUST_PROXY_HOPS` | Number of trusted reverse proxies in front of Relay. Configure only when appropriate for the host. |
+| `OPENAI_API_KEY` | Optional server-side secret for Ray. Leave unset to disable Ray. |
+| `OPENAI_MODEL` | Optional Ray model name; defaults to `gpt-4o-mini`. |
 
-Do not put any secret in browser code, page source, screenshots, support messages, or source control. Use unique production credentials and rotate them if exposed.
+Use unique production credentials and rotate them if exposed. Never put secrets in frontend configuration.
 
-## First deployment
+## Manual paid workspace access
 
-1. Choose a production host and configure a domain, HTTPS, restart behavior, access to deployment logs, and a persistent Docker volume for `/app/data`. The Compose port binds to host loopback (`127.0.0.1:3000`); configure a host reverse proxy to terminate HTTPS and forward traffic locally to that port.
-2. Copy `.env.example` to `.env` locally or transfer its variables to the host's secret manager. Replace every example value. `OPENAI_API_KEY` may remain blank if Ray is disabled. Verify the sending domain and sender address with the email provider.
-3. Build and start the service:
+Relay does not process payments. Public workspace creation is disabled. Clients use **Book a Demo** or **Contact**; after you confirm payment, activate them in the separate owner console. The page is intentionally not linked from customer-facing navigation and asks for an owner-only secret; it is not a public signup or approval link.
+
+1. In Vercel, open the Relay project and go to **Settings → Environment Variables**.
+2. Add `OWNER_ADMIN_TOKEN` for **Production**. Generate a strong value locally in PowerShell:
 
    ```powershell
-   docker compose build
-   docker compose up -d
-   docker compose ps
-   docker compose logs --tail 100 relay
+   $bytes = New-Object byte[] 32
+   $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+   $rng.GetBytes($bytes)
+   $ownerAdminToken = [Convert]::ToBase64String($bytes)
+   $rng.Dispose()
+   $ownerAdminToken
    ```
 
-4. From a browser or shell, check the public `https://<your-domain>/healthz`, homepage, pricing, terms, privacy, and product pages. Health must return `200` and report `"database":"ok"`.
-5. Using a test account and test customer data, verify account creation, sign-in/out, password recovery email delivery, password reset and old-session invalidation, teammate invitation, process/template setup, implementation creation, customer information submission, and workspace separation.
-6. Submit an inquiry using the public form. Confirm the response is successful, the inquiry is available to the authorized dashboard, and the notification arrives. Check logs for notification failures. Do not use real customer data for this smoke test.
-7. Restart the service and repeat the health check and sign-in check. Confirm the named volume still contains the database.
+   Copy the generated value directly into Vercel as `OWNER_ADMIN_TOKEN`. Treat it as a password: it can create and renew paid client workspaces. Do not put it in source control, send it to customers, or reuse `INQUIRIES_API_TOKEN`. If exposed, replace it in Vercel and redeploy.
+3. Keep `INQUIRIES_API_TOKEN` as a separate secret for the inquiries dashboard; it does not grant owner-console access.
+4. Save the variable and redeploy the Production deployment so the server receives it.
+5. Open `https://<your-domain>/relay-owner-console.html` directly, enter `OWNER_ADMIN_TOKEN`, and select **Continue**. This page is not linked in customer navigation and has `noindex`; actual workspace data and actions are protected by the server token. Do not rely on the hidden URL as the security boundary.
+6. After payment is confirmed, enter the workspace name and the client's owner's email, then select **Approve payment & create access**. Relay creates the account and grants one calendar month starting immediately.
+7. Copy the generated initial password from the result and send it to the client through a secure channel. It is shown only in that result; it is not emailed. The client signs in at `https://<your-domain>/product.html`.
+8. After renewal payment, find the client in **Client workspaces** and select **Add 1 month**. If the subscription has expired, the month starts immediately; if still active, the extra month is added after its current expiry.
 
-The GitHub Actions workflow runs the tests, validates Compose without an AI provider key, builds the production image, and starts it with an isolated volume under the Compose read-only, non-root, dropped-capability runtime constraints. Its smoke test checks health, static product delivery, production HSTS and cookie attributes, account creation and authenticated access, session/data persistence after container restart, graceful password-recovery and Ray behavior without provider keys, and inquiry acceptance with no Telegram provider. It does not send data to real third-party providers. Treat a successful workflow run as the Docker build verification; the local test suite does not replace it.
+The client can invite teammates to their active workspace without separate approval or payment; there is no seat limit currently. All workspace members lose access when that workspace's subscription expires. The workspace provisioning command remains available for operator use, but is not needed for this owner-console workflow. The database migration does not grant access to existing workspaces automatically.
 
-## SQLite backup
+Demo and contact forms submit to Relay's `/api/inquiries` endpoint and require the deployed website/server and a configured `DATABASE_URL`. Opening an HTML page directly as a `file://` URL will not submit inquiries; use the deployed HTTPS website or run Relay with its database configured.
 
-The backup command uses SQLite's online backup API and checks the output integrity. It refuses to overwrite an existing destination:
+To receive each submitted contact or demo inquiry by email, configure `INQUIRY_NOTIFICATION_EMAIL`, `RESEND_API_KEY`, and `AUTH_EMAIL_FROM` in the deployment environment. Verify the sender address/domain with Resend. The inquiry is saved even if the notification provider is temporarily unavailable; check the `inquiry_email_notification_failed` server event if an email does not arrive.
+
+## Schema initialization and deployment
+
+The application automatically applies unapplied files in `migrations/` in numeric order, records them in `relay_schema_migrations`, and only begins serving after initialization succeeds. Migrations run transactionally and the initial schema is safe for a new, empty Supabase database.
+
+For an explicit pre-deploy initialization, run from a trusted machine with the target `DATABASE_URL` configured:
 
 ```powershell
-npm run backup -- .\backups\relay-2026-10-26.db
+npm ci
+npm run db:migrate
 ```
 
-Set `DATABASE_PATH` to the database being backed up. For a Compose deployment, create the snapshot inside the mounted data volume, then copy it out to a separate protected destination:
+Deploy the application only after checking that the URL points to the intended Supabase project. For Vercel, configure the project environment variables, deploy, and verify:
+
+1. `https://<your-domain>/healthz` returns HTTP `200` with `{"status":"ok","database":"ok"}`.
+2. A manually provisioned, paid test workspace can sign in/out, and its session is denied when the subscription expires.
+3. Password recovery, invitation acceptance, process/template creation, implementation tasks, requirements/customer input, account deletion, and inquiry intake behave as expected using test data.
+4. Ray responds only when configured; without its provider key the API reports that Ray is unavailable. Verify inquiry and password-recovery providers using non-customer test recipients.
+5. Review logs and confirm they contain no credentials, passwords, reset/invitation/customer-link tokens, authorization headers, or customer-submitted values.
+
+The checked-in migrations create an empty PostgreSQL schema. They do **not** import `relay.db` or any other local SQLite file. Existing SQLite data is left untouched; no hosted database was contacted or modified for this repository change. A data transfer requires separate authorization, an explicitly designed export/import process, verified backups, and a tested cutover plan.
+
+For Docker Compose, copy `.env.example` to `.env`, replace all placeholders, configure `DATABASE_URL` and provider secrets, and run:
 
 ```powershell
-docker compose exec -T relay node scripts/backup-database.js /app/data/relay-backup.db
-docker compose cp relay:/app/data/relay-backup.db .\relay-backup.db
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail 100 relay
 ```
 
-The copied backup must not live only in the same host or volume as the service. Restrict access and encrypt it using the chosen backup storage. The 30-day maximum is a proposed operational target in this checklist, not a verified host setting or legal conclusion; confirm it is appropriate and achievable with the actual provider and applicable obligations. Maintain a restricted deletion ledger outside the application database and backup snapshots, containing only the account identifier and deletion date needed to replay removals. Record workspace ownership transfers/deletions that must be replayed as well. Before restoring a snapshot, apply every later deletion and ownership change so deleted records are not returned to service or removed users regain control. Remove ledger entries after all backups that could contain the data have expired. These backup and restore controls are operational responsibilities outside the application and must be exercised before onboarding customers.
+Compose runs the service as non-root with a read-only root filesystem. PostgreSQL persistence and backups are managed by Supabase, not by an application volume.
 
-## Restore exercise
+## Tests and CI
 
-Practice with a non-production copy before relying on a backup:
+Tests require `RELAY_TEST_DATABASE_URL` and refuse to run unless its database name is exactly `relay_test`. The product suite creates a unique random schema, points its server/test connections at that schema, and drops only that schema afterward. It never truncates or drops a database or shared schema. To run locally, create a dedicated disposable database named `relay_test`, then set the variable to its connection URL:
 
-1. Stop the service without removing its container: `docker compose stop relay`.
-2. Preserve a copy of the current database before replacing it:
+```powershell
+$env:RELAY_TEST_DATABASE_URL = "postgresql://postgres:password@localhost:5432/relay_test"
+npm test
+```
 
-   ```powershell
-   docker compose cp relay:/app/data/relay.db .\relay-before-restore.db
-   ```
+GitHub Actions starts an isolated PostgreSQL service for the job, runs tests against unique schemas, and uses a separate `relay_smoke` schema for its container smoke test. The local suite requires a reachable PostgreSQL service; without one, database execution is not locally verified.
 
-   Do not replace a live database. If SQLite sidecars remain after a clean stop, preserve them with the database.
-3. Copy the selected backup to `/app/data/relay.db` in the mounted volume:
+## Backups and restore
 
-   ```powershell
-   docker compose cp .\relay-backup.db relay:/app/data/relay.db
-   ```
+Use Supabase's managed backup/PITR facilities where available. To create a portable custom-format dump from a trusted machine, install the PostgreSQL client tools (`pg_dump`), set `DATABASE_URL` in the environment, and run:
 
-4. Start the service: `docker compose start relay`.
-5. Check `/healthz`, sign in with the test account, and verify the expected test records.
-6. Record the restore result and elapsed time. Keep the preserved files until recovery is confirmed.
+```powershell
+npm run backup -- .\backups\relay-2026-10-29.dump
+pg_restore --list .\backups\relay-2026-10-29.dump
+```
+
+The helper uses `pg_dump`, refuses to overwrite an existing destination, and restricts output file permissions. Keep encrypted backups separately from the service, limit access, and follow a retention schedule consistent with customer obligations. A dump is not verified until its contents are listed and it has been restored to an isolated non-production database and checked.
+
+Restore only into a deliberately selected non-production database first. For example, with `DATABASE_URL` explicitly set to a disposable restore target, use:
+
+```powershell
+pg_restore --clean --if-exists --no-owner --no-acl --dbname="$env:DATABASE_URL" .\backups\relay-2026-10-29.dump
+npm run db:migrate
+```
+
+Do not run a restore command against production without an approved incident/recovery plan. Before restoring an older snapshot, account for any later account deletions, ownership changes, or other requests that must not be reversed. Record and rehearse recovery steps; confirm the target URL before each operation.
 
 ## Monitoring and incident response
 
-### Routine checks
+- Monitor `/healthz` externally and alert on repeated failures. The endpoint reports database readiness, not provider health or an alerting service.
+- Review `request_failed`, `health_check_failed`, `database_initialization_failed`, `inquiry_notification_failed`, `password_reset_email_failed`, and `relay_help_provider_failed` events. Restrict log access and retention.
+- Monitor Supabase connection usage, database capacity, backup/PITR status, application errors, email delivery, inquiry notifications, and provider error rates.
+- Set a named operator and support contact. For suspected credential exposure, rotate the provider secret and redeploy; restrict access to snapshots and logs during an incident.
+- Account deletion removes the user's records, removes sole-member workspaces, and requires transferring ownership of shared workspaces. Confirm applicable retention and deletion obligations with qualified counsel.
+- Review `PRIVACY-TERMS-REVIEW.md` against the actual operator, host, region, providers, retention, support, and customer agreement before accepting customer information or payment.
 
-- Monitor `/healthz` from outside the host at an interval appropriate to the service. Alert on repeated failures, not a single transient probe; test that alerts reach a monitored person.
-- Collect container/application logs centrally with restricted access and a defined retention period. Do not log request bodies, passwords, reset/invitation/customer-link tokens, authorization headers, AI keys, or customer-submitted values.
-- Review `request_failed`, `health_check_failed`, `inquiry_notification_failed`, `password_reset_email_failed`, and `relay_help_provider_failed` events. Correlate by event and timestamp; do not copy credentials or sensitive payloads into support tickets.
-- Monitor disk space and SQLite volume capacity, backup job success and age, container restarts, email delivery, inquiry notifications, and provider error rates.
-- Keep an operator and backup contact assigned. Document who receives alerts, who can stop/restart the service, and where the recovery instructions and encrypted backups are held.
-
-### Incident response runbook
-
-1. **Triage and record:** note start time, affected service/workspaces, symptoms, and actions. Use synthetic/test accounts to reproduce where possible. Do not put customer secrets or full customer records into incident notes.
-2. **Contain:** for suspected credential exposure, revoke/rotate the affected provider key at the provider, update the host secret store, and restart/redeploy. For suspected customer-link exposure, rotate the affected link. If the application itself is actively exposing data, restrict public access at the reverse proxy/host while preserving the database for investigation.
-3. **Protect evidence:** restrict access to relevant logs and database/volume snapshots. Do not overwrite or publicly share evidence. Preserve timestamps and record who accessed or changed production systems.
-4. **Restore service safely:** use the restore exercise above on a copy first when feasible. Before restoring an older snapshot, replay the deletion/ownership ledger and verify the resulting database. Never restore a test snapshot over production.
-5. **Notify and escalate:** promptly contact the named service operator and hosting/provider support. Assess whether affected customers, regulators, or other parties need notice under applicable contracts and law; obtain appropriate qualified advice. Do not promise a notice deadline from this generic checklist.
-6. **Recover and verify:** restore normal access only after checking `/healthz`, sign-in, a test workflow, database persistence, and provider connectivity. Confirm rate/error monitoring is active.
-7. **Learn and close:** document root cause, scope, data involved, containment, recovery time, customer communications, and corrective actions. Review secrets, access, backup state, and tests; assign owners and due dates.
-
-These are operational instructions, not a configured monitoring or incident-response service. Test the alert path and runbook with a non-production exercise before inviting customers.
-
-## Operational responsibilities
-
-- Configure external uptime and log monitoring; the health endpoint is a probe, not an alerting service.
-- Review `inquiry_notification_failed`, `password_reset_email_failed`, and `request_failed` events. Inquiry records are stored even if notification delivery fails.
-- After explicit consent, Relay Help sends the user's question and recent private conversation to the configured AI service. The assistant receives only a curated user-facing Relay guide, never account or customer workspace records. Users can clear their own help history and withdraw consent in the chat panel.
-- Ray is optional at deployment. If `OPENAI_API_KEY` is absent, the product API reports that Ray is unavailable; verify the UI communicates this clearly before disabling it for a customer-facing launch.
-- Set a person and monitored support channel responsible for customer requests and incidents.
-- Account deletion is available in Settings. It removes the account from the live database, deletes workspaces where that account was the sole member, and removes a departing member from shared workspaces; an owner must transfer ownership to a remaining member. Configure backup expiry at 30 days or less and reapply post-snapshot deletion requests before restoring a database.
-- Before charging customers, have the service provider, pricing, billing, renewal, cancellation/refund terms, governing law, privacy obligations, and support commitments reviewed and stated in writing.
-- Complete the privacy and service-terms review checklist in `PRIVACY-TERMS-REVIEW.md` using the actual operator, jurisdiction, host, providers, and customer agreement; it is a review aid, not legal advice.
-- Keep release artifacts and backups separate from the working directory and user-local database.
+These are operational instructions, not a configured monitoring or incident-response service. Test the alert path and recovery process using non-production data before onboarding customers.

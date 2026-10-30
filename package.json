@@ -7,13 +7,15 @@
   "scripts": {
     "start": "node server.js",
     "backup": "node scripts/backup-database.js",
+    "db:migrate": "node scripts/migrate.js",
+    "provision:workspace": "node scripts/provision-workspace.js",
     "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "better-sqlite3": "^12.2.0",
-    "express": "^4.22.3"
+    "express": "^4.22.3",
+    "pg": "^8.23.1"
   }
 }

@@ -1,27 +1,16 @@
-FROM node:22-bookworm-slim AS build
-
-WORKDIR /app
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
-
-FROM node:22-bookworm-slim AS runtime
+FROM node:22-bookworm-slim
 
 ENV NODE_ENV=production \
-    PORT=3000 \
-    DATABASE_PATH=/app/data/relay.db
+    PORT=3000
 
 WORKDIR /app
 
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 COPY --chown=node:node package.json server.js db.js product-routes.js relay-help-content.js ./
-COPY --chown=node:node public ./public
+COPY --chown=node:node migrations ./migrations
 COPY --chown=node:node scripts ./scripts
-RUN mkdir -p /app/data && chown node:node /app/data
+COPY --chown=node:node public ./public
 
 USER node
 

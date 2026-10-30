@@ -16,15 +16,11 @@
       <p class="eyebrow">Customer implementation workspace</p>
       <h1 id="auth-title">Make onboarding easier to run.</h1>
       <p class="muted" id="auth-intro">Plan your process, guide each customer, and see what needs attention.</p>
-      <div class="auth-tabs" id="auth-tabs" role="tablist" aria-label="Account options">
+      <div class="auth-tabs" id="auth-tabs" role="tablist" aria-label="Account options" hidden>
         <button class="tab active" id="login-tab" type="button" role="tab" aria-selected="true">Sign in</button>
-        <button class="tab" id="signup-tab" type="button" role="tab" aria-selected="false">Create workspace</button>
+        <button class="tab" id="signup-tab" type="button" role="tab" aria-selected="false">Create invited account</button>
       </div>
       <form id="auth-form">
-        <div class="field" id="workspace-field" hidden>
-          <label for="workspace-name">Workspace name</label>
-          <input id="workspace-name" name="workspaceName" maxlength="100" autocomplete="organization">
-        </div>
         <div class="field">
           <label for="auth-email">Email</label>
           <input id="auth-email" name="email" type="email" maxlength="254" autocomplete="email" required>
@@ -68,7 +64,7 @@
         </form>
       </section>
     </section>
-    <p class="auth-foot">A clear, practical home for customer onboarding. <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+    <p class="auth-foot">Need Relay for your team? <a href="demo.html">Book a demo</a> or <a href="contact.html">contact us</a>. <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
   </main>
 
   <div id="app-shell" class="app-shell" hidden>

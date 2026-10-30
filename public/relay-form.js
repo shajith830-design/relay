@@ -16,6 +16,12 @@ document.querySelectorAll("#inquiry-form").forEach((form) => {
       `Details: ${data.get("details")}`
     ].join("\n");
 
+    if (window.location.protocol === "file:") {
+      status.classList.add("error");
+      status.textContent = "This form needs the hosted Relay website. Opening a local HTML file cannot submit inquiries.";
+      return;
+    }
+
     button.disabled = true;
     button.textContent = "Sending...";
     status.className = "form-status";

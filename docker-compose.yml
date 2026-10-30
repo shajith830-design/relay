@@ -11,7 +11,7 @@ services:
     environment:
       PORT: "3000"
       NODE_ENV: production
-      DATABASE_PATH: /app/data/relay.db
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the Supabase PostgreSQL pooler URL}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:?Set TELEGRAM_CHAT_ID}
       INQUIRIES_API_TOKEN: ${INQUIRIES_API_TOKEN:?Set a strong INQUIRIES_API_TOKEN}
@@ -21,11 +21,7 @@ services:
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
-    volumes:
-      - relay-data:/app/data
     read_only: true
-    tmpfs:
-      - /tmp
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -40,6 +36,3 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
-
-volumes:
-  relay-data:

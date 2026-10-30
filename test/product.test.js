@@ -1,18 +1,20 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const { once } = require("node:events");
-const fs = require("node:fs");
 const http = require("node:http");
-const Database = require("better-sqlite3");
 const net = require("node:net");
-const os = require("node:os");
 const path = require("node:path");
 const { after, before, test } = require("node:test");
+const { Pool } = require("pg");
+const { makePasswordHash } = require("../product-auth");
 
 let serverProcess;
-let tempDirectory;
+let schemaAdminPool;
+let testPool;
+let testDatabaseUrl;
+let testSchema;
 let baseUrl;
 let emailServer;
 let emailMessages = [];
@@ -33,17 +35,67 @@ async function availablePort() {
 
 async function request(route, options = {}) {
   const headers = new Headers(options.headers || {});
+  const { adminToken, ...requestOptions } = options;
+  if (adminToken) headers.set("Authorization", `Bearer ${adminToken}`);
   headers.set("Origin", options.origin || baseUrl);
   if (options.cookie) headers.set("Cookie", options.cookie);
   if (options.body !== undefined) headers.set("Content-Type", "application/json");
   const response = await fetch(`${baseUrl}${route}`, {
-    ...options,
+    ...requestOptions,
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: "no-store"
   });
   const data = await response.json().catch(() => null);
   return { response, data };
+}
+
+async function testQuery(sql, values = []) {
+  return testPool.query(sql, values);
+}
+
+async function createPaidTestWorkspace({ email, password, workspaceName }) {
+  const passwordHash = await makePasswordHash(password);
+  const client = await testPool.connect();
+  let user;
+  let workspace;
+  try {
+    await client.query("BEGIN");
+    const userResult = await client.query(
+      "INSERT INTO product_users (email, password_hash) VALUES ($1, $2) RETURNING id, email",
+      [email, passwordHash]
+    );
+    user = userResult.rows[0];
+    const workspaceResult = await client.query(
+      "INSERT INTO product_workspaces (name) VALUES ($1) RETURNING id, name",
+      [workspaceName]
+    );
+    workspace = workspaceResult.rows[0];
+    await client.query(
+      "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
+      [workspace.id, user.id]
+    );
+    await client.query(`
+      INSERT INTO product_workspace_subscriptions (workspace_id, activated_at, expires_at)
+      VALUES ($1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 month')
+    `, [workspace.id]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  const login = await request("/api/product/auth/login", {
+    method: "POST",
+    body: { email, password }
+  });
+  assert.equal(login.response.status, 200, JSON.stringify(login.data));
+  return {
+    user,
+    workspace,
+    cookie: login.response.headers.get("set-cookie").split(";")[0]
+  };
 }
 
 async function waitForServer() {
@@ -59,7 +111,21 @@ async function waitForServer() {
 }
 
 before(async () => {
-  tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "relay-product-test-"));
+  const configuredTestDatabaseUrl = process.env.RELAY_TEST_DATABASE_URL?.trim();
+  if (!configuredTestDatabaseUrl) {
+    throw new Error("Set RELAY_TEST_DATABASE_URL to an explicitly named relay_test PostgreSQL database before running tests.");
+  }
+  const databaseUrl = new URL(configuredTestDatabaseUrl);
+  if (!["postgres:", "postgresql:"].includes(databaseUrl.protocol)
+    || decodeURIComponent(databaseUrl.pathname.slice(1)) !== "relay_test") {
+    throw new Error("RELAY_TEST_DATABASE_URL must point to a database named exactly relay_test; no other database will be modified.");
+  }
+  testSchema = `relay_test_${process.pid}_${Date.now()}`;
+  schemaAdminPool = new Pool({ connectionString: configuredTestDatabaseUrl, max: 1 });
+  await schemaAdminPool.query(`CREATE SCHEMA "${testSchema}"`);
+  databaseUrl.searchParams.set("options", `-c search_path=${testSchema}`);
+  testDatabaseUrl = databaseUrl.toString();
+  testPool = new Pool({ connectionString: testDatabaseUrl, max: 2 });
   emailMessages = [];
   emailProviderStatus = 200;
   assistantProviderStatus = 200;
@@ -103,11 +169,12 @@ before(async () => {
       ...process.env,
       NODE_ENV: "test",
       PORT: String(port),
-      DATABASE_PATH: path.join(tempDirectory, "test.db"),
+      DATABASE_URL: testDatabaseUrl,
       PUBLIC_BASE_URL: baseUrl,
       RESEND_API_KEY: "test-email-key",
       AUTH_EMAIL_FROM: "Relay Tests <test@example.test>",
       AUTH_EMAIL_API_URL: `http://127.0.0.1:${emailPort}/emails`,
+      INQUIRY_NOTIFICATION_EMAIL: "relayautomations@gmail.com",
       OPENAI_API_KEY: "test-assistant-key",
       OPENAI_MODEL: "test-help-model",
       RELAY_HELP_API_URL: `http://127.0.0.1:${emailPort}/chat/completions`,
@@ -115,10 +182,13 @@ before(async () => {
       TELEGRAM_CHAT_ID: "test-telegram-chat",
       TELEGRAM_API_URL: `http://127.0.0.1:${emailPort}/telegram/sendMessage`,
       INQUIRIES_API_TOKEN: "test-inquiry-api-token",
+      OWNER_ADMIN_TOKEN: "test-owner-admin-token",
     },
     stdio: "ignore"
   });
   await waitForServer();
+  const initializedMigration = await testQuery("SELECT version FROM relay_schema_migrations");
+  assert.deepEqual(initializedMigration.rows.map((row) => row.version), [1, 2]);
 });
 
 after(async () => {
@@ -132,7 +202,23 @@ after(async () => {
     emailServer.close();
     await closed;
   }
-  if (tempDirectory && fs.existsSync(tempDirectory)) fs.rmSync(tempDirectory, { recursive: true, force: true });
+  if (testPool) await testPool.end();
+  if (schemaAdminPool && testSchema) {
+    await schemaAdminPool.query(`DROP SCHEMA "${testSchema}" CASCADE`);
+    await schemaAdminPool.end();
+  }
+});
+
+test("server refuses to start without DATABASE_URL", () => {
+  const env = { ...process.env, PORT: "3001" };
+  delete env.DATABASE_URL;
+  const result = spawnSync(process.execPath, [path.join(__dirname, "..", "server.js")], {
+    cwd: path.join(__dirname, ".."),
+    env,
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DATABASE_URL is required/);
 });
 
 test("Relay product supports the six connected jobs with workspace isolation", async () => {
@@ -141,14 +227,20 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   assert.equal((await request("/api/product/preferences")).response.status, 401);
   assert.equal((await request("/api/product/onboarding")).response.status, 401);
 
-  const signup = await request("/api/product/auth/signup", {
+  const publicSignup = await request("/api/product/auth/signup", {
     method: "POST",
     body: { email: "owner@relaytest.example", password: "this-is-a-strong-test-password", workspaceName: "Relay Workspace" }
   });
-  assert.equal(signup.response.status, 201, JSON.stringify(signup.data));
-  let ownerCookie = signup.response.headers.get("set-cookie").split(";")[0];
-  assert.equal(signup.data.workspace.name, "Relay Workspace");
-  const ownerId = signup.data.user.id;
+  assert.equal(publicSignup.response.status, 403);
+  assert.match(publicSignup.data.error, /signup is closed/);
+  const ownerAccount = await createPaidTestWorkspace({
+    email: "owner@relaytest.example",
+    password: "this-is-a-strong-test-password",
+    workspaceName: "Relay Workspace"
+  });
+  const ownerCookie = ownerAccount.cookie;
+  assert.equal(ownerAccount.workspace.name, "Relay Workspace");
+  const ownerId = ownerAccount.user.id;
   assert.deepEqual((await request("/api/product/onboarding", { cookie: ownerCookie })).data, { dismissed: false });
   const invalidOnboardingUpdate = await request("/api/product/onboarding", {
     method: "PATCH",
@@ -270,12 +362,8 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   assert.equal(emailMessages[0].to[0], "owner@relaytest.example");
   const firstResetToken = new URL(emailMessages[0].text.match(/https?:\/\/\S+/)[0]).searchParams.get("reset");
   assert.match(firstResetToken, /^[A-Za-z0-9_-]{40,60}$/);
-  const resetDatabase = new Database(path.join(tempDirectory, "test.db"));
-  assert.notEqual(
-    resetDatabase.prepare("SELECT token_hash FROM product_password_resets").get().token_hash,
-    firstResetToken
-  );
-  resetDatabase.close();
+  const resetToken = await testQuery("SELECT token_hash FROM product_password_resets");
+  assert.notEqual(resetToken.rows[0].token_hash, firstResetToken);
   const secondResetRequest = await request("/api/product/auth/password-reset/request", {
     method: "POST",
     body: { email: "owner@relaytest.example" }
@@ -283,10 +371,9 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   assert.equal(secondResetRequest.response.status, 202);
   assert.equal(emailMessages.length, 2);
   const secondResetToken = new URL(emailMessages[1].text.match(/https?:\/\/\S+/)[0]).searchParams.get("reset");
-  const expiredReset = new Database(path.join(tempDirectory, "test.db"));
-  expiredReset.prepare("UPDATE product_password_resets SET expires_at = ?")
-    .run(new Date(Date.now() - 60 * 1000).toISOString());
-  expiredReset.close();
+  await testQuery("UPDATE product_password_resets SET expires_at = $1", [
+    new Date(Date.now() - 60 * 1000).toISOString()
+  ]);
   const expiredResetResponse = await request("/api/product/auth/password-reset/complete", {
     method: "POST",
     body: { token: secondResetToken, password: "new-owner-password-123" }
@@ -328,9 +415,8 @@ test("Relay product supports the six connected jobs with workspace isolation", a
     body: { email: "owner@relaytest.example" }
   });
   assert.equal(failedResetEmail.response.status, 502);
-  const noFailedResetToken = new Database(path.join(tempDirectory, "test.db"));
-  assert.equal(noFailedResetToken.prepare("SELECT COUNT(*) AS count FROM product_password_resets").get().count, 0);
-  noFailedResetToken.close();
+  const noFailedResetToken = await testQuery("SELECT COUNT(*)::integer AS count FROM product_password_resets");
+  assert.equal(noFailedResetToken.rows[0].count, 0);
   emailProviderStatus = 200;
   const inviteResponse = await request("/api/product/invites", {
     method: "POST",
@@ -395,10 +481,10 @@ test("Relay product supports the six connected jobs with workspace isolation", a
     }
   });
   assert.equal(malformedInviteUse.response.status, 400);
-  const testDatabase = new Database(path.join(tempDirectory, "test.db"));
-  testDatabase.prepare("UPDATE product_workspace_invites SET expires_at = ? WHERE id = ?")
-    .run(new Date(Date.now() - 86400000).toISOString(), mismatchInvite.data.invite.id);
-  testDatabase.close();
+  await testQuery("UPDATE product_workspace_invites SET expires_at = $1 WHERE id = $2", [
+    new Date(Date.now() - 86400000).toISOString(),
+    mismatchInvite.data.invite.id
+  ]);
   const expiredInviteUse = await request("/api/product/auth/signup", {
     method: "POST",
     body: {
@@ -981,12 +1067,12 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   const replacementPortal = await request(`/api/product/customer/${linkRotation.data.customerPortalToken}`);
   assert.equal(replacementPortal.response.status, 200);
 
-  const secondSignup = await request("/api/product/auth/signup", {
-    method: "POST",
-    body: { email: "another@relaytest.example", password: "another-strong-test-password", workspaceName: "Other Workspace" }
+  const otherAccount = await createPaidTestWorkspace({
+    email: "another@relaytest.example",
+    password: "another-strong-test-password",
+    workspaceName: "Other Workspace"
   });
-  assert.equal(secondSignup.response.status, 201);
-  const otherCookie = secondSignup.response.headers.get("set-cookie").split(";")[0];
+  const otherCookie = otherAccount.cookie;
   assert.deepEqual((await request("/api/product/onboarding", { cookie: otherCookie })).data, { dismissed: false });
   const otherAppearance = await request("/api/product/preferences", { cookie: otherCookie });
   assert.deepEqual(otherAppearance.data, { theme: "light", accent: "blue" });
@@ -1046,7 +1132,7 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   });
   assert.equal(existingAccountJoin.response.status, 200);
   assert.equal(existingAccountJoin.data.workspace.role, "member");
-  assert.equal(existingAccountJoin.data.workspace.id, signup.data.workspace.id);
+  assert.equal(existingAccountJoin.data.workspace.id, ownerAccount.workspace.id);
   const existingAccountCookie = existingAccountJoin.response.headers.get("set-cookie").split(";")[0];
   assert.equal((await request("/api/product/workspace", { cookie: existingAccountCookie })).data.members.length, 3);
   const consumedExistingInvite = await request("/api/product/auth/login", {
@@ -1079,41 +1165,73 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   assert.equal(logout.response.status, 200);
   const expiredSession = await request("/api/product/workspace", { cookie: ownerCookie });
   assert.equal(expiredSession.response.status, 401);
+
+  const activeLogin = await request("/api/product/auth/login", {
+    method: "POST",
+    body: { email: "owner@relaytest.example", password: "new-owner-password-123" }
+  });
+  assert.equal(activeLogin.response.status, 200);
+  const activeCookie = activeLogin.response.headers.get("set-cookie").split(";")[0];
+  await testQuery(
+    "UPDATE product_workspace_subscriptions SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second' WHERE workspace_id = $1",
+    [ownerAccount.workspace.id]
+  );
+  const expiredLogin = await request("/api/product/auth/login", {
+    method: "POST",
+    body: { email: "owner@relaytest.example", password: "new-owner-password-123" }
+  });
+  assert.equal(expiredLogin.response.status, 403);
+  assert.equal(expiredLogin.data.code, "subscription_expired");
+  const expiredWorkspace = await request("/api/product/workspace", { cookie: activeCookie });
+  assert.equal(expiredWorkspace.response.status, 403);
+  assert.equal(expiredWorkspace.data.code, "subscription_expired");
+  const activeCustomerLink = replacementPortal.data.customerPortalToken;
+  const expiredCustomerLink = await request(`/api/product/customer/${activeCustomerLink}`);
+  assert.equal(expiredCustomerLink.response.status, 404);
+  const expiredCustomerSubmission = await request(`/api/product/customer/${activeCustomerLink}`, {
+    method: "POST",
+    body: { inputs: [] }
+  });
+  assert.equal(expiredCustomerSubmission.response.status, 404);
 });
 
 test("account deletion removes sole-member workspaces and transfers shared ownership", async () => {
   const password = "account-deletion-test-password";
-  const signup = await request("/api/product/auth/signup", {
-    method: "POST",
-    body: { email: "delete-owner@relaytest.example", password, workspaceName: "Shared deletion workspace" }
+  const ownerAccount = await createPaidTestWorkspace({
+    email: "delete-owner@relaytest.example",
+    password,
+    workspaceName: "Shared deletion workspace"
   });
-  assert.equal(signup.response.status, 201);
-  const ownerCookie = signup.response.headers.get("set-cookie").split(";")[0];
-  const ownerId = signup.data.user.id;
-  const sharedWorkspaceId = signup.data.workspace.id;
-  const database = new Database(path.join(tempDirectory, "test.db"));
-  database.pragma("foreign_keys = ON");
-
-  const member = database.prepare(
-    "INSERT INTO product_users (email, password_hash) VALUES (?, ?) RETURNING id"
-  ).get("retained-member@relaytest.example", "test-only-hash");
-  database.prepare(
-    "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES (?, ?, 'member')"
-  ).run(sharedWorkspaceId, member.id);
-  const process = database.prepare(
-    "INSERT INTO product_processes (workspace_id, name) VALUES (?, ?) RETURNING id"
-  ).get(sharedWorkspaceId, "Shared process");
-  database.prepare(`
+  const ownerCookie = ownerAccount.cookie;
+  const ownerId = ownerAccount.user.id;
+  const sharedWorkspaceId = ownerAccount.workspace.id;
+  const memberResult = await testQuery(
+    "INSERT INTO product_users (email, password_hash) VALUES ($1, $2) RETURNING id",
+    ["retained-member@relaytest.example", "test-only-hash"]
+  );
+  const member = memberResult.rows[0];
+  await testQuery(
+    "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+    [sharedWorkspaceId, member.id]
+  );
+  const processResult = await testQuery(
+    "INSERT INTO product_processes (workspace_id, name) VALUES ($1, $2) RETURNING id",
+    [sharedWorkspaceId, "Shared process"]
+  );
+  const process = processResult.rows[0];
+  await testQuery(`
     INSERT INTO product_process_steps (process_id, title, position, assignee_user_id)
-    VALUES (?, ?, ?, ?)
-  `).run(process.id, "Assigned step", 0, ownerId);
-  const soloWorkspace = database.prepare(
-    "INSERT INTO product_workspaces (name) VALUES (?) RETURNING id"
-  ).get("Workspace to remove");
-  database.prepare(
-    "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES (?, ?, 'owner')"
-  ).run(soloWorkspace.id, ownerId);
-  database.close();
+    VALUES ($1, $2, $3, $4)
+  `, [process.id, "Assigned step", 0, ownerId]);
+  const soloWorkspaceResult = await testQuery(
+    "INSERT INTO product_workspaces (name) VALUES ($1) RETURNING id",
+    ["Workspace to remove"]
+  );
+  const soloWorkspace = soloWorkspaceResult.rows[0];
+  await testQuery(
+    "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
+    [soloWorkspace.id, ownerId]
+  );
 
   const choices = await request("/api/product/account-deletion/workspaces", { cookie: ownerCookie });
   assert.equal(choices.response.status, 200);
@@ -1148,15 +1266,19 @@ test("account deletion removes sole-member workspaces and transfers shared owner
   assert.equal(deletion.response.status, 200, JSON.stringify(deletion.data));
   assert.match(deletion.response.headers.get("set-cookie"), /Max-Age=0/);
 
-  const retained = new Database(path.join(tempDirectory, "test.db"));
-  assert.equal(retained.prepare("SELECT COUNT(*) AS count FROM product_users WHERE id = ?").get(ownerId).count, 0);
-  assert.equal(retained.prepare("SELECT COUNT(*) AS count FROM product_workspaces WHERE id = ?").get(soloWorkspace.id).count, 0);
-  assert.equal(retained.prepare("SELECT role FROM product_memberships WHERE workspace_id = ? AND user_id = ?")
-    .get(sharedWorkspaceId, member.id).role, "owner");
-  assert.equal(retained.prepare("SELECT assignee_user_id FROM product_process_steps WHERE process_id = ?")
-    .get(process.id).assignee_user_id, null);
-  assert.equal(retained.prepare("SELECT COUNT(*) AS count FROM product_sessions WHERE user_id = ?").get(ownerId).count, 0);
-  retained.close();
+  const deletedUser = await testQuery("SELECT COUNT(*)::integer AS count FROM product_users WHERE id = $1", [ownerId]);
+  const deletedWorkspace = await testQuery("SELECT COUNT(*)::integer AS count FROM product_workspaces WHERE id = $1", [soloWorkspace.id]);
+  const transferredMembership = await testQuery(
+    "SELECT role FROM product_memberships WHERE workspace_id = $1 AND user_id = $2",
+    [sharedWorkspaceId, member.id]
+  );
+  const unassignedStep = await testQuery("SELECT assignee_user_id FROM product_process_steps WHERE process_id = $1", [process.id]);
+  const deletedSessions = await testQuery("SELECT COUNT(*)::integer AS count FROM product_sessions WHERE user_id = $1", [ownerId]);
+  assert.equal(deletedUser.rows[0].count, 0);
+  assert.equal(deletedWorkspace.rows[0].count, 0);
+  assert.equal(transferredMembership.rows[0].role, "owner");
+  assert.equal(unassignedStep.rows[0].assignee_user_id, null);
+  assert.equal(deletedSessions.rows[0].count, 0);
   assert.equal((await request("/api/product/workspace", { cookie: ownerCookie })).response.status, 401);
 });
 
@@ -1184,6 +1306,16 @@ test("public pages and the inquiry app remain available", async () => {
   assert.equal(health.headers.get("referrer-policy"), "no-referrer");
   assert.equal(health.headers.get("x-powered-by"), null);
   const productHtml = await fetch(`${baseUrl}/product.html`).then((response) => response.text());
+  assert.match(productHtml, /id="auth-tabs"[^>]*hidden/);
+  assert.doesNotMatch(productHtml, />Create workspace</);
+  assert.match(productHtml, /href="demo\.html">Book a demo/);
+  assert.match(productHtml, /href="contact\.html">contact us/);
+  assert.doesNotMatch(productHtml, /owner console|Paid client access/i);
+  const ownerConsoleResponse = await fetch(`${baseUrl}/relay-owner-console.html`);
+  assert.equal(ownerConsoleResponse.status, 200);
+  const ownerConsoleHtml = await ownerConsoleResponse.text();
+  assert.match(ownerConsoleHtml, /noindex, nofollow, noarchive/);
+  assert.match(ownerConsoleHtml, /Approve payment & create access/);
   assert.match(productHtml, /Ask Ray/);
   assert.match(productHtml, /Ray%20Robot%20Mascot%20Logo/);
   assert.match(productHtml, /data-view="settings"/);
@@ -1192,6 +1324,8 @@ test("public pages and the inquiry app remain available", async () => {
   assert.match(productHtml, /id="account-deletion-form"/);
   const productScript = await fetch(`${baseUrl}/product.js`).then((response) => response.text());
   assert.match(productScript, /data-workflow-action/);
+  const inquiryScript = await fetch(`${baseUrl}/relay-form.js`).then((response) => response.text());
+  assert.match(inquiryScript, /local HTML file cannot submit inquiries/);
   const productStyles = await fetch(`${baseUrl}/product.css`).then((response) => response.text());
   assert.match(productStyles, /\*, \*::before, \*::after\s*\{\s*animation:\s*none !important;\s*transition:\s*none !important;/);
 
@@ -1207,6 +1341,12 @@ test("public pages and the inquiry app remain available", async () => {
   assert.equal(inquiry.data.success, true);
   assert.equal(typeof inquiry.data.inquiry.id, "number");
   assert.equal("phone" in inquiry.data.inquiry, false);
+  const firstInquiryEmail = emailMessages.at(-1);
+  assert.deepEqual(firstInquiryEmail.to, ["relayautomations@gmail.com"]);
+  assert.equal(firstInquiryEmail.subject, "New Relay contact or demo inquiry");
+  assert.match(firstInquiryEmail.text, /Test User/);
+  assert.match(firstInquiryEmail.text, /user@example\.test/);
+  assert.match(firstInquiryEmail.text, /Test inquiry/);
   assert.equal(telegramMessages.length, 1);
   assert.equal(telegramMessages[0].chat_id, "test-telegram-chat");
   assert.match(telegramMessages[0].text, /New Customer Onboarding Inquiry/);
@@ -1221,11 +1361,72 @@ test("public pages and the inquiry app remain available", async () => {
     }
   });
   assert.equal(inquiryWithFailedNotification.response.status, 201);
+  assert.deepEqual(emailMessages.at(-1).to, ["relayautomations@gmail.com"]);
+  assert.match(emailMessages.at(-1).text, /Second Test User/);
   assert.equal(telegramMessages.length, 2);
   telegramProviderStatus = 200;
 
   const deniedInquiryRead = await request("/inquiries");
   assert.equal(deniedInquiryRead.response.status, 401);
+  const deniedWorkspaceList = await request("/admin/workspaces");
+  assert.equal(deniedWorkspaceList.response.status, 401);
+  const inquiryTokenCannotManageWorkspaces = await request("/admin/workspaces", {
+    headers: { Authorization: `Bearer test-inquiry-api-token` }
+  });
+  assert.equal(inquiryTokenCannotManageWorkspaces.response.status, 401);
+  const ownerTokenCannotReadInquiries = await request("/inquiries", {
+    adminToken: "test-owner-admin-token"
+  });
+  assert.equal(ownerTokenCannotReadInquiries.response.status, 401);
+  const deniedProvision = await request("/admin/workspaces", {
+    method: "POST",
+    body: { workspaceName: "Unapproved", email: "unapproved@example.test" }
+  });
+  assert.equal(deniedProvision.response.status, 401);
+  const invalidProvision = await request("/admin/workspaces", {
+    method: "POST",
+    adminToken: "test-owner-admin-token",
+    headers: { Authorization: "Bearer test-inquiry-api-token" },
+    body: { workspaceName: "", email: "not-an-email" }
+  });
+  assert.equal(invalidProvision.response.status, 400);
+  const provisioned = await request("/admin/workspaces", {
+    method: "POST",
+    adminToken: "test-owner-admin-token",
+    headers: { Authorization: "Bearer test-inquiry-api-token" },
+    body: { workspaceName: "Approved Client", email: "approved@relaytest.example" }
+  });
+  assert.equal(provisioned.response.status, 201, JSON.stringify(provisioned.data));
+  assert.equal(provisioned.data.workspace.name, "Approved Client");
+  assert.equal(provisioned.data.workspace.ownerEmail, "approved@relaytest.example");
+  assert.match(provisioned.data.initialPassword, /^[A-Za-z0-9_-]{32}$/);
+  const provisionedLogin = await request("/api/product/auth/login", {
+    method: "POST",
+    body: {
+      email: "approved@relaytest.example",
+      password: provisioned.data.initialPassword
+    }
+  });
+  assert.equal(provisionedLogin.response.status, 200);
+  const provisionedCookie = provisionedLogin.response.headers.get("set-cookie").split(";")[0];
+  assert.equal(
+    (await request("/api/product/me", { cookie: provisionedCookie })).data.workspace.name,
+    "Approved Client"
+  );
+  const renewWorkspace = await request(`/admin/workspaces/${provisioned.data.workspace.id}/renew`, {
+    method: "POST",
+    adminToken: "test-owner-admin-token",
+    headers: { Authorization: "Bearer test-inquiry-api-token" }
+  });
+  assert.equal(renewWorkspace.response.status, 200);
+  const adminWorkspaceList = await request("/admin/workspaces", {
+    adminToken: "test-owner-admin-token",
+    headers: { Authorization: "Bearer test-inquiry-api-token" }
+  });
+  assert.equal(adminWorkspaceList.response.status, 200);
+  assert.ok(adminWorkspaceList.data.workspaces.some((workspace) =>
+    workspace.id === provisioned.data.workspace.id && workspace.active
+  ));
   const inquiryRead = await request("/inquiries", {
     headers: { Authorization: "Bearer test-inquiry-api-token" }
   });

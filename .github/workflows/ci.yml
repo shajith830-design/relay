@@ -10,6 +10,23 @@ permissions:
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    env:
+      RELAY_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/relay_test
+      SMOKE_DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:5432/relay_test?options=-c%20search_path%3Drelay_smoke
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: relay_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d relay_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -28,6 +45,7 @@ jobs:
 
       - name: Validate Compose configuration
         env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/relay_test
           TELEGRAM_BOT_TOKEN: ci-placeholder
           TELEGRAM_CHAT_ID: ci-placeholder
           INQUIRIES_API_TOKEN: ci-placeholder
@@ -37,6 +55,11 @@ jobs:
           TRUST_PROXY_HOPS: "1"
         run: docker compose config --quiet
 
+      - name: Create isolated container smoke schema
+        env:
+          PGPASSWORD: postgres
+        run: psql "$RELAY_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA relay_smoke'
+
       - name: Build production image
         run: docker build --tag relay-automation:${{ github.sha }} .
 
@@ -45,17 +68,16 @@ jobs:
           RELAY_IMAGE: relay-automation:${{ github.sha }}
         run: |
           set -eu
-          trap 'docker rm -f relay-smoke >/dev/null 2>&1 || true; docker volume rm relay-smoke-data >/dev/null 2>&1 || true' EXIT
+          trap 'docker rm -f relay-smoke >/dev/null 2>&1 || true; PGPASSWORD=postgres psql "$RELAY_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS relay_smoke CASCADE" >/dev/null 2>&1 || true; rm -f signup.json workspace.json session.json ray.json reset.json inquiry.json smoke-response-headers.txt' EXIT
           docker run -d --name relay-smoke \
+            --add-host host.docker.internal:host-gateway \
             --read-only \
-            --tmpfs /tmp \
             --security-opt no-new-privileges:true \
             --cap-drop ALL \
             -p 127.0.0.1:3000:3000 \
             -e NODE_ENV=production \
-            -e DATABASE_PATH=/app/data/relay.db \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
             -e INQUIRIES_API_TOKEN=ci-test-token \
-            -v relay-smoke-data:/app/data \
             "$RELAY_IMAGE"
           test "$(docker inspect --format '{{.Config.User}}' relay-smoke)" = "node"
           test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' relay-smoke)" = "true"
@@ -78,8 +100,7 @@ jobs:
               docker logs relay-smoke
               exit 1
             }
-          response_headers="$(mktemp)"
-          trap 'docker rm -f relay-smoke >/dev/null 2>&1 || true; docker volume rm relay-smoke-data >/dev/null 2>&1 || true; rm -f "$response_headers"' EXIT
+          response_headers="smoke-response-headers.txt"
           curl --fail --silent --show-error \
             -H 'Origin: http://127.0.0.1:3000' \
             -H 'Content-Type: application/json' \
