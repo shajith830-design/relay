@@ -111,9 +111,9 @@ async function initialize() {
   }
 }
 
-const ready = initialize().catch((error) => {
+const ready = initialize();
+ready.catch((error) => {
   console.error(JSON.stringify({ event: "database_initialization_failed", message: error.message }));
-  throw error;
 });
 
 module.exports = {
