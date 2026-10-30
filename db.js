@@ -12,7 +12,8 @@ if (!connectionString) {
 
 const connectionUrl = new URL(connectionString);
 const usesSupabase = /supabase\.(co|com)$/i.test(connectionUrl.hostname);
-const requiresTls = usesSupabase || ["require", "verify-ca", "verify-full"].includes(connectionUrl.searchParams.get("sslmode"));
+const sslMode = connectionUrl.searchParams.get("sslmode")?.toLowerCase();
+const requiresTls = usesSupabase || ["require", "verify-ca", "verify-full"].includes(sslMode);
 const poolConnectionUrl = new URL(connectionString);
 if (usesSupabase) {
   for (const parameter of ["sslmode", "sslcert", "sslkey", "sslrootcert", "sslpassword", "uselibpqcompat"]) {
@@ -24,7 +25,7 @@ const pool = new Pool({
   max: 3,
   idleTimeoutMillis: 10_000,
   connectionTimeoutMillis: 10_000,
-  ...(requiresTls ? { ssl: { rejectUnauthorized: true } } : {})
+  ...(requiresTls ? { ssl: { rejectUnauthorized: sslMode !== "require" } } : {})
 });
 const transactionContext = new AsyncLocalStorage();
 
