@@ -116,6 +116,20 @@
     const workspaceBody = document.getElementById("workspaces-body");
     const workspaceStatus = document.getElementById("workspace-status");
 
+    function errorMessage(value, fallback) {
+      if (typeof value === "string" && value.trim()) return value.trim();
+      if (value && typeof value === "object") {
+        if (typeof value.message === "string" && value.message.trim()) return value.message.trim();
+        if (typeof value.error === "string" && value.error.trim()) return value.error.trim();
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return fallback;
+        }
+      }
+      return fallback;
+    }
+
     function formatDate(value) {
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
@@ -137,8 +151,9 @@
         throw new Error("Relay returned an invalid response.");
       }
       if (!response.ok) {
-        if (response.status === 401 || response.status === 503) signOut(data.error);
-        throw new Error(data.error || `The request failed (HTTP ${response.status}).`);
+        const message = errorMessage(data?.error ?? data, `The request failed (HTTP ${response.status}).`);
+        if (response.status === 401 || response.status === 503) signOut(message);
+        throw new Error(message);
       }
       return data;
     }
@@ -147,7 +162,7 @@
       sessionStorage.removeItem(tokenKey);
       ownerTools.hidden = true;
       loginPanel.hidden = false;
-      loginStatus.textContent = message;
+      loginStatus.textContent = errorMessage(message, "");
       document.getElementById("admin-token").value = "";
     }
 
@@ -210,7 +225,7 @@
         workspaceStatus.textContent = "";
         loginStatus.textContent = "";
       } catch (error) {
-        signOut(error.message);
+        signOut(errorMessage(error?.message ?? error, "Could not verify the owner token. Please try again."));
       }
     }
 
