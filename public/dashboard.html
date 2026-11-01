@@ -227,6 +227,7 @@
     const tokenInput = document.getElementById("api-token");
     const tokenStorageKey = "relay-inquiries-api-token";
     let isRefreshing = false;
+    let authenticationRequired = false;
 
     function createCell(text, className = "px-5 py-4 align-top text-slate-700") {
       const cell = document.createElement("td");
@@ -294,7 +295,7 @@
     }
 
     async function refreshInquiries() {
-      if (isRefreshing) return;
+      if (isRefreshing || authenticationRequired) return;
       isRefreshing = true;
       refreshButton.disabled = true;
       refreshButton.classList.add("refreshing");
@@ -305,11 +306,17 @@
         const token = sessionStorage.getItem(tokenStorageKey);
         if (token) headers.Authorization = `Bearer ${token}`;
         const response = await fetch("/inquiries", { headers, cache: "no-store" });
-        if (response.status === 401 || response.status === 503) {
+        if (response.status === 401 || response.status === 403 || response.status === 503) {
           tokenSection.classList.remove("hidden");
-          throw new Error(response.status === 401
-            ? "Access denied. Enter a valid dashboard API token below."
-            : "The inquiries API is not configured. Set INQUIRIES_API_TOKEN on the server.");
+          if (response.status === 401) {
+            authenticationRequired = true;
+            throw new Error("Access denied. Enter a valid dashboard API token below.");
+          }
+          if (response.status === 403) {
+            authenticationRequired = true;
+            throw new Error("The request was forbidden. Enter the dashboard API token below; if this continues, check your hosting or Cloudflare access rules for /inquiries.");
+          }
+          throw new Error("The inquiries API is not configured. Set INQUIRIES_API_TOKEN on the server.");
         }
         if (!response.ok) throw new Error(`Unable to load inquiries (HTTP ${response.status}).`);
 
@@ -320,7 +327,9 @@
         renderInquiries(data.inquiries);
         lastUpdated.textContent = `Updated ${new Intl.DateTimeFormat(undefined, { timeStyle: "medium" }).format(new Date())}`;
       } catch (error) {
-        errorMessage.textContent = `${error.message} Retrying automatically.`;
+        errorMessage.textContent = authenticationRequired
+          ? error.message
+          : `${error.message} Retrying automatically.`;
         errorMessage.classList.remove("hidden");
       } finally {
         refreshButton.disabled = false;
@@ -334,12 +343,14 @@
       const token = tokenInput.value.trim();
       if (token) sessionStorage.setItem(tokenStorageKey, token);
       tokenInput.value = "";
+      authenticationRequired = false;
       refreshInquiries();
     });
 
     document.getElementById("clear-token").addEventListener("click", () => {
       sessionStorage.removeItem(tokenStorageKey);
       tokenInput.value = "";
+      authenticationRequired = false;
       refreshInquiries();
     });
 

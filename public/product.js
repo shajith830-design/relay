@@ -10,6 +10,7 @@ const authTabs = {
 const authStatus = document.getElementById("auth-status");
 const globalStatus = document.getElementById("global-status");
 const toast = document.getElementById("toast");
+const isRayDemo = new URLSearchParams(window.location.search).get("demo") === "ray";
 let appearanceSaveQueue = Promise.resolve();
 let subscriptionExpiryTimer;
 const state = {
@@ -236,13 +237,14 @@ function confirmDiscardChanges() {
 }
 
 appShell.addEventListener("focusin", (event) => {
-  if (!event.target.matches("input, select, textarea")) return;
+  if (isRayDemo || !event.target.matches("input, select, textarea")) return;
   const scope = event.target.closest("form, .step-card");
   if (scope && !dirtyScopeBaselines.has(scope)) dirtyScopeBaselines.set(scope, scopeValues(scope));
 });
 appShell.addEventListener("submit", (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement) || !form.closest(".main-content")) return;
+  if (form.id === "account-deletion-form") return;
   if (pendingFormButtons.has(form)) {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -271,7 +273,7 @@ appShell.addEventListener("input", (event) => updateDirtyScope(event.target));
 appShell.addEventListener("change", (event) => updateDirtyScope(event.target));
 
 function updateDirtyScope(target) {
-  if (!target.matches("input, select, textarea")) return;
+  if (isRayDemo || !target.matches("input, select, textarea")) return;
   const scope = target.closest("form, .step-card");
   if (!scope) return;
   if (!dirtyScopeBaselines.has(scope)) dirtyScopeBaselines.set(scope, scopeValues(scope));
@@ -435,6 +437,65 @@ function renderHelpMessages() {
     container.append(article);
   }
   container.scrollTop = container.scrollHeight;
+}
+
+function rayDemoReply(message) {
+  const question = message.toLocaleLowerCase();
+  if (/(ignore|override).{0,30}(instruction|rule|prompt)|prompt injection|system prompt|reveal.{0,30}(secret|password|key)/.test(question)) {
+    return "I can’t follow requests to reveal hidden instructions, credentials, or private data. This preview uses sample replies and has no access to secrets or a live workspace.";
+  }
+  if (/(password|payment card|credit card|card number|api key|credential|secret)/.test(question)) {
+    return "Do not collect passwords, payment-card details, API keys, or other authentication secrets in Relay. Use an appropriate secure channel or password manager instead.";
+  }
+  if (/(soc.?2|certif|compliance|uptime|availability|service.level|\bsla\b|security audit)/.test(question)) {
+    return "I can’t verify Relay’s certifications, audit results, uptime, or service-level commitments. Check the current signed agreement and ask the service operator before relying on any such claim.";
+  }
+  if (/\b(ai|artificial intelligence|model|live ray)\b/.test(question)) {
+    return "This Ray preview uses canned sample replies; it does not contact an AI service. Authenticated Ray uses a configured provider and can be unavailable if that provider is not set up.";
+  }
+  if (/(jira|slack|integration|integrate|synchronize|sync with|external project)/.test(question)) {
+    return "Relay is a standalone workspace and does not synchronize with or configure external project tools.";
+  }
+  if (/(price|pricing|cost|₹|rupee|subscription)/.test(question)) {
+    return "Relay’s subscription price is ₹3,000 per month. Review the applicable billing and service terms before purchase.";
+  }
+  if (/(live|current|my |our )?.{0,30}(customer|implementation|task|workspace).{0,30}(status|progress|data|details)|what is blocked|what is overdue/.test(question)) {
+    return "This preview has no connected workspace or customer data, so I can’t report live status. In Relay, open Implementations to review task owners, due dates, blockers, prerequisites, and customer responses.";
+  }
+  if (/(map|add|set|configure|define|choose).{0,35}(prerequisite|dependency)|(?:prerequisite|dependency).{0,35}(map|add|set|configure|define)|process.{0,30}(prerequisite|dependency)/.test(question)) {
+    return "Open Process map and edit a step to select the earlier steps it depends on. These prerequisites make the required order clear, and Relay flags implementation tasks that are waiting on unfinished prerequisites.";
+  }
+  if (/(prerequisite|blocked|blocker|waiting on)/.test(question)) {
+    return "For a blocked implementation task, record the blocker and the next action, then review its prerequisite tasks. Relay highlights work waiting on unmet prerequisites so the team can see what must happen next.";
+  }
+  if (/(customer information|customer form|customer link|submission|requirements)/.test(question)) {
+    return "Use Customer information to define the fields you need, then share the private link for that implementation. Review submitted values there; do not request passwords, payment-card details, or authentication secrets.";
+  }
+  if (/(invite|member|teammate|permission|role)/.test(question)) {
+    return "Workspace owners can invite members from Settings and assign teammates to implementation tasks. Members can be removed or have an invitation revoked from the same workspace settings.";
+  }
+  if (/(appearance|theme|dark mode|accent|color)/.test(question)) {
+    return "Open Settings to choose a light or dark display mode and an accent color. Relay saves those appearance preferences to your account.";
+  }
+  if (/(delete|deletion|remove).{0,30}(account|workspace)|(?:account|workspace).{0,30}(delete|deletion|remove)/.test(question)) {
+    return "Account deletion is available in Settings. Relay shows the effect on each workspace first; if you own a shared workspace, choose another member as its new owner before confirming.";
+  }
+  if (/(change|update|refresh|edit|restore).{0,40}template.{0,50}(existing|current|already|affect|implementation|plan)|template.{0,50}(existing implementation|existing plan|already started|future implementation)|(?:existing|current|already-created|already created).{0,40}(implementation|plan|customer work)/.test(question)) {
+    return "Refreshing a template creates a new revision for future implementations. Existing implementations keep their own copied task plans and are not changed by template updates.";
+  }
+  if (/(template|version|revision|restore)/.test(question)) {
+    return "Start by mapping your team's process, then run the setup check. Once the steps have clear instructions, owners, and prerequisites, save the checked process as a reusable template.";
+  }
+  if (/(customer|implementation|task|assignee|due date)/.test(question)) {
+    return "Open Implementations, choose a saved template, and enter the customer's name. Relay creates a customer-specific task list. You can assign teammates, set due dates, and share a private link for customer information.";
+  }
+  if (/(process|map|step|readiness|check)/.test(question)) {
+    return "Open Process map and add the steps your team follows. Give each step an instruction and owner, set prerequisites in order, and run the setup check before saving it as a template.";
+  }
+  if (/(relay|feature|what can you|what does|how do i|how can i|help|start)/.test(question)) {
+    return "Relay helps teams prepare customer implementations with process maps, reusable templates, task plans, customer information links, and workspace member assignments. Which workflow would you like help with?";
+  }
+  return "I can help with Relay’s process maps, templates, implementation tasks, customer information links, and workspace settings. I can’t answer unrelated questions, but tell me what you’re trying to do in Relay and I’ll point you to the right workflow.";
 }
 
 async function loadHelpHistory() {
@@ -1217,29 +1278,32 @@ document.getElementById("account-deletion-form").addEventListener("submit", asyn
   if (!window.confirm("Permanently delete your Relay account and apply the workspace changes listed above? This cannot be undone.")) {
     return;
   }
-  const button = form.querySelector('button[type="submit"]');
-  const fields = new FormData(form);
+  const password = document.getElementById("account-delete-password").value;
+  const confirmation = document.getElementById("account-delete-confirmation").value;
   const transfers = [...form.querySelectorAll("[data-account-delete-transfer]")].map((select) => ({
     workspaceId: Number(select.dataset.accountDeleteTransfer),
     newOwnerUserId: Number(select.value)
   }));
-  button.disabled = true;
+  setFormBusy(form, "Deleting your account...");
+  activeSubmissionForm = form;
+  status.setAttribute("role", "status");
   status.textContent = "Deleting your account…";
   try {
     await api("/api/product/account", {
       method: "DELETE",
       body: {
-        password: fields.get("password"),
-        confirmation: fields.get("confirmation"),
+        password,
+        confirmation,
         transfers
       }
     });
     form.reset();
     showAuth("Your Relay account has been deleted.");
   } catch (error) {
+    failForm(form, error);
+    activeSubmissionForm = null;
     status.textContent = error.message;
-  } finally {
-    button.disabled = false;
+    status.setAttribute("role", "alert");
   }
 });
 document.getElementById("signout-button").addEventListener("click", async () => {
@@ -1259,6 +1323,10 @@ document.getElementById("help-open").addEventListener("click", async () => {
   panel.hidden = !open;
   document.getElementById("help-open").setAttribute("aria-expanded", String(open));
   if (open) {
+    if (isRayDemo) {
+      document.getElementById("help-input").focus();
+      return;
+    }
     try {
       await loadHelpHistory();
       document.getElementById("help-input").focus();
@@ -1283,6 +1351,18 @@ document.getElementById("help-form").addEventListener("submit", async (event) =>
   if (!message) return;
   button.disabled = true;
   status.textContent = "Ray is preparing an answer...";
+  if (isRayDemo) {
+    state.helpMessages.push(
+      { role: "user", content: message },
+      { role: "assistant", content: `Demo answer: ${rayDemoReply(message)}` }
+    );
+    input.value = "";
+    status.textContent = "Sample reply — no AI service was contacted.";
+    renderHelpMessages();
+    button.disabled = false;
+    input.focus();
+    return;
+  }
   try {
     const result = await api("/api/product/help-chat", {
       method: "POST",
@@ -1311,6 +1391,13 @@ document.getElementById("help-clear").addEventListener("click", async () => {
   const button = document.getElementById("help-clear");
   const status = document.getElementById("help-status");
   button.disabled = true;
+  if (isRayDemo) {
+    state.helpMessages = [];
+    renderHelpMessages();
+    status.textContent = "Demo conversation cleared.";
+    button.disabled = false;
+    return;
+  }
   try {
     await api("/api/product/help-chat", { method: "DELETE" });
     state.helpMessages = [];
@@ -1324,6 +1411,12 @@ document.getElementById("help-clear").addEventListener("click", async () => {
   } finally {
     button.disabled = false;
   }
+});
+
+document.getElementById("ray-demo-open").addEventListener("click", () => {
+  document.getElementById("help-panel").hidden = false;
+  document.getElementById("help-open").setAttribute("aria-expanded", "true");
+  document.getElementById("help-input").focus();
 });
 
 document.getElementById("process-form").addEventListener("submit", async (event) => {
@@ -1372,6 +1465,7 @@ document.getElementById("process-list").addEventListener("click", (event) => {
 
 document.getElementById("process-meta-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const form = event.currentTarget;
   if (!state.selectedProcessId) return;
   try {
     await api(`/api/product/processes/${state.selectedProcessId}`, {
@@ -1782,6 +1876,32 @@ document.getElementById("process-test-result").addEventListener("click", async (
 });
 
 async function initialize() {
+  if (isRayDemo) {
+    state.user = { id: 0, email: "Demo preview" };
+    state.workspace = {
+      id: 0,
+      name: "Relay demo",
+      role: "owner",
+      subscriptionExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    };
+    state.helpConsented = true;
+    state.helpMessages = [
+      { role: "user", content: "How do I start a customer implementation?" },
+      { role: "assistant", content: "Open Implementations, choose a saved template, and enter the customer's name. Relay creates a customer-specific task list where your team can assign owners, set due dates, and share a private customer information link." }
+    ];
+    document.getElementById("auth-screen").hidden = true;
+    appShell.hidden = false;
+    document.getElementById("sidebar").hidden = true;
+    document.querySelector(".main-content").hidden = true;
+    document.getElementById("ray-demo-stage").hidden = false;
+    document.getElementById("help-consent-wrap").hidden = true;
+    document.getElementById("help-privacy-note").textContent =
+      "Demo mode: replies are sample content. Messages are not sent to an AI service or saved.";
+    document.getElementById("help-panel").hidden = false;
+    document.getElementById("help-open").setAttribute("aria-expanded", "true");
+    renderHelpMessages();
+    return;
+  }
   showAuth();
   if (state.resetToken) {
     window.history.replaceState(null, "", window.location.pathname);
@@ -1789,6 +1909,10 @@ async function initialize() {
     return;
   }
   setAuthMode(state.inviteToken ? "signup" : "login");
+  if (window.location.protocol === "file:") {
+    authStatus.textContent = "This local file cannot connect to Relay. Use Preview Ray demo to show Ray, or open the deployed Relay site to sign in.";
+    return;
+  }
   try {
     const session = await api("/api/product/me");
     state.user = session.user;

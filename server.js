@@ -51,6 +51,10 @@ app.use((_req, res, next) => {
 app.use("/api/product/customer", express.json({ limit: "128kb" }));
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));
+app.get("/product", (req, res) => {
+  const query = req.originalUrl.slice("/product".length);
+  return res.redirect(302, `/product.html${query}`);
+});
 app.use(express.static(path.join(__dirname, "public"), {
   etag: true,
   maxAge: isProduction ? "1h" : 0

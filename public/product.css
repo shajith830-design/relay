@@ -238,6 +238,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .customer-card .field { margin-top: 17px; }
 .customer-card .field textarea { min-height: 90px; }
 .customer-privacy { border-left: 3px solid #fbbf24; padding-left: 11px; color: #78350f; font-size: 11px; line-height: 1.6; }
+.ray-demo-link { margin-top: 14px; text-decoration: none; text-align: center; }
+.ray-demo-stage { min-height: 100vh; padding: 28px clamp(20px, 6vw, 88px); background: radial-gradient(ellipse at 18% 18%, #e0f2fe, transparent 48%), var(--paper); }
+.ray-demo-card { width: min(500px, calc(100vw - 460px)); margin: clamp(70px, 17vh, 170px) 0 0 clamp(16px, 5vw, 76px); padding: clamp(25px, 5vw, 48px); border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 24px 72px rgb(16 42 67 / 10%); }
+.ray-demo-card h1 { margin: 8px 0 12px; font-size: clamp(30px, 5vw, 44px); letter-spacing: -.04em; }
+.ray-demo-card > p:not(.eyebrow) { color: var(--ink-subtle); line-height: 1.7; }
+.ray-demo-card .ray-demo-disclaimer { margin: 22px 0; border-left: 3px solid var(--blue); padding: 10px 13px; background: var(--accent-soft); font-size: 12px; }
+@media (max-width: 760px) { .ray-demo-card { width: min(560px, 100%); margin: clamp(40px, 10vh, 90px) auto 0; } }
 .status.error { color: #b91c1c; }
 .help-widget { position: fixed; right: 22px; bottom: 22px; z-index: 25; display: grid; justify-items: end; gap: 12px; }
 .help-launcher { display: inline-flex; min-height: 48px; align-items: center; gap: 9px; border: 0; border-radius: 999px; padding: 0 18px; background: var(--blue-dark); color: #fff; font-size: 13px; font-weight: 700; box-shadow: 0 8px 24px rgb(7 89 133 / 25%); cursor: pointer; transition: background .2s, box-shadow .2s; }

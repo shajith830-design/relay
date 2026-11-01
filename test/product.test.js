@@ -4,9 +4,11 @@ const assert = require("node:assert/strict");
 const { spawn, spawnSync } = require("node:child_process");
 const { once } = require("node:events");
 const http = require("node:http");
+const { readFileSync } = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 const { after, before, test } = require("node:test");
+const { runInNewContext } = require("node:vm");
 const { Pool } = require("pg");
 const { makePasswordHash } = require("../product-auth");
 
@@ -238,7 +240,7 @@ test("Relay product supports the six connected jobs with workspace isolation", a
     password: "this-is-a-strong-test-password",
     workspaceName: "Relay Workspace"
   });
-  const ownerCookie = ownerAccount.cookie;
+  let ownerCookie = ownerAccount.cookie;
   assert.equal(ownerAccount.workspace.name, "Relay Workspace");
   const ownerId = ownerAccount.user.id;
   assert.deepEqual((await request("/api/product/onboarding", { cookie: ownerCookie })).data, { dismissed: false });
@@ -551,7 +553,7 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   const processId = processResponse.data.process.id;
   const unstartedProcessState = await request("/api/product/workspace", { cookie: ownerCookie });
   assert.equal(unstartedProcessState.data.processes.find((process) => process.id === processId).steps_count, 0);
-  assert.equal(unstartedProcessState.data.processes.find((process) => process.id === processId).checked, 0);
+  assert.equal(unstartedProcessState.data.processes.find((process) => process.id === processId).checked, false);
   const addStep = await request(`/api/product/processes/${processId}/steps`, {
     method: "POST",
     cookie: ownerCookie,
@@ -615,7 +617,7 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   });
   assert.equal(editedStep.response.status, 200);
   const processDetails = await request(`/api/product/processes/${processId}`, { cookie: ownerCookie });
-  assert.equal(processDetails.data.process.checked, 0);
+  assert.equal(processDetails.data.process.checked, false);
   assert.deepEqual(processDetails.data.process.steps[1].dependsOn, [firstProcessStepId]);
   assert.equal(processDetails.data.process.steps[0].assignee_user_id, ownerId);
   assert.equal(processDetails.data.process.steps[1].assignee_user_id, teammateId);
@@ -639,8 +641,8 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   assert.equal(passingCheck.data.check.result, "ready");
   assert.equal(passingCheck.data.stepsChecked, 2);
   const checkedProcessState = await request("/api/product/workspace", { cookie: ownerCookie });
-  assert.equal(checkedProcessState.data.processes.find((process) => process.id === processId).checked, 1);
-  assert.equal((await request(`/api/product/processes/${processId}`, { cookie: ownerCookie })).data.process.checked, 1);
+  assert.equal(checkedProcessState.data.processes.find((process) => process.id === processId).checked, true);
+  assert.equal((await request(`/api/product/processes/${processId}`, { cookie: ownerCookie })).data.process.checked, true);
   assert.deepEqual(passingCheck.data.handover[1].dependsOn, ["Configure workspace"]);
   const templateResponse = await request("/api/product/templates", {
     method: "POST",
@@ -842,7 +844,7 @@ test("Relay product supports the six connected jobs with workspace isolation", a
 
   const details = await request(`/api/product/implementations/${implementationId}`, { cookie: ownerCookie });
   assert.equal(details.response.status, 200);
-  assert.equal(details.data.implementation.has_customer_link, 1);
+  assert.equal(details.data.implementation.has_customer_link, true);
   assert.equal(details.data.implementation.steps.length, 2);
   assert.equal(details.data.implementation.steps[0].stage, "Configure");
   assert.match(details.data.implementation.steps[0].due_at, /^\d{4}-\d{2}-\d{2}$/);
@@ -1324,6 +1326,43 @@ test("public pages and the inquiry app remain available", async () => {
   assert.match(productHtml, /id="account-deletion-form"/);
   const productScript = await fetch(`${baseUrl}/product.js`).then((response) => response.text());
   assert.match(productScript, /data-workflow-action/);
+  const processDetailsSubmit = productScript.match(
+    /document\.getElementById\("process-meta-form"\)\.addEventListener\("submit", async \(event\) => \{[\s\S]*?\n\}\);/
+  )?.[0];
+  assert.ok(processDetailsSubmit);
+  assert.match(processDetailsSubmit, /const form = event\.currentTarget;/);
+  assert.match(processDetailsSubmit, /clearDirtyScope\(form\)/);
+  const accountDeletionSubmit = productScript.match(
+    /document\.getElementById\("account-deletion-form"\)\.addEventListener\("submit", async \(event\) => \{[\s\S]*?\n\}\);/
+  )?.[0];
+  assert.ok(accountDeletionSubmit);
+  assert.match(accountDeletionSubmit, /const password = document\.getElementById\("account-delete-password"\)\.value;/);
+  assert.doesNotMatch(accountDeletionSubmit, /new FormData\(form\)/);
+  assert.match(accountDeletionSubmit, /failForm\(form, error\)/);
+  assert.match(productScript, /form\.id === "account-deletion-form"/);
+  assert.match(productScript, /₹3,000 per month/);
+  const rayDemoReplySource = productScript.match(/function rayDemoReply\(message\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(rayDemoReplySource);
+  const rayDemoReply = runInNewContext(`(${rayDemoReplySource})`);
+  assert.match(rayDemoReply("Does Relay integrate with Jira and Slack?"), /standalone workspace/i);
+  assert.match(rayDemoReply("How do I map prerequisites between process steps?"), /Open Process map/i);
+  assert.match(rayDemoReply("If I update a template, will existing plans change?"), /Existing implementations.*not changed/i);
+  const pricingPage = await fetch(`${baseUrl}/pricing.html`).then((response) => response.text());
+  assert.match(pricingPage, /₹3,000 per month/);
+  assert.doesNotMatch(pricingPage, /pricing is by quote|quote-based/i);
+  const termsPage = await fetch(`${baseUrl}/terms.html`).then((response) => response.text());
+  assert.match(termsPage, /₹3,000 per month/);
+  assert.doesNotMatch(termsPage, /pricing is by quote|quote-based/i);
+  const envExample = readFileSync(path.join(__dirname, "..", ".env.example"), "utf8");
+  assert.match(envExample, /^INQUIRIES_API_TOKEN=replace-with-[^\r\n]+$/m);
+  assert.match(envExample, /^OWNER_ADMIN_TOKEN=replace-with-[^\r\n]+$/m);
+  assert.match(envExample, /^RESEND_API_KEY=replace-with-[^\r\n]+$/m);
+  const productAlias = await fetch(`${baseUrl}/product?demo=ray`, { redirect: "manual" });
+  assert.equal(productAlias.status, 302);
+  assert.equal(productAlias.headers.get("location"), "/product.html?demo=ray");
+  const productAliasPage = await fetch(`${baseUrl}/product?demo=ray`);
+  assert.equal(productAliasPage.status, 200);
+  assert.equal(new URL(productAliasPage.url).searchParams.get("demo"), "ray");
   const inquiryScript = await fetch(`${baseUrl}/relay-form.js`).then((response) => response.text());
   assert.match(inquiryScript, /local HTML file cannot submit inquiries/);
   const productStyles = await fetch(`${baseUrl}/product.css`).then((response) => response.text());

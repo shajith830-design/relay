@@ -157,7 +157,7 @@ function installProductRoutes(app, db, isProduction) {
        WHERE s.process_id = $1 ORDER BY s.position, s.id`
     ).all(processId));
     const dependencies = await (database.prepare(`
-      SELECT d.process_step_id AS stepId, d.depends_on_step_id AS dependsOn
+      SELECT d.process_step_id AS "stepId", d.depends_on_step_id AS "dependsOn"
       FROM product_process_step_dependencies d
       JOIN product_process_steps s ON s.id = d.process_step_id
       WHERE s.process_id = $1
@@ -221,7 +221,7 @@ function installProductRoutes(app, db, isProduction) {
 
     try {
       const passwordHash = await makePasswordHash(password);
-      const createAccount = database.transaction(async () => {
+      const createdAccount = await database.transaction(async () => {
         const user = await (database.prepare(
           "INSERT INTO product_users (email, password_hash) VALUES ($1, $2) RETURNING id, email"
         ).get(email, passwordHash));
@@ -249,7 +249,7 @@ function installProductRoutes(app, db, isProduction) {
         `).get(invite.workspace_id));
         return { user, workspace };
       });
-      const { user, workspace } = await createAccount();
+      const { user, workspace } = createdAccount;
       const rawToken = randomBytes(32).toString("base64url");
       const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString();
       await (database.prepare(
@@ -383,7 +383,7 @@ function installProductRoutes(app, db, isProduction) {
         `).get(tokenHash, new Date().toISOString()));
         if (!reset) return sendError(res, 400, "This recovery link is invalid or expired. Request a new one.");
         const passwordHash = await makePasswordHash(password);
-        const completeReset = database.transaction(async () => {
+        const completeReset = await database.transaction(async () => {
           const used = await (database.prepare(`
             DELETE FROM product_password_resets
             WHERE token_hash = $1 AND expires_at > $2
@@ -395,7 +395,7 @@ function installProductRoutes(app, db, isProduction) {
           await (database.prepare("DELETE FROM product_password_resets WHERE user_id = $1").run(reset.user_id));
           return true;
         });
-        if (!await completeReset()) return sendError(res, 400, "This recovery link is invalid or expired. Request a new one.");
+        if (!completeReset) return sendError(res, 400, "This recovery link is invalid or expired. Request a new one.");
         return res.json({ message: "Password updated. Sign in with your new password." });
       } catch (error) {
         console.error("Password reset could not be completed:", error.message);
@@ -403,12 +403,18 @@ function installProductRoutes(app, db, isProduction) {
       }
     });
 
-  app.post("/api/product/auth/login", sameOrigin,
-    limitRequests("login", 10, 15 * 60 * 1000, "Too many sign-in attempts. Please wait 15 minutes and try again."),
-    async (req, res) => {
+  app.post("/api/product/auth/login", sameOrigin, async (req, res) => {
     const email = requiredText(req.body.email, 254).toLowerCase();
     const password = typeof req.body.password === "string" ? req.body.password : "";
     if (!email || password.length > 128) return sendError(res, 401, "Email or password is incorrect.");
+    const loginFailureKey = `login:${hashToken(`${req.ip || "unknown"}:${email}`)}`;
+    const loginFailureWindowMs = 15 * 60 * 1000;
+    const loginFailures = rateLimitBuckets.get(loginFailureKey);
+    if (loginFailures && Date.now() - loginFailures.windowStart >= loginFailureWindowMs) {
+      rateLimitBuckets.delete(loginFailureKey);
+    } else if (loginFailures?.count >= 10) {
+      return sendError(res, 429, "Too many sign-in attempts. Please wait 15 minutes and try again.");
+    }
     const inviteToken = typeof req.body.inviteToken === "string" ? req.body.inviteToken : "";
     if (inviteToken && !/^[A-Za-z0-9_-]{40,60}$/.test(inviteToken)) {
       return sendError(res, 400, "This invitation is invalid or expired.");
@@ -419,8 +425,11 @@ function installProductRoutes(app, db, isProduction) {
         "SELECT id, email, password_hash FROM product_users WHERE email = $1"
       ).get(email));
       if (!user || !(await checkPassword(password, user.password_hash))) {
+        rateLimit(loginFailureKey, 10, loginFailureWindowMs,
+          "Too many sign-in attempts. Please wait 15 minutes and try again.");
         return sendError(res, 401, "Email or password is incorrect.");
       }
+      rateLimitBuckets.delete(loginFailureKey);
 
       let workspace;
       if (inviteToken) {
@@ -434,7 +443,7 @@ function installProductRoutes(app, db, isProduction) {
         if (!invite || invite.invited_email.toLowerCase() !== email) {
           return sendError(res, 400, "This invitation is invalid, expired, or addressed to a different email.");
         }
-        const acceptInvite = database.transaction(async () => {
+        const acceptedWorkspace = await database.transaction(async () => {
           const accepted = await (database.prepare(`
             UPDATE product_workspace_invites SET accepted_at = CURRENT_TIMESTAMP
             WHERE id = $1 AND accepted_at IS NULL AND expires_at > $2
@@ -459,7 +468,7 @@ function installProductRoutes(app, db, isProduction) {
           `).get(invite.workspace_id));
           });
         try {
-          const joinedWorkspace = await acceptInvite();
+          const joinedWorkspace = acceptedWorkspace;
           workspace = { ...joinedWorkspace, role: "member" };
         } catch (error) {
           if (error.code === "INVITE_INVALID") return sendError(res, 409, error.message);
@@ -629,59 +638,61 @@ function installProductRoutes(app, db, isProduction) {
       transferByWorkspace.set(workspaceId, newOwnerUserId);
     }
 
-    const deleteAccount = database.transaction(async () => {
-      const memberships = await (database.prepare(`
-        SELECT m.workspace_id, m.role,
-          (SELECT COUNT(*) FROM product_memberships all_members
-            WHERE all_members.workspace_id = m.workspace_id) AS member_count
-        FROM product_memberships m
-        WHERE m.user_id = $1
-        ORDER BY m.workspace_id
-      `).all(req.product.userId));
-      const requiredTransfers = new Set();
-      for (const membership of memberships) {
-        if (membership.member_count <= 1) continue;
-        if (membership.role !== "owner") continue;
-        requiredTransfers.add(membership.workspace_id);
-        const newOwnerUserId = transferByWorkspace.get(membership.workspace_id);
-        const newOwner = newOwnerUserId && await (database.prepare(`
-          SELECT user_id FROM product_memberships
-          WHERE workspace_id = $1 AND user_id = $2 AND user_id != $3
-        `).get(membership.workspace_id, newOwnerUserId, req.product.userId));
-        if (!newOwner) {
-          throw new Error("Choose a remaining workspace member to become the owner before deleting your account.");
-        }
-      }
-      if ([...transferByWorkspace.keys()].some((workspaceId) => !requiredTransfers.has(workspaceId))) {
-        throw new Error("A workspace ownership choice is no longer valid. Refresh and try again.");
-      }
-
-      for (const membership of memberships) {
-        if (membership.member_count <= 1) {
-          await (database.prepare("DELETE FROM product_workspaces WHERE id = $1").run(membership.workspace_id));
-          continue;
-        }
-        if (membership.role === "owner") {
-          await (database.prepare(`
-            UPDATE product_memberships SET role = 'owner'
-            WHERE workspace_id = $1 AND user_id = $2
-          `).run(membership.workspace_id, transferByWorkspace.get(membership.workspace_id)));
-        }
-        await (database.prepare("DELETE FROM product_memberships WHERE workspace_id = $1 AND user_id = $2")
-          .run(membership.workspace_id, req.product.userId));
-      }
-
-      await (database.prepare("UPDATE product_process_steps SET assignee_user_id = NULL WHERE assignee_user_id = $1")
-        .run(req.product.userId));
-      await (database.prepare("UPDATE product_implementation_steps SET assignee_user_id = NULL WHERE assignee_user_id = $1")
-        .run(req.product.userId));
-      await (database.prepare("DELETE FROM product_users WHERE id = $1").run(req.product.userId));
-    });
-
     try {
-      await deleteAccount();
+      await database.transaction(async () => {
+        const memberships = await (database.prepare(`
+          SELECT m.workspace_id, m.role,
+            (SELECT COUNT(*) FROM product_memberships all_members
+              WHERE all_members.workspace_id = m.workspace_id) AS member_count
+          FROM product_memberships m
+          WHERE m.user_id = $1
+          ORDER BY m.workspace_id
+        `).all(req.product.userId));
+        const requiredTransfers = new Set();
+        for (const membership of memberships) {
+          if (membership.member_count <= 1) continue;
+          if (membership.role !== "owner") continue;
+          requiredTransfers.add(membership.workspace_id);
+          const newOwnerUserId = transferByWorkspace.get(membership.workspace_id);
+          const newOwner = newOwnerUserId && await (database.prepare(`
+            SELECT user_id FROM product_memberships
+            WHERE workspace_id = $1 AND user_id = $2 AND user_id != $3
+          `).get(membership.workspace_id, newOwnerUserId, req.product.userId));
+          if (!newOwner) {
+            const error = new Error("Choose a remaining workspace member to become the owner before deleting your account.");
+            error.code = "INVALID_WORKSPACE_TRANSFER";
+            throw error;
+          }
+        }
+        if ([...transferByWorkspace.keys()].some((workspaceId) => !requiredTransfers.has(workspaceId))) {
+          const error = new Error("A workspace ownership choice is no longer valid. Refresh and try again.");
+          error.code = "INVALID_WORKSPACE_TRANSFER";
+          throw error;
+        }
+
+        for (const membership of memberships) {
+          if (membership.member_count <= 1) {
+            await (database.prepare("DELETE FROM product_workspaces WHERE id = $1").run(membership.workspace_id));
+            continue;
+          }
+          if (membership.role === "owner") {
+            await (database.prepare(`
+              UPDATE product_memberships SET role = 'owner'
+              WHERE workspace_id = $1 AND user_id = $2
+            `).run(membership.workspace_id, transferByWorkspace.get(membership.workspace_id)));
+          }
+          await (database.prepare("DELETE FROM product_memberships WHERE workspace_id = $1 AND user_id = $2")
+            .run(membership.workspace_id, req.product.userId));
+        }
+
+        await (database.prepare("UPDATE product_process_steps SET assignee_user_id = NULL WHERE assignee_user_id = $1")
+          .run(req.product.userId));
+        await (database.prepare("UPDATE product_implementation_steps SET assignee_user_id = NULL WHERE assignee_user_id = $1")
+          .run(req.product.userId));
+        await (database.prepare("DELETE FROM product_users WHERE id = $1").run(req.product.userId));
+      });
     } catch (error) {
-      if (error instanceof Error && /workspace member|ownership choice/.test(error.message)) {
+      if (error.code === "INVALID_WORKSPACE_TRANSFER") {
         return sendError(res, 409, error.message);
       }
       throw error;
@@ -766,11 +777,10 @@ function installProductRoutes(app, db, isProduction) {
   });
 
   app.delete("/api/product/help-chat", sameOrigin, requireSession, async (req, res) => {
-    const clearHistory = database.transaction(async () => {
+    await database.transaction(async () => {
       await (database.prepare("DELETE FROM product_help_messages WHERE user_id = $1").run(req.product.userId));
       await (database.prepare("DELETE FROM product_help_consents WHERE user_id = $1").run(req.product.userId));
     });
-    await clearHistory();
     return res.json({ success: true });
   });
 
@@ -862,7 +872,7 @@ function installProductRoutes(app, db, isProduction) {
       return sendError(res, 502, "Ray received an invalid answer. Please try again.");
     }
 
-    const saveMessages = database.transaction(async () => {
+    const savedMessage = await database.transaction(async () => {
       const insert = database.prepare(
         "INSERT INTO product_help_messages (user_id, role, content) VALUES ($1, $2, $3) RETURNING id"
       );
@@ -879,7 +889,7 @@ function installProductRoutes(app, db, isProduction) {
       ).get(assistantMessage.lastInsertRowid, userId));
     });
 
-    return res.json({ message: await saveMessages() });
+    return res.json({ message: savedMessage });
   });
 
   app.get("/api/product/workspace", requireSession, async (req, res) => {
@@ -1086,7 +1096,7 @@ function installProductRoutes(app, db, isProduction) {
     if (dependsOn.some((id) => !existingSteps.some((step) => step.id === id))) {
       return sendError(res, 400, "A prerequisite must be another step in this process.");
     }
-    const createStep = database.transaction(async () => {
+    const step = await database.transaction(async () => {
       const position = (await database.prepare(
         "SELECT COALESCE(MAX(position), 0) + 1 AS position FROM product_process_steps WHERE process_id = $1"
       ).get(processId)).position;
@@ -1102,7 +1112,6 @@ function installProductRoutes(app, db, isProduction) {
       await (database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1").run(processId));
       return step;
     });
-    const step = await createStep();
     return res.status(201).json({ step });
   });
 
@@ -1135,7 +1144,7 @@ function installProductRoutes(app, db, isProduction) {
       dependsOn: item.id === stepId ? dependsOn : item.dependsOn
     }));
     if (hasCycle(proposed)) return sendError(res, 400, "Prerequisites cannot form a cycle.");
-    const updateStep = database.transaction(async () => {
+    await database.transaction(async () => {
       await (database.prepare(`
         UPDATE product_process_steps SET title = $1, description = $2, owner = $3, stage = $4,
           due_offset_days = $5, assignee_user_id = $6 WHERE id = $7 AND process_id = $8
@@ -1147,7 +1156,6 @@ function installProductRoutes(app, db, isProduction) {
       for (const dependencyId of dependsOn) await (addDependency.run(stepId, dependencyId));
       await (database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1").run(processId));
     });
-    await updateStep();
     return res.json({ success: true });
   });
 
@@ -1159,7 +1167,7 @@ function installProductRoutes(app, db, isProduction) {
       "SELECT id FROM product_processes WHERE id = $1 AND workspace_id = $2"
     ).get(processId, req.product.workspaceId));
     if (!process) return sendError(res, 404, "Process not found.");
-    const removeStep = database.transaction(async () => {
+    const removed = await database.transaction(async () => {
       const removed = await (database.prepare("DELETE FROM product_process_steps WHERE id = $1 AND process_id = $2").run(stepId, processId));
       if (!removed.changes) return false;
       const remaining = await (database.prepare("SELECT id FROM product_process_steps WHERE process_id = $1 ORDER BY position, id").all(processId));
@@ -1170,7 +1178,7 @@ function installProductRoutes(app, db, isProduction) {
       await (database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1").run(processId));
       return true;
     });
-    if (!await removeStep()) return sendError(res, 404, "Process step not found.");
+    if (!removed) return sendError(res, 404, "Process step not found.");
     return res.json({ success: true });
   });
 
@@ -1193,12 +1201,11 @@ function installProductRoutes(app, db, isProduction) {
         return sendError(res, 400, "A prerequisite must appear before the step that depends on it.");
       }
     }
-    const reorder = database.transaction(async () => {
+    await database.transaction(async () => {
       const updatePosition = database.prepare("UPDATE product_process_steps SET position = $1 WHERE id = $2 AND process_id = $3");
       for (const [id, position] of positions) await (updatePosition.run(position, id, processId));
       await (database.prepare("UPDATE product_processes SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1").run(processId));
     });
-    await reorder();
     return res.json({ success: true });
   });
 
@@ -1273,7 +1280,7 @@ function installProductRoutes(app, db, isProduction) {
       position: step.position,
       dependsOnPositions: step.dependsOn.map((id) => stepPositions.get(id)).filter(Number.isInteger)
     }));
-    const createTemplate = database.transaction(async () => {
+    const template = await database.transaction(async () => {
       const template = await (database.prepare(
         "INSERT INTO product_templates (workspace_id, process_id, name, steps_json, updated_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, name, created_at, revision"
       ).get(req.product.workspaceId, processId, name, JSON.stringify(snapshot)));
@@ -1282,7 +1289,6 @@ function installProductRoutes(app, db, isProduction) {
       ).run(template.id, template.revision, template.name, JSON.stringify(snapshot)));
       return template;
     });
-    const template = await createTemplate();
     return res.status(201).json({ template });
   });
 
@@ -1320,7 +1326,7 @@ function installProductRoutes(app, db, isProduction) {
       WHERE template_id = $1 AND revision = $2
     `).get(templateId, revision));
     if (!version) return sendError(res, 404, "Template version not found.");
-    const restoreVersion = database.transaction(async () => {
+    await database.transaction(async () => {
       const nextRevision = template.revision + 1;
       await (database.prepare(`
         UPDATE product_templates SET name = $1, steps_json = $2, revision = $3,
@@ -1330,7 +1336,6 @@ function installProductRoutes(app, db, isProduction) {
         "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES ($1, $2, $3, $4)"
       ).run(templateId, nextRevision, version.name, version.steps_json));
     });
-    await restoreVersion();
     return res.json({ success: true });
   });
 
@@ -1372,7 +1377,7 @@ function installProductRoutes(app, db, isProduction) {
     }
     const nextStepsJson = stepsJson === undefined ? template.steps_json : stepsJson;
     const nextRevision = template.revision + 1;
-    const saveVersion = database.transaction(async () => {
+    await database.transaction(async () => {
       await (database.prepare(`
         UPDATE product_templates SET name = $1, steps_json = $2, revision = $3,
           updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND workspace_id = $5
@@ -1381,7 +1386,6 @@ function installProductRoutes(app, db, isProduction) {
         "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES ($1, $2, $3, $4)"
       ).run(templateId, nextRevision, name, nextStepsJson));
     });
-    await saveVersion();
     return res.json({ success: true });
   });
 
@@ -1411,7 +1415,7 @@ function installProductRoutes(app, db, isProduction) {
     if (!Array.isArray(steps) || steps.length === 0) return sendError(res, 409, "This template has no steps. Create a new template from a process with steps.");
 
     const rawPortalToken = randomBytes(32).toString("base64url");
-    const createImplementation = database.transaction(async () => {
+    const implementation = await database.transaction(async () => {
       const implementation = await (database.prepare(
         "INSERT INTO product_implementations (workspace_id, template_id, customer_name, portal_token_hash) VALUES ($1, $2, $3, $4) RETURNING id, customer_name, created_at"
       ).get(req.product.workspaceId, templateId, customerName, hashToken(rawPortalToken)));
@@ -1455,7 +1459,6 @@ function installProductRoutes(app, db, isProduction) {
       `).run(implementation.id, req.product.workspaceId, templateId));
       return implementation;
     });
-    const implementation = await createImplementation();
     return res.status(201).json({
       implementation: { ...implementation, template_name: template.name },
       customerPortalToken: rawPortalToken
@@ -1571,7 +1574,7 @@ function installProductRoutes(app, db, isProduction) {
       return sendError(res, 400, "Choose whether this information request is required.");
     }
     const required = req.body.required !== false;
-    const createRequirement = database.transaction(async () => {
+    const requirement = await database.transaction(async () => {
       const requirement = await (database.prepare(
         `INSERT INTO product_requirements (workspace_id, template_id, name, description, required, input_type)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, template_id, name, description, required, input_type`
@@ -1583,7 +1586,7 @@ function installProductRoutes(app, db, isProduction) {
       `).run(requirement.id, req.product.workspaceId, templateId));
       return requirement;
     });
-    return res.status(201).json({ requirement: await createRequirement() });
+    return res.status(201).json({ requirement });
   });
 
   app.patch("/api/product/requirements/:requirementId", sameOrigin, requireSession, async (req, res) => {
@@ -1674,7 +1677,7 @@ function installProductRoutes(app, db, isProduction) {
       return value && inputValueError(requirement.input_type, value);
     });
     if (invalidSavedValue) return sendError(res, 400, `${invalidSavedValue.name} must be corrected before submission.`);
-    const saveInputs = database.transaction(async () => {
+    await database.transaction(async () => {
       const save = database.prepare(`
         INSERT INTO product_customer_inputs (implementation_id, requirement_id, value, updated_at)
         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
@@ -1683,7 +1686,6 @@ function installProductRoutes(app, db, isProduction) {
       `);
       for (const entry of entries) await (save.run(implementation.id, entry.requirementId, entry.value));
     });
-    await saveInputs();
     res.setHeader("Referrer-Policy", "no-referrer");
     return res.json({ success: true });
   });

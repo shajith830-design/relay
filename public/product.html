@@ -34,7 +34,8 @@
         <p class="status" id="auth-status" role="status" aria-live="polite"></p>
       </form>
       <button class="text-button" id="forgot-password" type="button" hidden>Forgot your password?</button>
-      <section id="password-reset-request" hidden aria-labelledby="password-reset-request-title">
+        <a class="button secondary full ray-demo-link" href="product.html?demo=ray">Preview Ray demo</a>
+        <section id="password-reset-request" hidden aria-labelledby="password-reset-request-title">
         <h2 id="password-reset-request-title">Recover your password</h2>
         <p class="muted">Enter your account email. If it matches an account, Relay will send a one-time recovery link.</p>
         <form id="password-reset-request-form">
@@ -68,7 +69,17 @@
   </main>
 
   <div id="app-shell" class="app-shell" hidden>
-    <aside class="sidebar">
+    <main id="ray-demo-stage" class="ray-demo-stage" hidden>
+      <a class="wordmark" href="index.html" aria-label="Relay Automation home"><img class="wordmark-logo" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="wordmark-name"><span>Relay</span><small>Automation</small></span></a>
+      <section class="ray-demo-card">
+        <p class="eyebrow">Interactive product preview</p>
+        <h1>Meet Ray, your Relay guide.</h1>
+        <p>Ask how to map a process, create a reusable template, or guide a customer implementation.</p>
+        <p class="ray-demo-disclaimer">Demo mode: replies are sample content. Nothing is sent to an AI service or saved.</p>
+        <button class="button primary" id="ray-demo-open" type="button">Open Ray</button>
+      </section>
+    </main>
+    <aside class="sidebar" id="sidebar">
       <a class="wordmark" href="index.html" aria-label="Relay Automation home"><img class="wordmark-logo" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="wordmark-name"><span>Relay</span><small>Automation</small></span></a>
       <div class="workspace-label"><img class="workspace-avatar" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span id="workspace-name-display"></span></div>
       <nav class="side-nav" aria-label="Workspace">
@@ -287,7 +298,7 @@
           <div class="help-brand"><img class="ray-logo" src="assets/Ray%20Robot%20Mascot%20Logo%20%281%29.png" alt=""><span><p class="eyebrow">Your Relay guide</p><h2 id="help-title">Ask Ray</h2></span></div>
           <button class="help-icon-button" id="help-close" type="button" aria-label="Close Ray">×</button>
         </header>
-        <p class="help-privacy-note">Ask about using Relay. Messages and recent chat history are processed by Relay’s AI service. Don’t share passwords, secrets, or confidential customer information.</p>
+        <p class="help-privacy-note" id="help-privacy-note">Ask about using Relay. Messages and recent chat history are processed by Relay’s AI service. Don’t share passwords, secrets, or confidential customer information.</p>
         <label class="help-consent" id="help-consent-wrap" hidden>
           <input id="help-consent" type="checkbox">
           <span>I agree that my questions to Ray and recent chat history may be sent to an external AI service to generate answers. I will not include secrets or confidential customer information.</span>

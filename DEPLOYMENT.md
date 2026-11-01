@@ -56,7 +56,7 @@ Relay does not process payments. Public workspace creation is disabled. Clients 
 4. Save the variable and redeploy the Production deployment so the server receives it.
 5. Open `https://<your-domain>/relay-owner-console.html` directly, enter `OWNER_ADMIN_TOKEN`, and select **Continue**. This page is not linked in customer navigation and has `noindex`; actual workspace data and actions are protected by the server token. Do not rely on the hidden URL as the security boundary.
 6. After payment is confirmed, enter the workspace name and the client's owner's email, then select **Approve payment & create access**. Relay creates the account and grants one calendar month starting immediately.
-7. Copy the generated initial password from the result and send it to the client through a secure channel. It is shown only in that result; it is not emailed. The client signs in at `https://<your-domain>/product.html`.
+7. Copy the generated initial password from the result and send it to the client through a secure channel. It is shown only in that result; it is not emailed. The client can sign in at `https://<your-domain>/product`; this redirects to `product.html` and preserves query parameters such as `?demo=ray`.
 8. After renewal payment, find the client in **Client workspaces** and select **Add 1 month**. If the subscription has expired, the month starts immediately; if still active, the extra month is added after its current expiry.
 
 The client can invite teammates to their active workspace without separate approval or payment; there is no seat limit currently. All workspace members lose access when that workspace's subscription expires. The workspace provisioning command remains available for operator use, but is not needed for this owner-console workflow. The database migration does not grant access to existing workspaces automatically.
@@ -86,7 +86,7 @@ Deploy the application only after checking that the URL points to the intended S
 
 The checked-in migrations create an empty PostgreSQL schema. They do **not** import `relay.db` or any other local SQLite file. Existing SQLite data is left untouched; no hosted database was contacted or modified for this repository change. A data transfer requires separate authorization, an explicitly designed export/import process, verified backups, and a tested cutover plan.
 
-For Docker Compose, copy `.env.example` to `.env`, replace all placeholders, configure `DATABASE_URL` and provider secrets, and run:
+For Docker Compose, copy `.env.example` to `.env` and set the required `DATABASE_URL`, `INQUIRIES_API_TOKEN`, `OWNER_ADMIN_TOKEN`, `RESEND_API_KEY`, `AUTH_EMAIL_FROM`, and `PUBLIC_BASE_URL` values, then run:
 
 ```powershell
 docker compose config --quiet
@@ -94,6 +94,8 @@ docker compose up -d --build
 docker compose ps
 docker compose logs --tail 100 relay
 ```
+
+Telegram inquiry notifications are optional; set both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to enable them. Inquiry email notifications are also optional; set `INQUIRY_NOTIFICATION_EMAIL` along with the configured Resend credentials to enable them.
 
 Compose runs the service as non-root with a read-only root filesystem. PostgreSQL persistence and backups are managed by Supabase, not by an application volume.
 

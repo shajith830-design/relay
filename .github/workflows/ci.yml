@@ -49,6 +49,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ci-placeholder
           TELEGRAM_CHAT_ID: ci-placeholder
           INQUIRIES_API_TOKEN: ci-placeholder
+          OWNER_ADMIN_TOKEN: ci-owner-placeholder
           RESEND_API_KEY: ci-placeholder
           AUTH_EMAIL_FROM: relay@example.invalid
           PUBLIC_BASE_URL: https://relay.example.invalid

@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY --chown=node:node package.json server.js db.js product-routes.js relay-help-content.js ./
+COPY --chown=node:node package.json server.js db.js product-auth.js product-routes.js relay-help-content.js ./
 COPY --chown=node:node migrations ./migrations
 COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node public ./public
