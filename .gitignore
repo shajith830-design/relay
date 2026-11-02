@@ -1,8 +1,10 @@
 node_modules/
+.wrangler/
 npm-debug.log*
 .env
 .env.*
 !.env.example
+.dev.vars*
 relay.db
 relay.db-*
 backups/

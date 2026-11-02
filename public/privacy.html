@@ -31,7 +31,7 @@
         <li>Relay uses account and workspace information to provide sign-in and implementation workflows.</li>
         <li>Password recovery uses an email delivery provider to send a one-time recovery link. Recovery tokens are stored as hashes and expire after 30 minutes.</li>
         <li>Inquiry submissions are stored in the Relay database. When configured, inquiry details are also sent to the service operator’s messaging destination for follow-up.</li>
-        <li>After the user consents in the chat panel, Ray sends the question and recent messages in that account’s conversation to the configured external AI service to generate an answer. The service may process this information according to its own terms. Conversation history (up to 50 messages) and the consent record are stored per user account in the Relay database until that user clears the history; clearing also withdraws consent. Relay does not send workspace records or customer implementation data as assistant context.</li>
+        <li>Ray uses a built-in library of Relay product answers to respond to questions. Chat messages are not sent to an external AI service. For signed-in users, conversation history (up to 50 messages) is stored per account in the Relay database until the user clears it. Ray cannot access workspace records or customer implementation data.</li>
         <li>Relay does not ask customers to submit passwords, payment card data, or other secrets through setup forms.</li>
       </ul></article>
     </div></section>

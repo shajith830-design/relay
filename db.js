@@ -76,9 +76,12 @@ async function transaction(callback) {
 async function initialize() {
   const client = await pool.connect();
   try {
-    const migrations = fs.readdirSync(path.join(__dirname, "migrations"))
-      .filter((name) => /^\d+_.+\.sql$/.test(name))
-      .sort();
+    const bundledMigrations = globalThis.__RELAY_MIGRATIONS__;
+    const migrations = bundledMigrations
+      ? Object.keys(bundledMigrations).sort()
+      : fs.readdirSync(path.join(__dirname, "migrations"))
+        .filter((name) => /^\d+_.+\.sql$/.test(name))
+        .sort();
     for (const migrationName of migrations) {
       const version = Number.parseInt(migrationName, 10);
       await client.query("BEGIN");
@@ -95,7 +98,9 @@ async function initialize() {
           [version]
         );
         if (applied.rowCount === 0) {
-          const migration = fs.readFileSync(path.join(__dirname, "migrations", migrationName), "utf8");
+          const migration = bundledMigrations
+            ? bundledMigrations[migrationName]
+            : fs.readFileSync(path.join(__dirname, "migrations", migrationName), "utf8");
           await client.query(migration);
           await client.query("INSERT INTO relay_schema_migrations (version) VALUES ($1)", [version]);
         }

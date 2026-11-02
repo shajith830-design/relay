@@ -114,6 +114,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .button.full { width: 100%; margin-top: 6px; }
 .status { min-height: 18px; margin: 10px 0 0; color: #b91c1c; font-size: 12px; line-height: 1.5; }
 .app-shell { min-height: 100vh; }
+.local-demo-banner { position: relative; z-index: 6; padding: 9px 16px; background: #fff7cc; color: #713f12; font-size: 12px; font-weight: 700; text-align: center; }
 .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 5; display: flex; width: 252px; flex-direction: column; border-right: 1px solid var(--line); padding: 22px 16px 16px; background: var(--surface); }
 .sidebar .wordmark { padding: 0 8px 26px; }
 .workspace-label { display: flex; min-height: 46px; align-items: center; gap: 10px; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; color: var(--ink-subtle); font-size: 12px; font-weight: 700; text-overflow: ellipsis; }

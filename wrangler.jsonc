@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "relay",
+  "main": "cloudflare-worker.mjs",
+  "compatibility_date": "2026-11-02",
+  "compatibility_flags": ["nodejs_compat"],
+  // Keep iconv-lite on its browser path; Wrangler otherwise bundles its Node stream helpers as disabled stubs.
+  "define": {
+    "process.versions.node": "undefined"
+  },
+  "workers_dev": true,
+  "vars": {
+    "PUBLIC_BASE_URL": "https://relayautomation.tech",
+    "TRUST_PROXY_HOPS": "1"
+  },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*",
+      "/health",
+      "/healthz",
+      "/inquiries",
+      "/admin/*",
+      "/product"
+    ],
+    "not_found_handling": "404-page"
+  },
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["migrations/*.sql"],
+      "fallthrough": true
+    }
+  ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "REPLACE_WITH_CLOUDFLARE_HYPERDRIVE_ID"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

@@ -5,7 +5,7 @@ const {
   randomBytes
 } = require("node:crypto");
 const { makePasswordHash, checkPassword } = require("./product-auth");
-const { assistantInstructions } = require("./relay-help-content");
+const { relayHelpReply } = require("./public/relay-help");
 
 const SESSION_COOKIE = "relay_session";
 const SESSION_DAYS = 14;
@@ -770,16 +770,12 @@ function installProductRoutes(app, db, isProduction) {
       )
       ORDER BY id
     `).all(req.product.userId));
-    const consent = await (database.prepare(
-      "SELECT 1 FROM product_help_consents WHERE user_id = $1"
-    ).get(req.product.userId));
-    return res.json({ messages, consented: Boolean(consent) });
+    return res.json({ messages });
   });
 
   app.delete("/api/product/help-chat", sameOrigin, requireSession, async (req, res) => {
     await database.transaction(async () => {
       await (database.prepare("DELETE FROM product_help_messages WHERE user_id = $1").run(req.product.userId));
-      await (database.prepare("DELETE FROM product_help_consents WHERE user_id = $1").run(req.product.userId));
     });
     return res.json({ success: true });
   });
@@ -789,88 +785,12 @@ function installProductRoutes(app, db, isProduction) {
     const message = requiredText(req.body.message, 1200);
     if (!message) return sendError(res, 400, "Enter a Relay question up to 1,200 characters.");
 
-    const alreadyConsented = await (database.prepare(
-      "SELECT 1 FROM product_help_consents WHERE user_id = $1"
-    ).get(userId));
-    if (!alreadyConsented && req.body.consentAccepted !== true) {
-      return sendError(res, 403, "Confirm that your help messages and recent chat history may be processed by Relay’s AI service.");
-    }
-
     const rateLimitResult = rateLimit(`help-chat-user:${userId}`, 12, 10 * 60 * 1000,
       "You’ve sent several help questions. Please wait a few minutes and try again.");
     if (rateLimitResult.limited) return sendError(res, 429, rateLimitResult.message);
 
-    const apiKey = process.env.OPENAI_API_KEY?.trim();
-    const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
-    if (!apiKey) {
-      console.error("Relay Help is not configured: OPENAI_API_KEY is missing.");
-      return sendError(res, 503, "Ray is temporarily unavailable. Please contact Relay support.");
-    }
-    if (!/^[A-Za-z0-9._-]{1,100}$/.test(model)) {
-      console.error("Relay Help is not configured: OPENAI_MODEL is invalid.");
-      return sendError(res, 503, "Ray is temporarily unavailable. Please contact Relay support.");
-    }
-
-    if (!alreadyConsented) {
-      await (database.prepare("INSERT INTO product_help_consents (user_id) VALUES ($1)").run(userId));
-    }
-
-    const previousMessages = await (database.prepare(`
-      SELECT role, content
-      FROM (
-        SELECT role, content, id
-        FROM product_help_messages
-        WHERE user_id = $1
-        ORDER BY id DESC
-        LIMIT 12
-      )
-      ORDER BY id
-    `).all(userId));
-
-    let response;
-    try {
-      const apiUrl = process.env.NODE_ENV === "test" && process.env.RELAY_HELP_API_URL
-        ? process.env.RELAY_HELP_API_URL
-        : "https://api.openai.com/v1/chat/completions";
-      response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: assistantInstructions },
-            ...previousMessages,
-            { role: "user", content: message }
-          ],
-          max_completion_tokens: 500
-        }),
-        signal: AbortSignal.timeout(20000)
-      });
-    } catch (error) {
-      console.error(JSON.stringify({
-        event: "relay_help_provider_failed",
-        reason: error.name === "TimeoutError" ? "timeout" : "request_error",
-        message: error.message
-      }));
-      return sendError(res, 503, "Ray could not connect right now. Please try again shortly.");
-    }
-
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      console.error(JSON.stringify({
-        event: "relay_help_provider_failed",
-        provider_status: response.status
-      }));
-      return sendError(res, 503, "Ray could not answer right now. Please try again shortly.");
-    }
-    const answer = result.choices?.[0]?.message?.content;
-    if (typeof answer !== "string" || !answer.trim() || answer.length > 4000) {
-      console.error(JSON.stringify({ event: "relay_help_provider_invalid_response" }));
-      return sendError(res, 502, "Ray received an invalid answer. Please try again.");
-    }
+    const answer = relayHelpReply(message);
+    if (!answer || answer.length > 4000) return sendError(res, 500, "Ray could not prepare a reply. Please contact Relay support.");
 
     const savedMessage = await database.transaction(async () => {
       const insert = database.prepare(

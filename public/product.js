@@ -11,6 +11,7 @@ const authStatus = document.getElementById("auth-status");
 const globalStatus = document.getElementById("global-status");
 const toast = document.getElementById("toast");
 const isRayDemo = new URLSearchParams(window.location.search).get("demo") === "ray";
+const isWorkspaceDemo = Boolean(window.relayWorkspaceDemo);
 let appearanceSaveQueue = Promise.resolve();
 let subscriptionExpiryTimer;
 const state = {
@@ -28,7 +29,6 @@ const state = {
   customerTokens: new Map(),
   handoverGuide: "",
   helpMessages: [],
-  helpConsented: false,
   onboardingDismissed: false,
   preferences: { theme: "light", accent: "blue" },
   implementationFilters: { search: "", status: "all", owner: "all", attention: "all" }
@@ -59,6 +59,14 @@ function escapeHtml(value) {
 }
 
 async function api(url, options = {}) {
+  if (isWorkspaceDemo) {
+    const result = await window.relayWorkspaceDemo.request(url, options);
+    if (activeSubmissionForm) {
+      finishForm(activeSubmissionForm, "Saved.");
+      activeSubmissionForm = null;
+    }
+    return result;
+  }
   const headers = new Headers(options.headers || {});
   if (options.body !== undefined) headers.set("Content-Type", "application/json");
   let response;
@@ -440,69 +448,14 @@ function renderHelpMessages() {
 }
 
 function rayDemoReply(message) {
-  const question = message.toLocaleLowerCase();
-  if (/(ignore|override).{0,30}(instruction|rule|prompt)|prompt injection|system prompt|reveal.{0,30}(secret|password|key)/.test(question)) {
-    return "I can’t follow requests to reveal hidden instructions, credentials, or private data. This preview uses sample replies and has no access to secrets or a live workspace.";
-  }
-  if (/(password|payment card|credit card|card number|api key|credential|secret)/.test(question)) {
-    return "Do not collect passwords, payment-card details, API keys, or other authentication secrets in Relay. Use an appropriate secure channel or password manager instead.";
-  }
-  if (/(soc.?2|certif|compliance|uptime|availability|service.level|\bsla\b|security audit)/.test(question)) {
-    return "I can’t verify Relay’s certifications, audit results, uptime, or service-level commitments. Check the current signed agreement and ask the service operator before relying on any such claim.";
-  }
-  if (/\b(ai|artificial intelligence|model|live ray)\b/.test(question)) {
-    return "This Ray preview uses canned sample replies; it does not contact an AI service. Authenticated Ray uses a configured provider and can be unavailable if that provider is not set up.";
-  }
-  if (/(jira|slack|integration|integrate|synchronize|sync with|external project)/.test(question)) {
-    return "Relay is a standalone workspace and does not synchronize with or configure external project tools.";
-  }
-  if (/(price|pricing|cost|₹|rupee|subscription)/.test(question)) {
-    return "Relay’s subscription price is ₹3,000 per month. Review the applicable billing and service terms before purchase.";
-  }
-  if (/(live|current|my |our )?.{0,30}(customer|implementation|task|workspace).{0,30}(status|progress|data|details)|what is blocked|what is overdue/.test(question)) {
-    return "This preview has no connected workspace or customer data, so I can’t report live status. In Relay, open Implementations to review task owners, due dates, blockers, prerequisites, and customer responses.";
-  }
-  if (/(map|add|set|configure|define|choose).{0,35}(prerequisite|dependency)|(?:prerequisite|dependency).{0,35}(map|add|set|configure|define)|process.{0,30}(prerequisite|dependency)/.test(question)) {
-    return "Open Process map and edit a step to select the earlier steps it depends on. These prerequisites make the required order clear, and Relay flags implementation tasks that are waiting on unfinished prerequisites.";
-  }
-  if (/(prerequisite|blocked|blocker|waiting on)/.test(question)) {
-    return "For a blocked implementation task, record the blocker and the next action, then review its prerequisite tasks. Relay highlights work waiting on unmet prerequisites so the team can see what must happen next.";
-  }
-  if (/(customer information|customer form|customer link|submission|requirements)/.test(question)) {
-    return "Use Customer information to define the fields you need, then share the private link for that implementation. Review submitted values there; do not request passwords, payment-card details, or authentication secrets.";
-  }
-  if (/(invite|member|teammate|permission|role)/.test(question)) {
-    return "Workspace owners can invite members from Settings and assign teammates to implementation tasks. Members can be removed or have an invitation revoked from the same workspace settings.";
-  }
-  if (/(appearance|theme|dark mode|accent|color)/.test(question)) {
-    return "Open Settings to choose a light or dark display mode and an accent color. Relay saves those appearance preferences to your account.";
-  }
-  if (/(delete|deletion|remove).{0,30}(account|workspace)|(?:account|workspace).{0,30}(delete|deletion|remove)/.test(question)) {
-    return "Account deletion is available in Settings. Relay shows the effect on each workspace first; if you own a shared workspace, choose another member as its new owner before confirming.";
-  }
-  if (/(change|update|refresh|edit|restore).{0,40}template.{0,50}(existing|current|already|affect|implementation|plan)|template.{0,50}(existing implementation|existing plan|already started|future implementation)|(?:existing|current|already-created|already created).{0,40}(implementation|plan|customer work)/.test(question)) {
-    return "Refreshing a template creates a new revision for future implementations. Existing implementations keep their own copied task plans and are not changed by template updates.";
-  }
-  if (/(template|version|revision|restore)/.test(question)) {
-    return "Start by mapping your team's process, then run the setup check. Once the steps have clear instructions, owners, and prerequisites, save the checked process as a reusable template.";
-  }
-  if (/(customer|implementation|task|assignee|due date)/.test(question)) {
-    return "Open Implementations, choose a saved template, and enter the customer's name. Relay creates a customer-specific task list. You can assign teammates, set due dates, and share a private link for customer information.";
-  }
-  if (/(process|map|step|readiness|check)/.test(question)) {
-    return "Open Process map and add the steps your team follows. Give each step an instruction and owner, set prerequisites in order, and run the setup check before saving it as a template.";
-  }
-  if (/(relay|feature|what can you|what does|how do i|how can i|help|start)/.test(question)) {
-    return "Relay helps teams prepare customer implementations with process maps, reusable templates, task plans, customer information links, and workspace member assignments. Which workflow would you like help with?";
-  }
-  return "I can help with Relay’s process maps, templates, implementation tasks, customer information links, and workspace settings. I can’t answer unrelated questions, but tell me what you’re trying to do in Relay and I’ll point you to the right workflow.";
+  return window.relayHelpReply(message);
 }
+
+window.relayDemoReply = rayDemoReply;
 
 async function loadHelpHistory() {
   const result = await api("/api/product/help-chat");
   state.helpMessages = result.messages;
-  state.helpConsented = result.consented;
-  document.getElementById("help-consent-wrap").hidden = state.helpConsented;
   renderHelpMessages();
 }
 
@@ -1354,10 +1307,10 @@ document.getElementById("help-form").addEventListener("submit", async (event) =>
   if (isRayDemo) {
     state.helpMessages.push(
       { role: "user", content: message },
-      { role: "assistant", content: `Demo answer: ${rayDemoReply(message)}` }
+      { role: "assistant", content: rayDemoReply(message) }
     );
     input.value = "";
-    status.textContent = "Sample reply — no AI service was contacted.";
+    status.textContent = "";
     renderHelpMessages();
     button.disabled = false;
     input.focus();
@@ -1366,15 +1319,10 @@ document.getElementById("help-form").addEventListener("submit", async (event) =>
   try {
     const result = await api("/api/product/help-chat", {
       method: "POST",
-      body: {
-        message,
-        consentAccepted: !state.helpConsented && document.getElementById("help-consent").checked
-      }
+      body: { message }
     });
     state.helpMessages.push({ role: "user", content: message }, result.message);
     if (state.helpMessages.length > 50) state.helpMessages = state.helpMessages.slice(-50);
-    state.helpConsented = true;
-    document.getElementById("help-consent-wrap").hidden = true;
     input.value = "";
     status.textContent = "";
     renderHelpMessages();
@@ -1401,9 +1349,6 @@ document.getElementById("help-clear").addEventListener("click", async () => {
   try {
     await api("/api/product/help-chat", { method: "DELETE" });
     state.helpMessages = [];
-    state.helpConsented = false;
-    document.getElementById("help-consent").checked = false;
-    document.getElementById("help-consent-wrap").hidden = false;
     renderHelpMessages();
     status.textContent = "Your help history was cleared.";
   } catch (error) {
@@ -1876,6 +1821,26 @@ document.getElementById("process-test-result").addEventListener("click", async (
 });
 
 async function initialize() {
+  if (isWorkspaceDemo) {
+    state.user = { id: 9001, email: "owner@demo.invalid" };
+    state.workspace = {
+      id: 9000,
+      name: "Northstar Demo Workspace",
+      role: "owner",
+      subscriptionExpiresAt: new Date(Date.now() + 30 * 86400000).toISOString()
+    };
+    document.getElementById("auth-screen").hidden = true;
+    appShell.hidden = false;
+    document.getElementById("local-demo-banner").hidden = false;
+    document.getElementById("help-privacy-note").textContent =
+      "Local demo: workspace records stay in this browser session. Ray uses built-in Relay answers; no external AI service is contacted.";
+    await loadPreferences();
+    await loadOnboarding();
+    showProduct();
+    await loadWorkspace();
+    await loadHelpHistory();
+    return;
+  }
   if (isRayDemo) {
     state.user = { id: 0, email: "Demo preview" };
     state.workspace = {
@@ -1884,7 +1849,6 @@ async function initialize() {
       role: "owner",
       subscriptionExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
     };
-    state.helpConsented = true;
     state.helpMessages = [
       { role: "user", content: "How do I start a customer implementation?" },
       { role: "assistant", content: "Open Implementations, choose a saved template, and enter the customer's name. Relay creates a customer-specific task list where your team can assign owners, set due dates, and share a private customer information link." }
@@ -1894,9 +1858,8 @@ async function initialize() {
     document.getElementById("sidebar").hidden = true;
     document.querySelector(".main-content").hidden = true;
     document.getElementById("ray-demo-stage").hidden = false;
-    document.getElementById("help-consent-wrap").hidden = true;
     document.getElementById("help-privacy-note").textContent =
-      "Demo mode: replies are sample content. Messages are not sent to an AI service or saved.";
+      "Preview mode: Ray uses built-in Relay answers. Messages are not sent to an external AI service or saved.";
     document.getElementById("help-panel").hidden = false;
     document.getElementById("help-open").setAttribute("aria-expanded", "true");
     renderHelpMessages();

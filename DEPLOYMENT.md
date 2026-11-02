@@ -1,6 +1,35 @@
 # Relay deployment and operations
 
-Relay requires PostgreSQL. It does not create, copy, or fall back to a local SQLite database. Set `DATABASE_URL` before starting the server; database initialization applies the checked-in, versioned SQL migrations and the health endpoint waits for that initialization to finish. `vercel.json` explicitly includes the migration SQL files in the serverless function bundle.
+Relay requires PostgreSQL. It does not create, copy, or fall back to a local SQLite database. Database initialization applies the checked-in, versioned SQL migrations and the health endpoint waits for that initialization to finish.
+
+## Cloudflare Workers production deployment
+
+The Cloudflare Worker must deploy both the Worker entry point and the static assets. A static-only deployment serves the website but returns 404 for the API, health, and inquiry routes. `wrangler.jsonc` configures the existing app as a Worker with static assets and a PostgreSQL Hyperdrive binding.
+
+An empty local `.env` does not affect the deployed Worker: it gets its database connection from Hyperdrive and its secrets from Cloudflare Worker settings. Do not copy production credentials into `.env` or Git.
+
+1. For a $0 pilot, create a Supabase Free PostgreSQL project, then create a Cloudflare Hyperdrive configuration using that database's connection details. Supabase Free includes 500 MB and can pause a project after one week of inactivity; Hyperdrive's Free allocation is 100,000 database statements per day.
+2. Replace `REPLACE_WITH_CLOUDFLARE_HYPERDRIVE_ID` in `wrangler.jsonc` with the Hyperdrive configuration ID. The ID is a resource identifier, not the database password.
+3. Ray uses built-in Relay-specific answers and does not require an AI binding, model, or external provider credentials. Its responses are curated rather than generative, so questions without a matching built-in answer receive a clear fallback.
+4. Configure Worker secrets in Cloudflare or with Wrangler. Set the required `INQUIRIES_API_TOKEN` and `OWNER_ADMIN_TOKEN` as separate high-entropy secrets. Add `RESEND_API_KEY` if password recovery/email notifications are enabled. Never store these values in `wrangler.jsonc`, `.env.example`, or Git.
+5. Configure the non-secret Worker variable `PUBLIC_BASE_URL=https://relayautomation.tech`. Add `AUTH_EMAIL_FROM` (a sender verified with your email provider) and `INQUIRY_NOTIFICATION_EMAIL` if email notifications are wanted.
+6. From a trusted machine with Node.js installed, authenticate Wrangler to the correct Cloudflare account and deploy:
+
+   ```powershell
+   npm ci
+   npx wrangler login
+   npm run deploy:cloudflare
+   ```
+
+   Confirm the Worker named `relay` is the Worker currently serving `relay.shajith830.workers.dev` and that the production custom domain `relayautomation.tech` remains attached to it. Do not copy Cloudflare authentication tokens into this repository.
+7. Verify against the production domain:
+   - `GET /healthz` returns `200` with `{"status":"ok","database":"ok"}`.
+   - Signed-out `GET /api/product/me` returns `401`, not `404`.
+   - `GET /inquiries` without a bearer token returns `401`, not `404`.
+   - A valid dummy contact/demo submission to `POST /api/inquiries` returns `201`.
+   - Test sign-in, password recovery (if configured), customer link submission, and workspace actions with a dedicated staging account before onboarding clients.
+
+This is a low-cost pilot setup, not an uptime guarantee. Workers Free allows 100,000 Worker requests per day and 10 ms CPU per request. Relay's scrypt password hashing may exceed that CPU limit, so verify account creation and sign-in on the deployed Free Worker before inviting the client; do not weaken password hashing to bypass the limit. Supabase Free can pause after a week without activity. Review each provider's current quotas and have a recovery plan before relying on the service for client operations. See Cloudflare's [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [Hyperdrive pricing](https://developers.cloudflare.com/hyperdrive/platform/pricing/), and [Supabase pricing](https://supabase.com/pricing).
 
 ## Supabase setup
 
@@ -12,16 +41,16 @@ Relay requires PostgreSQL. It does not create, copy, or fall back to a local SQL
    postgresql://postgres.<project-ref>:<database-password>@<region>.pooler.supabase.com:6543/postgres?sslmode=require
    ```
 
-   Keep the URL private. Do not put it in browser code, logs, screenshots, source control, or support requests. Relay uses a small `pg` connection pool (maximum three clients per process), ordinary parameterized queries with PostgreSQL `$1` placeholders, and no named/prepared statements or session state. The transaction pooler is therefore suitable for Vercel serverless deployments.
-4. Set `DATABASE_URL` in the deployment secret manager. On Vercel, add it under **Project → Settings → Environment Variables** for Production, Preview, and Development as needed. Use a separate, isolated database or explicitly separate schema for Preview/Development; never point those environments at production.
-5. Add the other required provider secrets listed below. Do not commit `.env`; `.env.example` contains placeholders only.
+   Keep the URL private. Do not put it in browser code, logs, screenshots, source control, or support requests. Relay uses a small `pg` connection pool (maximum three clients per process), ordinary parameterized queries with PostgreSQL `$1` placeholders, and no named/prepared statements or session state. Configure this URL in Cloudflare Hyperdrive; do not expose it as a Worker variable.
+4. Configure separate Hyperdrive/database resources for production and non-production environments. Never point a staging Worker at the production database.
+5. Add the other required provider secrets listed below to the Cloudflare Worker. Do not commit `.env`; `.env.example` contains placeholders only.
 
 ## Configuration
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Required PostgreSQL URL. Use Supabase's transaction pooler for Vercel/serverless. |
-| `PORT` | HTTP port; Vercel provides this automatically. Docker Compose defaults to `3000`. |
+| `DATABASE_URL` | Required PostgreSQL URL for Node/Docker deployments. The Cloudflare Worker gets its connection string from the `HYPERDRIVE` binding instead. |
+| `PORT` | HTTP port for Node/Docker deployments. The Cloudflare Worker does not use it. |
 | `INQUIRIES_API_TOKEN` | Strong random bearer token for reading website inquiries. |
 | `OWNER_ADMIN_TOKEN` | Separate strong random bearer token for the hidden owner console and paid workspace provisioning/renewal. |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional inquiry notification provider credentials. |
@@ -30,8 +59,7 @@ Relay requires PostgreSQL. It does not create, copy, or fall back to a local SQL
 | `INQUIRY_NOTIFICATION_EMAIL` | Inbox for contact and demo inquiry notifications. |
 | `PUBLIC_BASE_URL` | Public HTTPS origin used in password recovery links. |
 | `TRUST_PROXY_HOPS` | Number of trusted reverse proxies in front of Relay. Configure only when appropriate for the host. |
-| `OPENAI_API_KEY` | Optional server-side secret for Ray. Leave unset to disable Ray. |
-| `OPENAI_MODEL` | Optional Ray model name; defaults to `gpt-4o-mini`. |
+| Ray responses | Built-in Relay answer library; no external AI service or provider configuration is used. |
 
 Use unique production credentials and rotate them if exposed. Never put secrets in frontend configuration.
 
@@ -39,8 +67,7 @@ Use unique production credentials and rotate them if exposed. Never put secrets 
 
 Relay does not process payments. Public workspace creation is disabled. Clients use **Book a Demo** or **Contact**; after you confirm payment, activate them in the separate owner console. The page is intentionally not linked from customer-facing navigation and asks for an owner-only secret; it is not a public signup or approval link.
 
-1. In Vercel, open the Relay project and go to **Settings → Environment Variables**.
-2. Add `OWNER_ADMIN_TOKEN` for **Production**. Generate a strong value locally in PowerShell:
+1. In Cloudflare, open the `relay` Worker settings and add `OWNER_ADMIN_TOKEN` as a secret. Generate a strong value locally in PowerShell:
 
    ```powershell
    $bytes = New-Object byte[] 32
@@ -51,7 +78,7 @@ Relay does not process payments. Public workspace creation is disabled. Clients 
    $ownerAdminToken
    ```
 
-   Copy the generated value directly into Vercel as `OWNER_ADMIN_TOKEN`. Treat it as a password: it can create and renew paid client workspaces. Do not put it in source control, send it to customers, or reuse `INQUIRIES_API_TOKEN`. If exposed, replace it in Vercel and redeploy.
+   Copy the generated value directly into the Cloudflare Worker secret. Treat it as a password: it can create and renew paid client workspaces. Do not put it in source control, send it to customers, or reuse `INQUIRIES_API_TOKEN`. If exposed, replace it in Cloudflare and redeploy.
 3. Keep `INQUIRIES_API_TOKEN` as a separate secret for the inquiries dashboard; it does not grant owner-console access.
 4. Save the variable and redeploy the Production deployment so the server receives it.
 5. Open `https://<your-domain>/relay-owner-console.html` directly, enter `OWNER_ADMIN_TOKEN`, and select **Continue**. This page is not linked in customer navigation and has `noindex`; actual workspace data and actions are protected by the server token. Do not rely on the hidden URL as the security boundary.
@@ -61,7 +88,7 @@ Relay does not process payments. Public workspace creation is disabled. Clients 
 
 The client can invite teammates to their active workspace without separate approval or payment; there is no seat limit currently. All workspace members lose access when that workspace's subscription expires. The workspace provisioning command remains available for operator use, but is not needed for this owner-console workflow. The database migration does not grant access to existing workspaces automatically.
 
-Demo and contact forms submit to Relay's `/api/inquiries` endpoint and require the deployed website/server and a configured `DATABASE_URL`. Opening an HTML page directly as a `file://` URL will not submit inquiries; use the deployed HTTPS website or run Relay with its database configured.
+Demo and contact forms submit to Relay's `/api/inquiries` endpoint and require the deployed Worker and its configured Hyperdrive database. Opening an HTML page directly as a `file://` URL will not submit inquiries; use the deployed HTTPS website or run Relay with its database configured.
 
 To receive each submitted contact or demo inquiry by email, configure `INQUIRY_NOTIFICATION_EMAIL`, `RESEND_API_KEY`, and `AUTH_EMAIL_FROM` in the deployment environment. Verify the sender address/domain with Resend. The inquiry is saved even if the notification provider is temporarily unavailable; check the `inquiry_email_notification_failed` server event if an email does not arrive.
 
@@ -76,12 +103,12 @@ npm ci
 npm run db:migrate
 ```
 
-Deploy the application only after checking that the URL points to the intended Supabase project. For Vercel, configure the project environment variables, deploy, and verify:
+Deploy the Worker only after confirming Hyperdrive points to the intended production database. Configure the Worker secrets and variables, deploy, and verify:
 
 1. `https://<your-domain>/healthz` returns HTTP `200` with `{"status":"ok","database":"ok"}`.
 2. A manually provisioned, paid test workspace can sign in/out, and its session is denied when the subscription expires.
 3. Password recovery, invitation acceptance, process/template creation, implementation tasks, requirements/customer input, account deletion, and inquiry intake behave as expected using test data.
-4. Ray responds only when configured; without its provider key the API reports that Ray is unavailable. Verify inquiry and password-recovery providers using non-customer test recipients.
+4. Ray uses built-in answers without provider configuration. Verify a greeting, a supported Relay workflow, and the out-of-scope fallback before inviting clients.
 5. Review logs and confirm they contain no credentials, passwords, reset/invitation/customer-link tokens, authorization headers, or customer-submitted values.
 
 The checked-in migrations create an empty PostgreSQL schema. They do **not** import `relay.db` or any other local SQLite file. Existing SQLite data is left untouched; no hosted database was contacted or modified for this repository change. A data transfer requires separate authorization, an explicitly designed export/import process, verified backups, and a tested cutover plan.

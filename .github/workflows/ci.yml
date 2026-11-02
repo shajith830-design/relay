@@ -153,13 +153,13 @@ jobs:
             -H "Cookie: $session_cookie" \
             -H 'Origin: http://127.0.0.1:3000' \
             -H 'Content-Type: application/json' \
-            -d '{"message":"How do I create a process map?","consentAccepted":true}' \
+            -d '{"message":"How do I create a process map?"}' \
             http://127.0.0.1:3000/api/product/help-chat)"
-          test "$ray_status" = "503" || {
+          test "$ray_status" = "200" || {
             docker logs relay-smoke
             exit 1
           }
-          grep -q 'Ray is temporarily unavailable' ray.json || {
+          grep -q '"role":"assistant"' ray.json || {
             docker logs relay-smoke
             exit 1
           }

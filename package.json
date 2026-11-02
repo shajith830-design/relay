@@ -6,6 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "dev:cloudflare": "wrangler dev",
+    "deploy:cloudflare": "wrangler deploy",
     "backup": "node scripts/backup-database.js",
     "db:migrate": "node scripts/migrate.js",
     "provision:workspace": "node scripts/provision-workspace.js",
@@ -17,5 +19,12 @@
   "dependencies": {
     "express": "^4.22.3",
     "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.156.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261101.1": true
   }
 }
