@@ -2,10 +2,11 @@
 
 (() => {
   const params = new URLSearchParams(window.location.search);
-  if (params.get("demo") !== "workspace" || !["localhost", "127.0.0.1"].includes(window.location.hostname)) return;
+  if (params.get("demo") !== "workspace") return;
 
   const ownerId = 9001;
   const memberId = 9002;
+  const portalStorageKey = "relay-workspace-demo-portals";
   let nextId = 9100;
   const today = new Date();
   const dateOffset = (days) => {
@@ -124,8 +125,19 @@
     }
   }
 
+  function applyPortalValues(implementation) {
+    for (const portal of Object.values(readPortalSnapshots())) {
+      if (portal.implementationId !== implementation.id) continue;
+      for (const savedRequirement of portal.requirements) {
+        const requirement = implementation.requirements.find((item) => item.id === savedRequirement.id);
+        if (requirement) requirement.value = savedRequirement.value;
+      }
+    }
+  }
+
   function summarizeImplementation(implementation) {
     updateWaitingTasks(implementation);
+    applyPortalValues(implementation);
     const steps = implementation.steps;
     const open = steps.filter((step) => step.status !== "done");
     const missing = implementation.requirements.filter((item) => item.required && !item.value.trim());
@@ -209,7 +221,67 @@
 
   function responseForImplementation(implementation) {
     if (!implementation) throw new Error("Implementation not found in the local demo data.");
+    applyPortalValues(implementation);
     return { implementation: clone(implementation) };
+  }
+
+  function readPortalSnapshots() {
+    const stored = window.localStorage.getItem(portalStorageKey);
+    return stored ? JSON.parse(stored) : {};
+  }
+
+  function savePortalSnapshot(token, implementation) {
+    const portals = readPortalSnapshots();
+    const previousPortal = Object.values(portals)
+      .find((portal) => portal.implementationId === implementation.id);
+    if (previousPortal) {
+      for (const savedRequirement of previousPortal.requirements) {
+        const requirement = implementation.requirements.find((item) => item.id === savedRequirement.id);
+        if (requirement) requirement.value = savedRequirement.value;
+      }
+    }
+    for (const [savedToken, portal] of Object.entries(portals)) {
+      if (portal.implementationId === implementation.id) delete portals[savedToken];
+    }
+    portals[token] = {
+      implementationId: implementation.id,
+      customerName: implementation.customer_name,
+      requirements: clone(implementation.requirements)
+    };
+    window.localStorage.setItem(portalStorageKey, JSON.stringify(portals));
+  }
+
+  function findPortalSnapshot(token) {
+    return readPortalSnapshots()[token] || null;
+  }
+
+  function implementationForCustomerToken(token) {
+    return data.implementations.find((implementation) => data.customerTokens.get(implementation.id) === token);
+  }
+
+  function validateCustomerValue(requirement, value) {
+    if (!value) return "";
+    if (requirement.input_type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      return "Enter a valid email address.";
+    }
+    if (requirement.input_type === "url") {
+      try {
+        const url = new URL(value);
+        if (!["http:", "https:"].includes(url.protocol) || !url.hostname.includes(".")) {
+          return "Enter a complete website URL beginning with https://.";
+        }
+      } catch {
+        return "Enter a complete website URL beginning with https://.";
+      }
+    }
+    if (requirement.input_type === "number" && !Number.isFinite(Number(value))) return "Enter a valid number.";
+    if (requirement.input_type === "date") {
+      const date = new Date(`${value}T00:00:00.000Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(date.valueOf()) || date.toISOString().slice(0, 10) !== value) {
+        return "Enter a valid date.";
+      }
+    }
+    return "";
   }
 
   function request(url, options = {}) {
@@ -468,6 +540,7 @@
       updateWaitingTasks(implementation);
       const token = `local-demo-${nextId++}`;
       data.customerTokens.set(implementation.id, token);
+      savePortalSnapshot(token, implementation);
       implementation.has_customer_link = true;
       data.implementations.unshift(implementation);
       return Promise.resolve({ implementation: clone(implementation), customerPortalToken: token });
@@ -481,7 +554,49 @@
       const token = `local-demo-${nextId++}`;
       data.customerTokens.set(implementation.id, token);
       implementation.has_customer_link = true;
+      savePortalSnapshot(token, implementation);
       return Promise.resolve({ customerPortalToken: token });
+    }
+    if ((match = path.match(/^\/api\/product\/customer\/([A-Za-z0-9_-]+)$/))) {
+      const token = decodeURIComponent(match[1]);
+      const implementation = implementationForCustomerToken(token);
+      const portal = implementation ? null : findPortalSnapshot(token);
+      if (!implementation && !portal) return Promise.reject(new Error("Customer link not found or no longer available."));
+      if (method === "GET") {
+        return Promise.resolve({
+          customerName: implementation?.customer_name || portal.customerName,
+          requirements: clone(implementation?.requirements || portal.requirements)
+        });
+      }
+      if (method === "POST") {
+        if (!Array.isArray(body.inputs) || body.inputs.length > 50) {
+          return Promise.reject(new Error("Submit a valid list of information."));
+        }
+        const submitted = new Map();
+        for (const input of body.inputs) {
+          const requirementId = Number(input?.requirementId);
+          const requirements = implementation?.requirements || portal.requirements;
+          const requirement = requirements.find((item) => item.id === requirementId);
+          if (!requirement || submitted.has(requirementId) || typeof input.value !== "string" || input.value.length > 2000) {
+            return Promise.reject(new Error("One or more submitted fields are invalid."));
+          }
+          const value = input.value.trim();
+          const error = validateCustomerValue(requirement, value);
+          if (error) return Promise.reject(new Error(`${requirement.name}: ${error}`));
+          submitted.set(requirementId, value);
+        }
+        const requirements = implementation?.requirements || portal.requirements;
+        const missing = requirements.find((requirement) => requirement.required
+          && !(submitted.has(requirement.id) ? submitted.get(requirement.id) : requirement.value).trim());
+        if (missing) return Promise.reject(new Error(`Required information is missing: ${missing.name}.`));
+        for (const [requirementId, value] of submitted) {
+          const requirement = requirements.find((item) => item.id === requirementId);
+          requirement.value = value;
+        }
+        if (implementation) savePortalSnapshot(token, implementation);
+        else window.localStorage.setItem(portalStorageKey, JSON.stringify({ ...readPortalSnapshots(), [token]: portal }));
+        return Promise.resolve({ success: true });
+      }
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/steps\/(\d+)$/)) && method === "PATCH") {
       const implementation = findImplementation(match[1]);

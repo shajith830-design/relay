@@ -17,6 +17,7 @@ function escapeHtml(value) {
 }
 
 async function request(url, options) {
+  if (window.relayWorkspaceDemo) return window.relayWorkspaceDemo.request(url, options);
   let response;
   try {
     response = await fetch(url, {
@@ -35,7 +36,10 @@ async function request(url, options) {
 }
 
 async function loadRequest() {
-  if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) throw new Error("This customer link is missing or invalid.");
+  const validToken = window.relayWorkspaceDemo
+    ? /^local-demo-[A-Za-z0-9_-]+$/.test(token)
+    : /^[A-Za-z0-9_-]{40,60}$/.test(token);
+  if (!validToken) throw new Error("This customer link is missing or invalid.");
   const data = await request(`/api/product/customer/${encodeURIComponent(token)}`);
   requirements = data.requirements;
   document.getElementById("customer-title").textContent = `Setup information for ${data.customerName}`;

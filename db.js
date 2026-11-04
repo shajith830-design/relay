@@ -3,7 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { AsyncLocalStorage } = require("node:async_hooks");
-const { Pool, types } = require("pg");
+const { Client, Pool, types } = require("pg");
 
 const connectionString = process.env.DATABASE_URL?.trim();
 if (!connectionString) {
@@ -20,16 +20,43 @@ if (usesSupabase) {
     poolConnectionUrl.searchParams.delete(parameter);
   }
 }
-const pool = new Pool({
+const clientOptions = {
   connectionString: poolConnectionUrl.toString(),
-  max: 3,
-  idleTimeoutMillis: 10_000,
   connectionTimeoutMillis: 10_000,
   ...(requiresTls ? { ssl: { rejectUnauthorized: sslMode !== "require" } } : {})
-});
+};
+const isCloudflareWorker = process.env.RELAY_CLOUDFLARE_WORKER === "1";
+const poolOptions = { ...clientOptions, max: 3, idleTimeoutMillis: 10_000 };
+const pool = isCloudflareWorker ? null : new Pool(poolOptions);
 const transactionContext = new AsyncLocalStorage();
 
 types.setTypeParser(20, (value) => Number(value));
+
+async function withClient(callback) {
+  const activeClient = transactionContext.getStore();
+  if (activeClient) return callback(activeClient);
+  if (!isCloudflareWorker) return callback(pool);
+
+  const client = new Client(clientOptions);
+  await client.connect();
+  try {
+    return await callback(client);
+  } finally {
+    await client.end();
+  }
+}
+
+async function runTransaction(client, callback) {
+  await client.query("BEGIN");
+  try {
+    const result = await transactionContext.run(client, callback);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
 
 function prepared(sql) {
   return {
@@ -53,29 +80,26 @@ function prepared(sql) {
 
 async function query(sql, values = []) {
   await ready;
-  const client = transactionContext.getStore() || pool;
-  return client.query(sql, values);
+  return withClient((client) => client.query(sql, values));
 }
 
 async function transaction(callback) {
   await ready;
+  if (isCloudflareWorker) {
+    return withClient((client) => runTransaction(client, callback));
+  }
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    const result = await transactionContext.run(client, callback);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
+    return await runTransaction(client, callback);
   } finally {
     client.release();
   }
 }
 
 async function initialize() {
-  const client = await pool.connect();
+  const client = isCloudflareWorker ? new Client(clientOptions) : await pool.connect();
   try {
+    if (isCloudflareWorker) await client.connect();
     const bundledMigrations = globalThis.__RELAY_MIGRATIONS__;
     const migrations = bundledMigrations
       ? Object.keys(bundledMigrations).sort()
@@ -113,7 +137,8 @@ async function initialize() {
   } catch (error) {
     throw error;
   } finally {
-    client.release();
+    if (isCloudflareWorker) await client.end();
+    else client.release();
   }
 }
 
@@ -129,8 +154,12 @@ module.exports = {
     prepare: prepared,
     transaction,
     query,
+    withRequestClient(callback) {
+      if (!isCloudflareWorker) return callback();
+      return withClient((client) => transactionContext.run(client, callback));
+    },
     async close() {
-      await pool.end();
+      if (pool) await pool.end();
     }
   },
   async createInquiry({ name, phone, message }) {
@@ -152,6 +181,6 @@ module.exports = {
     return result.rows;
   },
   async close() {
-    await pool.end();
+    if (pool) await pool.end();
   }
 };

@@ -48,7 +48,7 @@
   transition: none !important;
   scroll-behavior: auto !important;
 }
-body { min-width: 320px; margin: 0; background: var(--paper); color: var(--ink); -webkit-font-smoothing: antialiased; }
+body { min-width: 0; margin: 0; background: var(--paper); color: var(--ink); -webkit-font-smoothing: antialiased; }
 .button::after,
 .auth-screen::before,
 .auth-screen::after,
@@ -172,6 +172,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .badge.status-not_started { background: var(--surface-muted); color: var(--ink-subtle); }
 .badge.status-in_progress { background: var(--accent-soft); color: var(--accent-ink); }
 .badge.status-complete { background: #dcfce7; color: #166534; }
+.badge.status-needs_information { background: #fff7ed; color: #9a3412; }
 .form-status { min-height: 18px; margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .form-status:not(:empty) { padding: 5px 8px; border-left: 2px solid var(--blue); background: var(--accent-soft); }
 .field-error { display: block; margin-top: 4px; color: #b91c1c; font-size: 11px; line-height: 1.4; }
@@ -444,4 +445,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .auth-screen::before, .auth-screen::after, .welcome-card::before { animation: none !important; }
   .motion-ready .motion-reveal { opacity: 1; transform: none; translate: none; scale: 1; }
+}
+.plan-summary { margin: 18px 0 28px; }
+.plan-usage { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 16px 0; }
+.plan-usage > div { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface-muted); }
+.plan-usage strong { color: var(--ink); font-size: 18px; }
+.plan-usage span { color: var(--muted); font-size: 12px; }
+.plan-summary > .muted { font-size: 13px; }
+:root[data-theme="dark"] .plan-usage > div { background: var(--surface-muted); }
+@media (max-width: 700px) {
+  .plan-usage { grid-template-columns: 1fr; }
 }

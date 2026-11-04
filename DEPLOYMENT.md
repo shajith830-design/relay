@@ -4,12 +4,12 @@ Relay requires PostgreSQL. It does not create, copy, or fall back to a local SQL
 
 ## Cloudflare Workers production deployment
 
-The Cloudflare Worker must deploy both the Worker entry point and the static assets. A static-only deployment serves the website but returns 404 for the API, health, and inquiry routes. `wrangler.jsonc` configures the existing app as a Worker with static assets and a PostgreSQL Hyperdrive binding.
+The Cloudflare Worker must deploy both the Worker entry point and the static assets. A static-only deployment serves the website but returns 404 for the API, health, and inquiry routes. `wrangler.jsonc` configures the existing app as a Worker with static assets, a PostgreSQL Hyperdrive binding, and the `relayautomation.tech/*` route. The deploy script validates the route and Hyperdrive ID before Wrangler can publish.
 
-An empty local `.env` does not affect the deployed Worker: it gets its database connection from Hyperdrive and its secrets from Cloudflare Worker settings. Do not copy production credentials into `.env` or Git.
+An empty local `.env` does not affect the deployed Worker: it gets its database connection from Hyperdrive and its secrets from Cloudflare Worker settings. Relay does not currently use `SUPABASE_URL` or `SUPABASE_ANON_KEY` to connect to PostgreSQL. Do not copy production credentials into `.env` or Git.
 
-1. For a $0 pilot, create a Supabase Free PostgreSQL project, then create a Cloudflare Hyperdrive configuration using that database's connection details. Supabase Free includes 500 MB and can pause a project after one week of inactivity; Hyperdrive's Free allocation is 100,000 database statements per day.
-2. Replace `REPLACE_WITH_CLOUDFLARE_HYPERDRIVE_ID` in `wrangler.jsonc` with the Hyperdrive configuration ID. The ID is a resource identifier, not the database password.
+1. For a $0 pilot, create a Supabase Free PostgreSQL project, then create a Cloudflare Hyperdrive configuration using the database's **direct connection** details. Cloudflare Hyperdrive should manage connection pooling; do not put Supabase's transaction pooler in front of it. Supabase Free includes 500 MB and can pause a project after one week of inactivity; Hyperdrive's Free allocation is 100,000 database statements per day.
+2. Replace `REPLACE_WITH_CLOUDFLARE_HYPERDRIVE_ID` in `wrangler.jsonc` with the 32-character Hyperdrive configuration ID. The ID is a resource identifier, not the database password. `npm run deploy:cloudflare` stops before publishing if the ID is still a placeholder or the production route is missing.
 3. Ray uses built-in Relay-specific answers and does not require an AI binding, model, or external provider credentials. Its responses are curated rather than generative, so questions without a matching built-in answer receive a clear fallback.
 4. Configure Worker secrets in Cloudflare or with Wrangler. Set the required `INQUIRIES_API_TOKEN` and `OWNER_ADMIN_TOKEN` as separate high-entropy secrets. Add `RESEND_API_KEY` if password recovery/email notifications are enabled. Never store these values in `wrangler.jsonc`, `.env.example`, or Git.
 5. Configure the non-secret Worker variable `PUBLIC_BASE_URL=https://relayautomation.tech`. Add `AUTH_EMAIL_FROM` (a sender verified with your email provider) and `INQUIRY_NOTIFICATION_EMAIL` if email notifications are wanted.
@@ -21,7 +21,7 @@ An empty local `.env` does not affect the deployed Worker: it gets its database 
    npm run deploy:cloudflare
    ```
 
-   Confirm the Worker named `relay` is the Worker currently serving `relay.shajith830.workers.dev` and that the production custom domain `relayautomation.tech` remains attached to it. Do not copy Cloudflare authentication tokens into this repository.
+   The configured route directs `relayautomation.tech/*` to the `relay` Worker; confirm in Cloudflare that the zone and route are correct before deployment. Do not copy Cloudflare authentication tokens into this repository.
 7. Verify against the production domain:
    - `GET /healthz` returns `200` with `{"status":"ok","database":"ok"}`.
    - Signed-out `GET /api/product/me` returns `401`, not `404`.
@@ -34,14 +34,14 @@ This is a low-cost pilot setup, not an uptime guarantee. Workers Free allows 100
 ## Supabase setup
 
 1. Create a Supabase project and choose the production region and backup/PITR plan.
-2. In **Connect**, select the **Transaction pooler** connection string (port `6543`) for the serverless application. The username is usually `postgres.<project-ref>`. Do not use the project database password placeholder; use the password generated for the project.
-3. Use the URL form below as a reference and replace every bracketed value. Supabase connections always use TLS. Relay defaults Supabase connections to `sslmode=require` if the URL omits it: traffic is encrypted but the server certificate is not verified, matching PostgreSQL's `require` mode and supporting poolers with self-signed certificate chains. This is a compatibility setting; use a trusted CA and certificate-verification mode for deployments that require protection against server impersonation.
+2. In Supabase's **Connect** panel, choose **Direct connection**, not a pooled connection. Use the direct database hostname and port shown for your project (normally port `5432`) and the project database credentials. Cloudflare's Supabase/Hyperdrive guide specifically recommends the direct connection because Hyperdrive performs the connection pooling. Do not copy the transaction pooler's port `6543` connection into Hyperdrive.
+3. If Supabase indicates that the direct endpoint is IPv6-only, use the direct endpoint with Hyperdrive as described by Cloudflare's [Supabase Hyperdrive guide](https://developers.cloudflare.com/hyperdrive/examples/connect-to-postgres/postgres-database-providers/supabase/). Do not switch to a pooler without confirming that combination is supported. Supabase connections use TLS. Relay defaults Supabase connections to `sslmode=require` if the URL omits it: traffic is encrypted but the server certificate is not verified. Use a trusted CA and certificate-verification mode where supported and required by your deployment.
 
    ```text
-   postgresql://postgres.<project-ref>:<database-password>@<region>.pooler.supabase.com:6543/postgres?sslmode=require
+   postgresql://postgres:<database-password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require
    ```
 
-   Keep the URL private. Do not put it in browser code, logs, screenshots, source control, or support requests. Relay uses a small `pg` connection pool (maximum three clients per process), ordinary parameterized queries with PostgreSQL `$1` placeholders, and no named/prepared statements or session state. Configure this URL in Cloudflare Hyperdrive; do not expose it as a Worker variable.
+   Keep the URL private. Do not put it in browser code, logs, screenshots, source control, or chat. Node/Docker deployments use a small `pg` connection pool (maximum three clients per process). The Cloudflare Worker opens and closes a PostgreSQL client for each backend request; Hyperdrive manages the underlying connection pool. Relay uses parameterized PostgreSQL queries with `$1` placeholders and no named/prepared statements or session state. Configure the direct URL in Cloudflare Hyperdrive; do not expose it as a Worker variable.
 4. Configure separate Hyperdrive/database resources for production and non-production environments. Never point a staging Worker at the production database.
 5. Add the other required provider secrets listed below to the Cloudflare Worker. Do not commit `.env`; `.env.example` contains placeholders only.
 
@@ -82,11 +82,13 @@ Relay does not process payments. Public workspace creation is disabled. Clients 
 3. Keep `INQUIRIES_API_TOKEN` as a separate secret for the inquiries dashboard; it does not grant owner-console access.
 4. Save the variable and redeploy the Production deployment so the server receives it.
 5. Open `https://<your-domain>/relay-owner-console.html` directly, enter `OWNER_ADMIN_TOKEN`, and select **Continue**. This page is not linked in customer navigation and has `noindex`; actual workspace data and actions are protected by the server token. Do not rely on the hidden URL as the security boundary.
-6. After payment is confirmed, enter the workspace name and the client's owner's email, then select **Approve payment & create access**. Relay creates the account and grants one calendar month starting immediately.
+6. After payment is confirmed, enter the workspace name and the client's owner's email. Select Starter (₹2,999/month), Growth (₹3,999/month), or Custom; for Custom, enter the agreed positive whole-number limits for members, active implementations, and templates. Prices are before applicable taxes. Then select **Approve payment & create access**. Relay creates the account and grants one calendar month starting immediately.
 7. Copy the generated initial password from the result and send it to the client through a secure channel. It is shown only in that result; it is not emailed. The client can sign in at `https://<your-domain>/product`; this redirects to `product.html` and preserves query parameters such as `?demo=ray`.
 8. After renewal payment, find the client in **Client workspaces** and select **Add 1 month**. If the subscription has expired, the month starts immediately; if still active, the extra month is added after its current expiry.
 
-The client can invite teammates to their active workspace without separate approval or payment; there is no seat limit currently. All workspace members lose access when that workspace's subscription expires. The workspace provisioning command remains available for operator use, but is not needed for this owner-console workflow. The database migration does not grant access to existing workspaces automatically.
+Starter includes 3 members, 5 active implementations, and 3 templates. Growth includes 10 members, 20 active implementations, and unlimited templates. Custom limits are agreed in advance. Limits are enforced by the API as well as shown in the workspace; members include pending invitations, and an implementation is active while it has unfinished tasks or required customer information not yet submitted. Growth and Custom also include task prerequisites, blocker tracking with next actions, and template revision history and restore. All workspace members lose access when that workspace's subscription expires.
+
+Migration `004_workspace_plans.sql` preserves existing subscriptions as Custom with no capacity caps, so current access and features are not reduced. Review existing workspaces in the owner console and change each to its agreed plan and limits. The `npm run provision:workspace` operator command also asks for a plan and, for Custom, its limits.
 
 Demo and contact forms submit to Relay's `/api/inquiries` endpoint and require the deployed Worker and its configured Hyperdrive database. Opening an HTML page directly as a `file://` URL will not submit inquiries; use the deployed HTTPS website or run Relay with its database configured.
 

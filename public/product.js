@@ -21,7 +21,7 @@ const state = {
   inviteUrl: "",
   user: null,
   workspace: null,
-  data: { processes: [], templates: [], implementations: [], requirements: [], members: [], invites: [], role: "member" },
+  data: { processes: [], templates: [], implementations: [], requirements: [], members: [], invites: [], role: "member", usage: null, plan: null },
   selectedProcessId: null,
   process: null,
   editingStepId: null,
@@ -104,12 +104,12 @@ function showToast(message, error = false) {
     finishForm(activeSubmissionForm, "Saved.");
     activeSubmissionForm = null;
   }
+  window.clearTimeout(showToast.timeout);
   toast.textContent = message;
   toast.style.background = error ? "#991b1b" : "";
   toast.setAttribute("role", error ? "alert" : "status");
   toast.setAttribute("aria-live", error ? "assertive" : "polite");
   toast.classList.add("show");
-  window.clearTimeout(showToast.timeout);
   showToast.timeout = window.setTimeout(() => toast.classList.remove("show"), 3600);
 }
 
@@ -164,6 +164,10 @@ function finishForm(form, message = "") {
 }
 
 function failForm(form, error) {
+  window.clearTimeout(showToast.timeout);
+  toast.classList.remove("show");
+  toast.textContent = "";
+  toast.style.background = "";
   const message = error instanceof Error ? error.message : "The request could not be completed. Please try again.";
   finishForm(form, message);
   const messageText = message.toLocaleLowerCase();
@@ -364,6 +368,11 @@ async function loadPreferences() {
 async function loadAccountDeletionChoices() {
   const summary = document.getElementById("account-deletion-summary");
   const form = document.getElementById("account-deletion-form");
+  if (isWorkspaceDemo) {
+    summary.textContent = "Account deletion is disabled in this local demo. No live Relay account or data will be changed.";
+    form.hidden = true;
+    return;
+  }
   summary.textContent = "Loading your workspace ownership details…";
   form.hidden = true;
   const { workspaces } = await api("/api/product/account-deletion/workspaces");
@@ -619,7 +628,9 @@ function blockerSummary(implementation) {
 }
 
 function implementationStatus(implementation) {
-  if (implementation.total_steps > 0 && implementation.completed_steps === implementation.total_steps) return "complete";
+  if (implementation.total_steps > 0 && implementation.completed_steps === implementation.total_steps) {
+    return implementation.missing_inputs > 0 ? "needs_information" : "complete";
+  }
   if (implementation.in_progress_steps > 0 || implementation.completed_steps > 0) return "in_progress";
   return "not_started";
 }
@@ -651,10 +662,11 @@ function filteredImplementations() {
 }
 
 function renderAttentionBadges(implementation) {
+  const features = state.data.plan?.features || {};
   const issues = [
-    ["blocked", "Blocked", implementation.blocked_steps, implementation.blocked_step_names],
+    ["blocked", "Blocked", features.blockers ? implementation.blocked_steps : 0, implementation.blocked_step_names],
     ["overdue", "Overdue", implementation.overdue_steps, implementation.overdue_step_names],
-    ["waiting", "Waiting", implementation.waiting_steps, implementation.waiting_step_names],
+    ["waiting", "Waiting", features.dependencies ? implementation.waiting_steps : 0, implementation.waiting_step_names],
     ["missing", "Info missing", implementation.missing_inputs, implementation.missing_input_names],
     ["unassigned", "Unassigned", implementation.unowned_steps, implementation.unowned_step_names]
   ].filter(([, , count]) => count > 0);
@@ -665,12 +677,17 @@ function renderAttentionBadges(implementation) {
 
 function renderOverview() {
   const { implementations, templates, processes } = state.data;
+  const activeCount = state.data.usage?.activeImplementations ?? implementations.length;
+  const features = state.data.plan?.features || {};
   const needsAttention = implementations.filter((item) => item.missing_inputs > 0 || item.unowned_steps > 0
-    || item.blocked_steps > 0 || item.overdue_steps > 0 || item.waiting_steps > 0).length;
+    || item.overdue_steps > 0 || (features.blockers && item.blocked_steps > 0)
+    || (features.dependencies && item.waiting_steps > 0)).length;
   document.getElementById("overview-metrics").innerHTML = [
-    ["Implementations", implementations.length, "Customer journeys in progress"],
+    ["Active implementations", activeCount, "Customer journeys in progress"],
     ["Templates", templates.length, "Approved workflows ready to reuse"],
-    ["Needs attention", needsAttention, "Missing information, blockers, overdue work, or dependencies"]
+    ["Needs attention", needsAttention, features.blockers || features.dependencies
+      ? "Missing information, overdue work, blockers, or prerequisites"
+      : "Missing information, unassigned tasks, or overdue work"]
   ].map(([label, value, detail]) => `<article class="metric"><strong>${value}</strong><span>${escapeHtml(label)} · ${escapeHtml(detail)}</span></article>`).join("");
   document.getElementById("overview-implementations").innerHTML = implementations.length
     ? renderImplementationTable(implementations.slice(0, 6), true)
@@ -688,6 +705,63 @@ function renderOverview() {
     emptyState.innerHTML = emptyStateMarkup(copy[0], copy[1], next.label, next.action);
   }
   renderGettingStarted();
+  applyPlanGates();
+}
+
+function renderPlanSummary() {
+  const panel = document.getElementById("plan-summary");
+  const plan = state.data.plan;
+  if (!plan) {
+    panel.hidden = true;
+    return;
+  }
+  const usage = state.data.usage || {};
+  const formatLimit = (value) => value === null || value === undefined ? "Unlimited" : String(value);
+  const seatUsage = (usage.members || 0) + (usage.pendingInvites || 0);
+  document.getElementById("plan-summary-title").textContent = `${plan.name} plan`;
+  document.getElementById("plan-summary-description").textContent =
+    plan.code === "custom" ? "Custom pricing and agreed workspace limits." : `${plan.code === "starter" ? "₹2,999" : "₹3,999"} per month before applicable taxes.`;
+  document.getElementById("plan-usage").innerHTML = [
+    ["Team members", seatUsage, formatLimit(plan.memberLimit)],
+    ["Active implementations", usage.activeImplementations || 0, formatLimit(plan.activeImplementationLimit)],
+    ["Templates", usage.templates || 0, formatLimit(plan.templateLimit)]
+  ].map(([label, used, limit]) => `<div><strong>${used} / ${escapeHtml(limit)}</strong><span>${escapeHtml(label)}</span></div>`).join("");
+  const featureLabels = [
+    !plan.features.dependencies && "Prerequisites",
+    !plan.features.blockers && "Blocker tracking",
+    !plan.features.templateHistory && "Template history and restore"
+  ].filter(Boolean);
+  document.getElementById("plan-features").textContent = featureLabels.length
+    ? `Growth adds ${featureLabels.join(", ")}.`
+    : "Your plan includes prerequisites, blocker tracking, and template revision history and restore.";
+  panel.hidden = false;
+}
+
+function applyPlanGates() {
+  const features = state.data.plan?.features;
+  if (!features) return;
+  for (const element of document.querySelectorAll("[data-growth-only]")) {
+    element.hidden = !features[element.dataset.growthOnly];
+  }
+  const templateLimit = state.data.plan.templateLimit;
+  const templateFull = templateLimit !== null && templateLimit !== undefined && state.data.templates.length >= templateLimit;
+  const saveTemplate = document.getElementById("save-template");
+  saveTemplate.disabled = templateFull;
+  saveTemplate.title = templateFull ? "Template limit reached. Upgrade your plan or remove an unused template." : "";
+  for (const button of document.querySelectorAll("[data-start-template]")) {
+    button.disabled = state.data.plan.templateLimit !== null && state.data.plan.templateLimit !== undefined
+      && state.data.templates.length >= state.data.plan.templateLimit;
+  }
+  const activeLimit = state.data.plan.activeImplementationLimit;
+  const activeFull = activeLimit !== null && activeLimit !== undefined
+    && (state.data.usage?.activeImplementations || 0) >= activeLimit;
+  const implementationSubmit = document.querySelector("#implementation-form button[type=submit]");
+  implementationSubmit.disabled = activeFull;
+  const capNotice = document.getElementById("implementation-cap-notice");
+  capNotice.hidden = !activeFull;
+  capNotice.textContent = activeFull
+    ? `Your plan allows ${activeLimit} active implementations. Complete an implementation or upgrade the plan to start another.`
+    : "";
 }
 
 function renderImplementationTable(implementations, compact = false) {
@@ -707,7 +781,12 @@ function renderImplementationTable(implementations, compact = false) {
     : "<th>Customer</th><th>Template</th><th>Status</th><th>Owners</th><th>Open tasks</th><th>Attention</th><th></th>";
   return `<table class="data-table implementation-table ${compact ? "compact" : ""}"><thead><tr>${headings}</tr></thead><tbody>${implementations.map((item) => {
     const status = implementationStatus(item);
-    const statusLabel = { not_started: "Not started", in_progress: "In progress", complete: "Complete" }[status];
+    const statusLabel = {
+      not_started: "Not started",
+      in_progress: "In progress",
+      needs_information: "Needs information",
+      complete: "Complete"
+    }[status];
     return compact
       ? `<tr>
           <td><strong>${escapeHtml(item.customer_name)}</strong></td>
@@ -749,7 +828,13 @@ function renderTeam() {
     ? state.data.invites.map((invite) => `<div class="list-row"><div><strong>${escapeHtml(invite.invited_email)}</strong><small>Expires ${escapeHtml(invite.expires_at)}</small></div><button class="text-button" type="button" data-revoke-invite="${invite.id}">Revoke</button></div>`).join("")
     : '<p class="empty-state">No pending invitations.</p>';
   const inviteForm = document.getElementById("team-invite-form");
-  inviteForm.hidden = state.workspace.role !== "owner";
+  const memberLimit = state.data.plan?.memberLimit;
+  const seatsUsed = state.data.usage ? state.data.usage.members + state.data.usage.pendingInvites : state.data.members.length;
+  const seatsFull = memberLimit !== null && memberLimit !== undefined && seatsUsed >= memberLimit;
+  inviteForm.hidden = state.workspace.role !== "owner" || seatsFull;
+  const capNotice = document.getElementById("team-cap-notice");
+  capNotice.hidden = state.workspace.role !== "owner" || !seatsFull;
+  capNotice.textContent = seatsFull ? `Your plan allows ${memberLimit} team members, including pending invitations. Upgrade the plan or revoke an invitation to add someone.` : "";
   const result = document.getElementById("invite-result");
   result.hidden = !state.inviteUrl;
   if (state.inviteUrl) {
@@ -792,7 +877,7 @@ async function loadProcess(processId) {
         <div><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.description)}</p>
           <small>${escapeHtml(step.stage)} · Role: ${escapeHtml(step.owner || "Not assigned")} · Due ${step.due_offset_days} days after start</small>
           <small>Assigned to: ${escapeHtml(step.assignee_email || "No workspace member assigned")}</small>
-          ${step.dependsOn.length ? `<small>Prerequisites: ${escapeHtml(step.dependsOn.map((id) => process.steps.find((item) => item.id === id)?.title || "").filter(Boolean).join(", "))}</small>` : ""}
+          ${state.data.plan?.features.dependencies && step.dependsOn.length ? `<small>Prerequisites: ${escapeHtml(step.dependsOn.map((id) => process.steps.find((item) => item.id === id)?.title || "").filter(Boolean).join(", "))}</small>` : ""}
         </div>
         <div class="button-row">
           <button class="text-button" type="button" data-edit-step="${step.id}">Edit</button>
@@ -828,12 +913,12 @@ function renderTemplates() {
       <form data-edit-template="${template.id}">
         <label for="template-name-${template.id}">Template name</label>
         <input id="template-name-${template.id}" name="name" maxlength="100" value="${escapeHtml(template.name)}" required>
-        <p>${template.step_count} process steps · Revision ${template.revision}</p>
+        <p>${template.step_count} process steps · ${state.data.plan?.features.templateHistory ? `Revision ${template.revision}` : "Current version"}</p>
         <p>Starting an implementation copies this version into an independent customer work plan.</p>
         <button class="button secondary" type="submit">Save name</button>
       </form>
       <button class="text-button" type="button" data-refresh-template="${template.id}">Refresh from tested process</button>
-      <details data-template-history="${template.id}">
+      <details data-template-history="${template.id}" data-growth-only="templateHistory">
         <summary>Version history</summary>
         <button class="text-button" type="button" data-load-template-versions="${template.id}">Load versions</button>
         <ol data-template-version-list="${template.id}"></ol>
@@ -897,6 +982,7 @@ function renderRequirements() {
 }
 
 function renderWorkspace() {
+  renderPlanSummary();
   renderOverview();
   renderProcesses();
   renderTemplates();
@@ -921,8 +1007,8 @@ async function openImplementation(implementationId) {
         <div class="task-main"><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.description)}</p>
           <small>${escapeHtml(step.stage)} · Role: ${escapeHtml(step.owner || "Not assigned")} · Due ${escapeHtml(step.due_at || "not scheduled")}</small>
           <small>Assigned to: ${escapeHtml(step.assignee_email || "No workspace member assigned")}</small>
-          ${step.waiting_on ? `<small>Waiting on: ${escapeHtml(step.waiting_on)}</small>` : ""}
-          ${step.is_blocked ? `<p class="status warning"><strong>Blocked:</strong> ${escapeHtml(step.blocker_reason)}<br><strong>Next action:</strong> ${escapeHtml(step.blocker_next_action)}</p>` : ""}
+          ${state.data.plan?.features.dependencies && step.waiting_on ? `<small>Waiting on: ${escapeHtml(step.waiting_on)}</small>` : ""}
+          ${state.data.plan?.features.blockers && step.is_blocked ? `<p class="status warning"><strong>Blocked:</strong> ${escapeHtml(step.blocker_reason)}<br><strong>Next action:</strong> ${escapeHtml(step.blocker_next_action)}</p>` : ""}
         </div>
         <div class="task-controls">
           <label>Status
@@ -940,9 +1026,9 @@ async function openImplementation(implementationId) {
             </select>
           </label>
           <label>Due date<input data-task-due="${step.id}" type="date" value="${escapeHtml(step.due_at)}"></label>
-          <label class="check-field"><input data-task-blocked="${step.id}" type="checkbox" ${step.is_blocked ? "checked" : ""}> Blocked</label>
-          <label>Blocker reason<textarea data-task-reason="${step.id}" maxlength="500">${escapeHtml(step.blocker_reason)}</textarea></label>
-          <label>Next action<textarea data-task-action="${step.id}" maxlength="500">${escapeHtml(step.blocker_next_action)}</textarea></label>
+          <label class="check-field" data-growth-only="blockers"><input data-task-blocked="${step.id}" type="checkbox" ${step.is_blocked ? "checked" : ""}> Blocked</label>
+          <label data-growth-only="blockers">Blocker reason<textarea data-task-reason="${step.id}" maxlength="500">${escapeHtml(step.blocker_reason)}</textarea></label>
+          <label data-growth-only="blockers">Next action<textarea data-task-action="${step.id}" maxlength="500">${escapeHtml(step.blocker_next_action)}</textarea></label>
           <button class="button secondary" type="button" data-save-task="${step.id}">Save task details</button>
         </div>
       </article>`).join("")
@@ -959,7 +1045,10 @@ async function openImplementation(implementationId) {
   const linkBox = document.getElementById("customer-link-box");
   linkBox.hidden = false;
   if (token) {
-    const link = `${window.location.origin}/customer.html?token=${encodeURIComponent(token)}`;
+    const customerUrl = new URL("/customer.html", window.location.origin);
+    customerUrl.searchParams.set("token", token);
+    if (isWorkspaceDemo) customerUrl.searchParams.set("demo", "workspace");
+    const link = customerUrl.href;
     linkBox.innerHTML = `<strong>Private customer information link</strong><br><a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link)}</a><br><button class="text-button" type="button" data-copy-link="${escapeHtml(link)}">Copy link</button> · <button class="text-button" type="button" data-create-customer-link>Rotate customer link</button><br>Anyone with this link can submit the requested setup information. Keep it private.`;
   } else if (implementation.has_customer_link) {
     linkBox.innerHTML = `<strong>Customer information link already created</strong><br>For security, Relay does not show the existing link again. Creating a replacement will invalidate the previous link.<br><button class="text-button" type="button" data-create-customer-link>Rotate customer link</button>`;
@@ -1707,17 +1796,20 @@ document.getElementById("implementation-step-list").addEventListener("click", as
   const root = save.closest(".step-card");
   setFormBusy(root);
   try {
+    const taskUpdate = {
+      status: root.querySelector(`[data-step-status="${stepId}"]`).value,
+      owner: root.querySelector(`[data-task-owner="${stepId}"]`).value,
+      assigneeUserId: root.querySelector(`[data-task-assignee="${stepId}"]`).value || null,
+      dueAt: root.querySelector(`[data-task-due="${stepId}"]`).value
+    };
+    if (state.data.plan?.features.blockers) {
+      taskUpdate.isBlocked = root.querySelector(`[data-task-blocked="${stepId}"]`).checked;
+      taskUpdate.blockerReason = root.querySelector(`[data-task-reason="${stepId}"]`).value;
+      taskUpdate.blockerNextAction = root.querySelector(`[data-task-action="${stepId}"]`).value;
+    }
     await api(`/api/product/implementations/${state.selectedImplementationId}/steps/${stepId}`, {
       method: "PATCH",
-      body: {
-        status: root.querySelector(`[data-step-status="${stepId}"]`).value,
-        owner: root.querySelector(`[data-task-owner="${stepId}"]`).value,
-        assigneeUserId: root.querySelector(`[data-task-assignee="${stepId}"]`).value || null,
-        dueAt: root.querySelector(`[data-task-due="${stepId}"]`).value,
-        isBlocked: root.querySelector(`[data-task-blocked="${stepId}"]`).checked,
-        blockerReason: root.querySelector(`[data-task-reason="${stepId}"]`).value,
-        blockerNextAction: root.querySelector(`[data-task-action="${stepId}"]`).value
-      }
+      body: taskUpdate
     });
     finishForm(root, "Saved.");
     await refreshWorkspace();
@@ -1833,7 +1925,7 @@ async function initialize() {
     appShell.hidden = false;
     document.getElementById("local-demo-banner").hidden = false;
     document.getElementById("help-privacy-note").textContent =
-      "Local demo: workspace records stay in this browser session. Ray uses built-in Relay answers; no external AI service is contacted.";
+      "Sample workspace: fictional records only. Changes stay in this browser and no Relay account or backend is used. Ray uses built-in answers; no external AI service is contacted.";
     await loadPreferences();
     await loadOnboarding();
     showProduct();

@@ -5,6 +5,7 @@ const db = require("./db");
 const { randomBytes, timingSafeEqual } = require("node:crypto");
 const path = require("node:path");
 const { makePasswordHash } = require("./product-auth");
+const { getPlanDetails, isPlanCode, validateCustomLimits } = require("./product-plans");
 
 /*
  * Environment variables:
@@ -252,7 +253,8 @@ app.get("/inquiries", asyncRoute(async (req, res) => {
 app.get("/admin/workspaces", asyncRoute(async (req, res) => {
   if (!authorizeAdminRequest(req, res, config.ownerAdminToken, "OWNER_ADMIN_TOKEN")) return;
   const workspaces = await db.database.prepare(`
-    SELECT w.id, w.name, u.email AS owner_email, s.activated_at, s.expires_at,
+    SELECT w.id, w.name, u.email AS owner_email, s.activated_at, s.expires_at, s.plan,
+      s.member_limit, s.active_implementation_limit, s.template_limit,
       (s.expires_at > CURRENT_TIMESTAMP) AS active
     FROM product_workspace_subscriptions s
     JOIN product_workspaces w ON w.id = s.workspace_id
@@ -267,12 +269,25 @@ app.post("/admin/workspaces", asyncRoute(async (req, res) => {
   if (!authorizeAdminRequest(req, res, config.ownerAdminToken, "OWNER_ADMIN_TOKEN")) return;
   const name = typeof req.body.workspaceName === "string" ? req.body.workspaceName.trim() : "";
   const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  const planCode = req.body.plan;
+  const customLimits = {
+    memberLimit: req.body.memberLimit,
+    activeImplementationLimit: req.body.activeImplementationLimit,
+    templateLimit: req.body.templateLimit
+  };
   if (!name || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     return res.status(400).json({
       success: false,
       error: "Enter a workspace name (up to 100 characters) and a valid owner email."
     });
   }
+  if (!isPlanCode(planCode) || (planCode === "custom" && !validateCustomLimits(customLimits))) {
+    return res.status(400).json({
+      success: false,
+      error: "Choose a valid plan and enter positive whole-number custom limits."
+    });
+  }
+  const plan = getPlanDetails(planCode, customLimits);
 
   const initialPassword = randomBytes(24).toString("base64url");
   const passwordHash = await makePasswordHash(initialPassword);
@@ -288,10 +303,17 @@ app.post("/admin/workspaces", asyncRoute(async (req, res) => {
         "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'owner')"
       ).run(createdWorkspace.id, owner.id);
       const subscription = await db.database.prepare(`
-        INSERT INTO product_workspace_subscriptions (workspace_id, activated_at, expires_at)
-        VALUES ($1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 month')
-        RETURNING activated_at, expires_at
-      `).get(createdWorkspace.id);
+        INSERT INTO product_workspace_subscriptions
+          (workspace_id, activated_at, expires_at, plan, member_limit, active_implementation_limit, template_limit)
+        VALUES ($1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 month', $2, $3, $4, $5)
+        RETURNING activated_at, expires_at, plan, member_limit, active_implementation_limit, template_limit
+      `).get(
+        createdWorkspace.id,
+        plan.code,
+        plan.memberLimit,
+        plan.activeImplementationLimit,
+        plan.templateLimit
+      );
       return { ...createdWorkspace, ownerEmail: owner.email, ...subscription };
     });
     console.info(JSON.stringify({
@@ -309,6 +331,37 @@ app.post("/admin/workspaces", asyncRoute(async (req, res) => {
     }
     throw error;
   }
+}));
+
+app.put("/admin/workspaces/:workspaceId/plan", asyncRoute(async (req, res) => {
+  if (!authorizeAdminRequest(req, res, config.ownerAdminToken, "OWNER_ADMIN_TOKEN")) return;
+  const workspaceId = /^\d+$/.test(req.params.workspaceId) ? Number.parseInt(req.params.workspaceId, 10) : 0;
+  const planCode = req.body.plan;
+  const customLimits = {
+    memberLimit: req.body.memberLimit,
+    activeImplementationLimit: req.body.activeImplementationLimit,
+    templateLimit: req.body.templateLimit
+  };
+  if (!Number.isSafeInteger(workspaceId) || workspaceId < 1 || !isPlanCode(planCode)
+    || (planCode === "custom" && !validateCustomLimits(customLimits))) {
+    return res.status(400).json({
+      success: false,
+      error: "Choose a valid workspace, plan, and positive whole-number custom limits."
+    });
+  }
+  const plan = getPlanDetails(planCode, customLimits);
+  const updated = await db.database.transaction(async () => {
+    await db.database.prepare("SELECT id FROM product_workspaces WHERE id = $1 FOR UPDATE").get(workspaceId);
+    return db.database.prepare(`
+      UPDATE product_workspace_subscriptions
+      SET plan = $1, member_limit = $2, active_implementation_limit = $3, template_limit = $4
+      WHERE workspace_id = $5
+      RETURNING plan, member_limit, active_implementation_limit, template_limit
+    `).get(plan.code, plan.memberLimit, plan.activeImplementationLimit, plan.templateLimit, workspaceId);
+  });
+  if (!updated) return res.status(404).json({ success: false, error: "Paid workspace not found." });
+  console.info(JSON.stringify({ event: "paid_workspace_plan_changed", workspace_id: workspaceId, plan: plan.code }));
+  return res.json({ success: true, plan: updated });
 }));
 
 app.post("/admin/workspaces/:workspaceId/renew", asyncRoute(async (req, res) => {

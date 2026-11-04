@@ -5,6 +5,7 @@ const {
   randomBytes
 } = require("node:crypto");
 const { makePasswordHash, checkPassword } = require("./product-auth");
+const { getPlanDetails } = require("./product-plans");
 const { relayHelpReply } = require("./public/relay-help");
 
 const SESSION_COOKIE = "relay_session";
@@ -139,6 +140,46 @@ function asyncRoute(handler) {
 function installProductRoutes(app, db, isProduction) {
   const database = db.database;
 
+  function requirePlanFeature(req, res, feature, featureName) {
+    if (req.product.planDetails.features[feature]) return true;
+    sendError(res, 403, `${featureName} is included with Growth and Custom plans. Upgrade this workspace to use it.`);
+    return false;
+  }
+
+  async function lockWorkspace(workspaceId) {
+    await database.prepare("SELECT id FROM product_workspaces WHERE id = $1 FOR UPDATE").get(workspaceId);
+    const subscription = await database.prepare(`
+      SELECT plan, member_limit, active_implementation_limit, template_limit
+      FROM product_workspace_subscriptions WHERE workspace_id = $1 FOR UPDATE
+    `).get(workspaceId);
+    return getPlanDetails(subscription.plan, {
+      memberLimit: subscription.member_limit,
+      activeImplementationLimit: subscription.active_implementation_limit,
+      templateLimit: subscription.template_limit
+    });
+  }
+
+  async function countActiveImplementations(workspaceId) {
+    return (await database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM product_implementations i
+      WHERE i.workspace_id = $1 AND (
+        EXISTS (
+          SELECT 1 FROM product_implementation_steps s
+          WHERE s.implementation_id = i.id AND s.status != 'done'
+        ) OR EXISTS (
+          SELECT 1 FROM product_requirements r
+          WHERE r.workspace_id = i.workspace_id AND r.required = TRUE
+            AND (r.template_id IS NULL OR r.template_id = i.template_id)
+            AND NOT EXISTS (
+              SELECT 1 FROM product_customer_inputs c
+              WHERE c.implementation_id = i.id AND c.requirement_id = r.id AND BTRIM(c.value) != ''
+            )
+        )
+      )
+    `).get(workspaceId)).count;
+  }
+
   for (const method of ["get", "post", "put", "patch", "delete"]) {
     const register = app[method].bind(app);
     app[method] = (route, ...handlers) => register(
@@ -222,6 +263,15 @@ function installProductRoutes(app, db, isProduction) {
     try {
       const passwordHash = await makePasswordHash(password);
       const createdAccount = await database.transaction(async () => {
+        const plan = await lockWorkspace(invite.workspace_id);
+        const memberCount = (await database.prepare(
+          "SELECT COUNT(*) AS count FROM product_memberships WHERE workspace_id = $1"
+        ).get(invite.workspace_id)).count;
+        if (plan.memberLimit !== null && memberCount >= plan.memberLimit) {
+          const error = new Error("This workspace has reached its team-member limit. Ask its owner to upgrade the plan.");
+          error.code = "PLAN_SEAT_LIMIT";
+          throw error;
+        }
         const user = await (database.prepare(
           "INSERT INTO product_users (email, password_hash) VALUES ($1, $2) RETURNING id, email"
         ).get(email, passwordHash));
@@ -242,7 +292,8 @@ function installProductRoutes(app, db, isProduction) {
           "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'member')"
         ).run(invite.workspace_id, user.id));
         const workspace = await (database.prepare(`
-          SELECT w.id, w.name, s.expires_at AS subscription_expires_at
+          SELECT w.id, w.name, s.expires_at AS subscription_expires_at, s.plan,
+            s.member_limit, s.active_implementation_limit, s.template_limit
           FROM product_workspaces w
           JOIN product_workspace_subscriptions s ON s.workspace_id = w.id
           WHERE w.id = $1
@@ -262,13 +313,23 @@ function installProductRoutes(app, db, isProduction) {
           id: workspace.id,
           name: workspace.name,
           role: "member",
-          subscriptionExpiresAt: workspace.subscription_expires_at
+          subscriptionExpiresAt: workspace.subscription_expires_at,
+          plan: workspace.plan,
+          memberLimit: workspace.member_limit,
+          activeImplementationLimit: workspace.active_implementation_limit,
+          templateLimit: workspace.template_limit,
+          planDetails: getPlanDetails(workspace.plan, {
+            memberLimit: workspace.member_limit,
+            activeImplementationLimit: workspace.active_implementation_limit,
+            templateLimit: workspace.template_limit
+          })
         }
       });
     } catch (error) {
       if (error.code === "INVITE_INVALID") {
         return sendError(res, 409, error.message);
       }
+      if (error.code === "PLAN_SEAT_LIMIT") return sendError(res, 409, error.message);
       if (error.code === "23505") {
         return sendError(res, 409, "An account with this email already exists. Sign in instead.");
       }
@@ -444,6 +505,15 @@ function installProductRoutes(app, db, isProduction) {
           return sendError(res, 400, "This invitation is invalid, expired, or addressed to a different email.");
         }
         const acceptedWorkspace = await database.transaction(async () => {
+          const plan = await lockWorkspace(invite.workspace_id);
+          const memberCount = (await database.prepare(
+            "SELECT COUNT(*) AS count FROM product_memberships WHERE workspace_id = $1"
+          ).get(invite.workspace_id)).count;
+          if (plan.memberLimit !== null && memberCount >= plan.memberLimit) {
+            const error = new Error("This workspace has reached its team-member limit. Ask its owner to upgrade the plan.");
+            error.code = "PLAN_SEAT_LIMIT";
+            throw error;
+          }
           const accepted = await (database.prepare(`
             UPDATE product_workspace_invites SET accepted_at = CURRENT_TIMESTAMP
             WHERE id = $1 AND accepted_at IS NULL AND expires_at > $2
@@ -461,7 +531,8 @@ function installProductRoutes(app, db, isProduction) {
             "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'member')"
           ).run(invite.workspace_id, user.id));
           return await (database.prepare(`
-            SELECT w.id, w.name, s.expires_at AS subscription_expires_at
+            SELECT w.id, w.name, s.expires_at AS subscription_expires_at, s.plan,
+              s.member_limit, s.active_implementation_limit, s.template_limit
             FROM product_workspaces w
             JOIN product_workspace_subscriptions s ON s.workspace_id = w.id
             WHERE w.id = $1
@@ -472,6 +543,7 @@ function installProductRoutes(app, db, isProduction) {
           workspace = { ...joinedWorkspace, role: "member" };
         } catch (error) {
           if (error.code === "INVITE_INVALID") return sendError(res, 409, error.message);
+          if (error.code === "PLAN_SEAT_LIMIT") return sendError(res, 409, error.message);
           if (error.code === "23505") {
             return sendError(res, 409, "This account is already a member of the invited workspace.");
           }
@@ -479,7 +551,8 @@ function installProductRoutes(app, db, isProduction) {
         }
       } else {
         const membership = await (database.prepare(`
-          SELECT w.id, w.name, m.role, s.expires_at AS subscription_expires_at
+          SELECT w.id, w.name, m.role, s.expires_at AS subscription_expires_at, s.plan,
+            s.member_limit, s.active_implementation_limit, s.template_limit
           FROM product_memberships m
           JOIN product_workspaces w ON w.id = m.workspace_id
           JOIN product_workspace_subscriptions s ON s.workspace_id = w.id
@@ -497,13 +570,22 @@ function installProductRoutes(app, db, isProduction) {
           id: membership.id,
           name: membership.name,
           role: membership.role,
-          subscriptionExpiresAt: membership.subscription_expires_at
+          subscriptionExpiresAt: membership.subscription_expires_at,
+          plan: membership.plan,
+          memberLimit: membership.member_limit,
+          activeImplementationLimit: membership.active_implementation_limit,
+          templateLimit: membership.template_limit
         };
       }
       if (workspace.subscription_expires_at) {
         workspace.subscriptionExpiresAt = workspace.subscription_expires_at;
         delete workspace.subscription_expires_at;
       }
+      workspace.planDetails = getPlanDetails(workspace.plan, {
+        memberLimit: workspace.memberLimit,
+        activeImplementationLimit: workspace.activeImplementationLimit,
+        templateLimit: workspace.templateLimit
+      });
 
       const rawToken = randomBytes(32).toString("base64url");
       const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString();
@@ -536,7 +618,8 @@ function installProductRoutes(app, db, isProduction) {
     if (!token) return sendError(res, 401, "Sign in to continue.");
     const session = await (database.prepare(`
       SELECT s.user_id, s.workspace_id, s.expires_at, u.email, w.name AS workspace_name, m.role,
-        subscription.expires_at AS subscription_expires_at
+        subscription.expires_at AS subscription_expires_at, subscription.plan,
+        subscription.member_limit, subscription.active_implementation_limit, subscription.template_limit
       FROM product_sessions s
       JOIN product_users u ON u.id = s.user_id
       JOIN product_workspaces w ON w.id = s.workspace_id
@@ -563,7 +646,13 @@ function installProductRoutes(app, db, isProduction) {
       email: session.email,
       workspaceName: session.workspace_name,
       role: session.role,
-      subscriptionExpiresAt: session.subscription_expires_at
+      subscriptionExpiresAt: session.subscription_expires_at,
+      plan: session.plan,
+      planDetails: getPlanDetails(session.plan, {
+        memberLimit: session.member_limit,
+        activeImplementationLimit: session.active_implementation_limit,
+        templateLimit: session.template_limit
+      })
     };
     return next();
   }
@@ -574,7 +663,8 @@ function installProductRoutes(app, db, isProduction) {
       id: req.product.workspaceId,
       name: req.product.workspaceName,
       role: req.product.role,
-      subscriptionExpiresAt: req.product.subscriptionExpiresAt
+      subscriptionExpiresAt: req.product.subscriptionExpiresAt,
+      plan: req.product.planDetails
     }
   }));
 
@@ -899,7 +989,23 @@ function installProductRoutes(app, db, isProduction) {
       WHERE workspace_id = $1 AND accepted_at IS NULL AND expires_at > $2
       ORDER BY created_at DESC
     `).all(workspaceId, new Date().toISOString()));
-    return res.json({ processes, templates, implementations, requirements, members, invites, role: req.product.role });
+    const activeImplementationCount = await countActiveImplementations(workspaceId);
+    return res.json({
+      processes,
+      templates,
+      implementations,
+      requirements,
+      members,
+      invites,
+      role: req.product.role,
+      plan: req.product.planDetails,
+      usage: {
+        members: members.length,
+        pendingInvites: invites.length,
+        templates: templates.length,
+        activeImplementations: activeImplementationCount
+      }
+    });
   });
 
   app.post("/api/product/invites", sameOrigin, requireSession, async (req, res) => {
@@ -919,10 +1025,28 @@ function installProductRoutes(app, db, isProduction) {
     if (activeInvite) return sendError(res, 409, "An active invitation already exists for this email.");
     const rawToken = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
-    const invite = await (database.prepare(`
-      INSERT INTO product_workspace_invites (workspace_id, invited_email, token_hash, expires_at, created_by)
-      VALUES ($1, $2, $3, $4, $5) RETURNING id
-    `).get(req.product.workspaceId, email, hashToken(rawToken), expiresAt, req.product.userId));
+    const invite = await database.transaction(async () => {
+      const plan = await lockWorkspace(req.product.workspaceId);
+      const seatCount = (await database.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM product_memberships WHERE workspace_id = $1) +
+          (SELECT COUNT(*) FROM product_workspace_invites
+            WHERE workspace_id = $1 AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP) AS count
+      `).get(req.product.workspaceId)).count;
+      if (plan.memberLimit !== null && seatCount >= plan.memberLimit) {
+        return { error: "No team seats are available. Cancel a pending invitation or upgrade this workspace." };
+      }
+      const duplicate = await database.prepare(`
+        SELECT id FROM product_workspace_invites
+        WHERE workspace_id = $1 AND invited_email = $2 AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+      `).get(req.product.workspaceId, email);
+      if (duplicate) return { error: "An active invitation already exists for this email." };
+      return database.prepare(`
+        INSERT INTO product_workspace_invites (workspace_id, invited_email, token_hash, expires_at, created_by)
+        VALUES ($1, $2, $3, $4, $5) RETURNING id
+      `).get(req.product.workspaceId, email, hashToken(rawToken), expiresAt, req.product.userId);
+    });
+    if (invite.error) return sendError(res, 409, invite.error);
     const inviteUrl = new URL(`/product.html?invite=${encodeURIComponent(rawToken)}`, req.get("Origin")).toString();
     return res.status(201).json({ invite: { id: invite.id, email, expiresAt, inviteUrl } });
   });
@@ -1008,6 +1132,7 @@ function installProductRoutes(app, db, isProduction) {
     if (!processId || !title || !stage || !assignee.valid || !Number.isInteger(dueOffsetDays) || dueOffsetDays < 0 || dueOffsetDays > 3650) {
       return sendError(res, 400, "Enter a step name, stage, and valid due-date offset.");
     }
+    if (dependsOn.length && !requirePlanFeature(req, res, "dependencies", "Task prerequisites")) return;
     const process = await (database.prepare(
       "SELECT id FROM product_processes WHERE id = $1 AND workspace_id = $2"
     ).get(processId, req.product.workspaceId));
@@ -1056,6 +1181,10 @@ function installProductRoutes(app, db, isProduction) {
     if (!step || !await (database.prepare("SELECT id FROM product_processes WHERE id = $1 AND workspace_id = $2").get(processId, req.product.workspaceId))) {
       return sendError(res, 404, "Process step not found.");
     }
+    const unchangedDependencies = step.dependsOn.length === dependsOn.length
+      && step.dependsOn.every((id) => dependsOn.includes(id));
+    if (!unchangedDependencies && dependsOn.length
+      && !requirePlanFeature(req, res, "dependencies", "Task prerequisites")) return;
     if (dependsOn.some((id) => !steps.some((item) => item.id === id))) {
       return sendError(res, 400, "A prerequisite must be another step in this process.");
     }
@@ -1200,19 +1329,32 @@ function installProductRoutes(app, db, isProduction) {
       position: step.position,
       dependsOnPositions: step.dependsOn.map((id) => stepPositions.get(id)).filter(Number.isInteger)
     }));
+    if (snapshot.some((step) => step.dependsOnPositions.length)
+      && !requirePlanFeature(req, res, "dependencies", "Task prerequisites")) return;
     const template = await database.transaction(async () => {
+      const plan = await lockWorkspace(req.product.workspaceId);
+      const count = (await database.prepare(
+        "SELECT COUNT(*) AS count FROM product_templates WHERE workspace_id = $1"
+      ).get(req.product.workspaceId)).count;
+      if (plan.templateLimit !== null && count >= plan.templateLimit) {
+        return null;
+      }
       const template = await (database.prepare(
         "INSERT INTO product_templates (workspace_id, process_id, name, steps_json, updated_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, name, created_at, revision"
       ).get(req.product.workspaceId, processId, name, JSON.stringify(snapshot)));
-      await (database.prepare(
-        "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES ($1, $2, $3, $4)"
-      ).run(template.id, template.revision, template.name, JSON.stringify(snapshot)));
+      if (plan.features.templateHistory) {
+        await (database.prepare(
+          "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES ($1, $2, $3, $4)"
+        ).run(template.id, template.revision, template.name, JSON.stringify(snapshot)));
+      }
       return template;
     });
+    if (!template) return sendError(res, 409, "This workspace has reached its template limit. Upgrade the plan or remove an unused template.");
     return res.status(201).json({ template });
   });
 
   app.get("/api/product/templates/:templateId/versions", requireSession, async (req, res) => {
+    if (!requirePlanFeature(req, res, "templateHistory", "Template revision history")) return;
     const templateId = validId(req.params.templateId);
     if (!templateId) return sendError(res, 400, "Invalid template.");
     const template = await (database.prepare(
@@ -1234,6 +1376,7 @@ function installProductRoutes(app, db, isProduction) {
   });
 
   app.post("/api/product/templates/:templateId/versions/:revision/restore", sameOrigin, requireSession, async (req, res) => {
+    if (!requirePlanFeature(req, res, "templateHistory", "Template revision restore")) return;
     const templateId = validId(req.params.templateId);
     const revision = validId(req.params.revision);
     if (!templateId || !revision) return sendError(res, 400, "Choose a valid template version.");
@@ -1282,6 +1425,8 @@ function installProductRoutes(app, db, isProduction) {
         return sendError(res, 409, "Run a successful setup check for the current process before refreshing this template.");
       }
       const steps = await (processSteps(template.process_id));
+      if (steps.some((step) => step.dependsOn.length)
+        && !requirePlanFeature(req, res, "dependencies", "Task prerequisites")) return;
       const positions = new Map(steps.map((step) => [step.id, step.position]));
       stepsJson = JSON.stringify(steps.map((step) => ({
         title: step.title,
@@ -1302,9 +1447,11 @@ function installProductRoutes(app, db, isProduction) {
         UPDATE product_templates SET name = $1, steps_json = $2, revision = $3,
           updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND workspace_id = $5
       `).run(name, nextStepsJson, nextRevision, templateId, req.product.workspaceId));
-      await (database.prepare(
-        "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES ($1, $2, $3, $4)"
-      ).run(templateId, nextRevision, name, nextStepsJson));
+      if (req.product.planDetails.features.templateHistory) {
+        await (database.prepare(
+          "INSERT INTO product_template_versions (template_id, revision, name, steps_json) VALUES ($1, $2, $3, $4)"
+        ).run(templateId, nextRevision, name, nextStepsJson));
+      }
     });
     return res.json({ success: true });
   });
@@ -1333,9 +1480,15 @@ function installProductRoutes(app, db, isProduction) {
     if (!template) return sendError(res, 404, "Template not found.");
     const steps = JSON.parse(template.steps_json);
     if (!Array.isArray(steps) || steps.length === 0) return sendError(res, 409, "This template has no steps. Create a new template from a process with steps.");
+    if (steps.some((step) => Array.isArray(step.dependsOnPositions) && step.dependsOnPositions.length)
+      && !requirePlanFeature(req, res, "dependencies", "Task prerequisites")) return;
 
     const rawPortalToken = randomBytes(32).toString("base64url");
     const implementation = await database.transaction(async () => {
+      const plan = await lockWorkspace(req.product.workspaceId);
+      const activeCount = await countActiveImplementations(req.product.workspaceId);
+      if (plan.activeImplementationLimit !== null
+        && activeCount >= plan.activeImplementationLimit) return null;
       const implementation = await (database.prepare(
         "INSERT INTO product_implementations (workspace_id, template_id, customer_name, portal_token_hash) VALUES ($1, $2, $3, $4) RETURNING id, customer_name, created_at"
       ).get(req.product.workspaceId, templateId, customerName, hashToken(rawPortalToken)));
@@ -1379,6 +1532,7 @@ function installProductRoutes(app, db, isProduction) {
       `).run(implementation.id, req.product.workspaceId, templateId));
       return implementation;
     });
+    if (!implementation) return sendError(res, 409, "This workspace has reached its active implementation limit. Complete an implementation or upgrade the plan.");
     return res.status(201).json({
       implementation: { ...implementation, template_name: template.name },
       customerPortalToken: rawPortalToken
@@ -1451,10 +1605,15 @@ function installProductRoutes(app, db, isProduction) {
     if (!["not_started", "in_progress", "done"].includes(status) || owner === null || !assignee.valid
       || (dueAt !== "" && !validDate(dueAt))
       || typeof isBlocked !== "boolean" || blockerReason === null || blockerNextAction === null
-      || (isBlocked && (!blockerReason || !blockerNextAction)) || (status === "done" && isBlocked)) {
+      || (isBlocked && (!blockerReason || !blockerNextAction))
+      || (status === "done" && isBlocked && req.product.planDetails.features.blockers)) {
       return sendError(res, 400, "Enter a valid task status, owner, due date, and blocker details.");
     }
-    if (status === "done") {
+    if ((req.body.isBlocked === true
+      || (typeof req.body.blockerReason === "string" && req.body.blockerReason.trim())
+      || (typeof req.body.blockerNextAction === "string" && req.body.blockerNextAction.trim()))
+      && !requirePlanFeature(req, res, "blockers", "Blocker tracking")) return;
+    if (status === "done" && req.product.planDetails.features.dependencies) {
       const waiting = await (database.prepare(`
         SELECT parent.title FROM product_implementation_step_dependencies d
         JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id

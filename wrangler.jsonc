@@ -9,6 +9,10 @@
     "process.versions.node": "undefined"
   },
   "workers_dev": true,
+  "route": {
+    "pattern": "relayautomation.tech/*",
+    "zone_name": "relayautomation.tech"
+  },
   "vars": {
     "PUBLIC_BASE_URL": "https://relayautomation.tech",
     "TRUST_PROXY_HOPS": "1"
@@ -21,8 +25,7 @@
       "/health",
       "/healthz",
       "/inquiries",
-      "/admin/*",
-      "/product"
+      "/admin/*"
     ],
     "not_found_handling": "404-page"
   },
@@ -36,7 +39,7 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "REPLACE_WITH_CLOUDFLARE_HYPERDRIVE_ID"
+      "id": "05eed65be0dd4848925d4f8bb6d31253"
     }
   ],
   "observability": {

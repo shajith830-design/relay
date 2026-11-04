@@ -23,6 +23,9 @@ let emailMessages = [];
 let emailProviderStatus = 200;
 let telegramMessages = [];
 let telegramProviderStatus = 200;
+const databaseTestSkipReason = process.env.RELAY_TEST_DATABASE_URL?.trim()
+  ? ""
+  : "Set RELAY_TEST_DATABASE_URL to an explicitly named relay_test PostgreSQL database to run database integration tests.";
 
 async function availablePort() {
   const server = net.createServer();
@@ -113,7 +116,7 @@ async function waitForServer() {
 before(async () => {
   const configuredTestDatabaseUrl = process.env.RELAY_TEST_DATABASE_URL?.trim();
   if (!configuredTestDatabaseUrl) {
-    throw new Error("Set RELAY_TEST_DATABASE_URL to an explicitly named relay_test PostgreSQL database before running tests.");
+    return;
   }
   const databaseUrl = new URL(configuredTestDatabaseUrl);
   if (!["postgres:", "postgresql:"].includes(databaseUrl.protocol)
@@ -212,7 +215,9 @@ test("server refuses to start without DATABASE_URL", () => {
   assert.match(result.stderr, /DATABASE_URL is required/);
 });
 
-test("Relay product supports the six connected jobs with workspace isolation", async () => {
+test("Relay product supports the six connected jobs with workspace isolation", {
+  skip: databaseTestSkipReason
+}, async () => {
   const unauthenticated = await request("/api/product/workspace");
   assert.equal(unauthenticated.response.status, 401);
   assert.equal((await request("/api/product/preferences")).response.status, 401);
@@ -1175,7 +1180,115 @@ test("Relay product supports the six connected jobs with workspace isolation", a
   assert.equal(expiredCustomerSubmission.response.status, 404);
 });
 
-test("account deletion removes sole-member workspaces and transfers shared ownership", async () => {
+test("Starter plan enforces member, template, active implementation, and feature limits", {
+  skip: databaseTestSkipReason
+}, async () => {
+  const suffix = `${process.pid}-${Date.now()}`;
+  const account = await createPaidTestWorkspace({
+    email: `starter-${suffix}@example.test`,
+    password: "A secure test password 123!",
+    workspaceName: `Starter plan ${suffix}`
+  });
+  await testQuery(`
+    UPDATE product_workspace_subscriptions
+    SET plan = 'starter', member_limit = 1, active_implementation_limit = 1, template_limit = 3
+    WHERE workspace_id = $1
+  `, [account.workspace.id]);
+
+  const invite = await request("/api/product/invites", {
+    method: "POST",
+    cookie: account.cookie,
+    body: { email: `teammate-${suffix}@example.test` }
+  });
+  assert.equal(invite.response.status, 409);
+
+  const processResponse = await request("/api/product/processes", {
+    method: "POST",
+    cookie: account.cookie,
+    body: { name: "Starter test process" }
+  });
+  assert.equal(processResponse.response.status, 201, JSON.stringify(processResponse.data));
+  const processId = processResponse.data.process.id;
+  const firstStep = await request(`/api/product/processes/${processId}/steps`, {
+    method: "POST",
+    cookie: account.cookie,
+    body: {
+      title: "Configure account",
+      description: "Set up the customer account.",
+      owner: "Implementation lead",
+      stage: "Setup",
+      dueOffsetDays: 0,
+      assigneeUserId: account.user.id
+    }
+  });
+  assert.equal(firstStep.response.status, 201, JSON.stringify(firstStep.data));
+  const dependency = await request(`/api/product/processes/${processId}/steps`, {
+    method: "POST",
+    cookie: account.cookie,
+    body: {
+      title: "Verify setup",
+      description: "Check the configured account.",
+      owner: "Implementation lead",
+      stage: "Setup",
+      dueOffsetDays: 1,
+      assigneeUserId: account.user.id,
+      dependsOn: [firstStep.data.step.id]
+    }
+  });
+  assert.equal(dependency.response.status, 403);
+
+  const readiness = await request(`/api/product/processes/${processId}/test`, {
+    method: "POST",
+    cookie: account.cookie,
+    body: {}
+  });
+  assert.equal(readiness.data.check.result, "ready", JSON.stringify(readiness.data));
+  const templates = [];
+  for (let index = 0; index < 3; index += 1) {
+    const saved = await request("/api/product/templates", {
+      method: "POST",
+      cookie: account.cookie,
+      body: { processId, name: `Starter template ${index + 1}` }
+    });
+    assert.equal(saved.response.status, 201, JSON.stringify(saved.data));
+    templates.push(saved.data.template);
+  }
+  const versions = await request(`/api/product/templates/${templates[0].id}/versions`, {
+    cookie: account.cookie
+  });
+  assert.equal(versions.response.status, 403);
+
+  const firstImplementation = await request("/api/product/implementations", {
+    method: "POST",
+    cookie: account.cookie,
+    body: { templateId: templates[0].id, customerName: "First Customer" }
+  });
+  assert.equal(firstImplementation.response.status, 201, JSON.stringify(firstImplementation.data));
+  const implementationDetails = await request(
+    `/api/product/implementations/${firstImplementation.data.implementation.id}`,
+    { cookie: account.cookie }
+  );
+  assert.equal(implementationDetails.response.status, 200, JSON.stringify(implementationDetails.data));
+  const blocker = await request(
+    `/api/product/implementations/${firstImplementation.data.implementation.id}/steps/${implementationDetails.data.implementation.steps[0].id}`,
+    {
+      method: "PATCH",
+      cookie: account.cookie,
+      body: { isBlocked: true, blockerReason: "Waiting for customer", blockerNextAction: "Follow up" }
+    }
+  );
+  assert.equal(blocker.response.status, 403);
+  const overLimitImplementation = await request("/api/product/implementations", {
+    method: "POST",
+    cookie: account.cookie,
+    body: { templateId: templates[1].id, customerName: "Second Customer" }
+  });
+  assert.equal(overLimitImplementation.response.status, 409);
+});
+
+test("account deletion removes sole-member workspaces and transfers shared ownership", {
+  skip: databaseTestSkipReason
+}, async () => {
   const password = "account-deletion-test-password";
   const ownerAccount = await createPaidTestWorkspace({
     email: "delete-owner@relaytest.example",
@@ -1262,7 +1375,9 @@ test("account deletion removes sole-member workspaces and transfers shared owner
   assert.equal((await request("/api/product/workspace", { cookie: ownerCookie })).response.status, 401);
 });
 
-test("public pages and the inquiry app remain available", async () => {
+test("public pages and the inquiry app remain available", {
+  skip: databaseTestSkipReason
+}, async () => {
   for (const page of [
     "/index.html", "/about.html", "/contact.html", "/dashboard.html", "/demo.html",
     "/features-services.html", "/pricing.html", "/privacy.html", "/terms.html",
@@ -1320,7 +1435,7 @@ test("public pages and the inquiry app remain available", async () => {
   assert.doesNotMatch(accountDeletionSubmit, /new FormData\(form\)/);
   assert.match(accountDeletionSubmit, /failForm\(form, error\)/);
   assert.match(productScript, /form\.id === "account-deletion-form"/);
-  assert.match(productScript, /₹3,000 per month/);
+  assert.match(productScript, /₹2,999/);
   assert.match(productScript, /return window\.relayHelpReply\(message\)/);
   assert.doesNotMatch(productScript, /consentAccepted|helpConsented/);
   assert.match(relayHelpReply("hi"), /Hi! I’m Ray/);
@@ -1335,10 +1450,15 @@ test("public pages and the inquiry app remain available", async () => {
   assert.match(relayHelpReply("What is the capital of France?"), /don’t have a matching built-in answer yet/i);
   assert.doesNotMatch(productScript, /Demo answer:/);
   const pricingPage = await fetch(`${baseUrl}/pricing.html`).then((response) => response.text());
-  assert.match(pricingPage, /₹3,000 per month/);
+  assert.match(pricingPage, /₹2,999/);
+  assert.match(pricingPage, /₹3,999/);
+  assert.match(pricingPage, /Up to 5 active implementations/);
+  assert.match(pricingPage, /Up to 20 active implementations/);
+  assert.match(pricingPage, /before applicable taxes/i);
   assert.doesNotMatch(pricingPage, /pricing is by quote|quote-based/i);
   const termsPage = await fetch(`${baseUrl}/terms.html`).then((response) => response.text());
-  assert.match(termsPage, /₹3,000 per month/);
+  assert.match(termsPage, /₹2,999 per month/);
+  assert.match(termsPage, /₹3,999 per month/);
   assert.doesNotMatch(termsPage, /pricing is by quote|quote-based/i);
   const envExample = readFileSync(path.join(__dirname, "..", ".env.example"), "utf8");
   assert.match(envExample, /^INQUIRIES_API_TOKEN=replace-with-[^\r\n]+$/m);

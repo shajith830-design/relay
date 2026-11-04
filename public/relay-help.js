@@ -34,7 +34,7 @@ function relayHelpReply(message) {
     return "Relay manages onboarding workflows in its own workspace; it doesn’t synchronize with external project-management tools such as Slack or Jira.";
   }
   if (/(?:relay.{0,35}(?:price|pricing|cost|subscription)|(?:price|pricing|cost|subscription).{0,35}relay|₹|rupee)/.test(question)) {
-    return "Relay’s listed subscription price is ₹3,000 per month. Review the applicable billing and service terms before purchase.";
+    return "Relay offers Starter at ₹2,999 per month (3 team members, 5 active implementations, 3 templates) and Growth at ₹3,999 per month (10 members, 20 active implementations, unlimited templates, plus prerequisites, blocker tracking, and template history/restore). Prices are before applicable taxes. Custom limits and pricing are agreed in advance. See the Pricing page for details.";
   }
   if (/(?:\bprocess map\b|\bprocess maps\b|\bprocess\b.{0,20}\bmap\b)/.test(question)
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {
@@ -42,11 +42,11 @@ function relayHelpReply(message) {
   }
   if (/\btemplate(s)?\b/.test(question)
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {
-    return "A template is a checked, versioned snapshot of a process map. Use it as a dependable starting point whenever you onboard another customer, instead of rebuilding the same steps each time. Updating a template creates a new version for future implementations; it does not change customer work that has already started.";
+    return "A template is a checked snapshot of a process map and a dependable starting point for future customer implementations. Growth and Custom plans keep revision history and let you restore an earlier version; Starter includes up to three templates without that history feature. Updating a template does not change customer work that has already started.";
   }
   if (/\bimplementation(s)?\b|\bonboarding\b|\bcustomer work\b/.test(question)
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {
-    return "An implementation is the customer-specific workspace for one onboarding. Relay copies tasks from a template so your team can assign owners, set due dates, record blockers and prerequisites, and collect the information needed from that customer. It helps everyone see progress and what needs attention; it does not automatically configure the customer’s product.";
+    return "An implementation is the customer-specific workspace for one onboarding. Relay copies tasks from a template so your team can assign owners, set due dates, and collect the information needed from that customer. Growth and Custom also support prerequisites and blocker tracking. Relay helps everyone see progress; it does not automatically configure the customer’s product.";
   }
   if (/\bprivate link\b|\bcustomer link\b/.test(question)
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {
@@ -118,10 +118,10 @@ function relayHelpReply(message) {
     return "Open Settings and review the effect on each workspace before deleting your account. If you own a shared workspace, choose another member as its new owner first.";
   }
   if (/(change|update|refresh|edit|restore).{0,40}template.{0,50}(existing|current|already|affect|implementation|plan)|template.{0,50}(existing implementation|existing plan|already started|future implementation)|(?:existing|current|already-created|already created).{0,40}(implementation|plan|customer work)/.test(question)) {
-    return "Refreshing a template creates a new revision for future implementations. Existing implementations keep their copied task plans and are not changed by template updates.";
+    return "Refreshing a template changes the version used by future implementations. Growth and Custom plans keep revision history and allow restoring an earlier version. Existing implementations keep their copied task plans and are not changed by template updates.";
   }
   if (/(template|version|revision|restore)/.test(question)) {
-    return "To create a template, map your process, add clear steps and owners, run the process check, and save the checked process as a template. Templates keep version history for future work.";
+    return "To create a template, map your process, add clear steps and owners, run the process check, and save the checked process as a template. Growth and Custom plans also keep revision history and allow restoring an earlier version.";
   }
   if (/(customer|implementation|task|assignee|due date)/.test(question)) {
     return "Open Implementations, choose a saved template, and enter the customer’s company name. Open the new implementation to assign teammates, set due dates, track prerequisites, and create a private customer-information link.";

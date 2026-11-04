@@ -406,6 +406,24 @@ h1::after {
 .pricing-note { margin: 0 0 20px; border-left: 3px solid #38bdf8; padding: 4px 0 4px 13px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .pricing-note strong { color: var(--ink); }
 .pricing-process > .button { width: 100%; }
+.plan-grid { display: grid; align-items: stretch; gap: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.plan-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; padding: 26px; background: #fff; box-shadow: 0 12px 30px rgb(15 23 42 / 5%); }
+.plan-card-featured { border-color: #0284c7; box-shadow: 0 16px 38px rgb(2 132 199 / 13%); }
+.plan-card h2 { margin: 8px 0 0; color: var(--ink); font-size: 25px; }
+.plan-price { margin: 18px 0 10px; color: var(--ink); font-size: 32px; font-weight: 800; letter-spacing: -.04em; }
+.plan-price span { margin-left: 5px; color: var(--muted); font-size: 13px; font-weight: 500; letter-spacing: 0; }
+.plan-price-custom { font-size: 21px; letter-spacing: -.02em; }
+.plan-card ul { display: grid; gap: 10px; margin: 22px 0; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.5; }
+.plan-limit-note { margin: auto 0 18px; border-left: 3px solid #cbd5e1; padding-left: 12px; color: #64748b; font-size: 12px; line-height: 1.55; }
+.plan-card > .button { margin-top: auto; text-align: center; }
+.pricing-tax-note { margin: 20px 0 0; color: #64748b; font-size: 13px; line-height: 1.6; }
+.plan-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.plan-comparison { width: 100%; min-width: 720px; border-collapse: collapse; text-align: left; font-size: 14px; }
+.plan-comparison th, .plan-comparison td { border-bottom: 1px solid var(--line-soft); padding: 14px 16px; vertical-align: top; }
+.plan-comparison thead { background: #f8fafc; color: #334155; }
+.plan-comparison tbody th { width: 39%; color: #334155; font-weight: 600; }
+.plan-comparison td { color: #475569; }
+.plan-comparison tr:last-child > * { border-bottom: 0; }
 .pricing-faq { display: grid; align-items: start; gap: 52px; grid-template-columns: .8fr 1.2fr; }
 .pricing-faq .section-head { margin: 0; }
 .pricing-faq .section-head h2 { font-size: clamp(30px, 3.5vw, 39px); }
@@ -423,6 +441,7 @@ h1::after {
   .home-page .hero-copy h1 { font-size: clamp(40px, 10vw, 54px); }
   .home-page .callout .hero-actions { align-items: stretch; flex-direction: column; }
   .pricing-layout, .pricing-faq { grid-template-columns: 1fr; }
+  .plan-grid { grid-template-columns: 1fr; }
   .pricing-faq { gap: 28px; }
   .pricing-page .page-hero { padding-block: 48px 40px; }
 }

@@ -49,8 +49,21 @@
               <label for="client-email" class="mb-1 block text-sm font-medium text-slate-700">Client owner’s email</label>
               <input id="client-email" name="email" type="email" maxlength="254" autocomplete="email" required class="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
             </div>
+            <div>
+              <label for="provision-plan" class="mb-1 block text-sm font-medium text-slate-700">Plan</label>
+              <select id="provision-plan" name="plan" class="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                <option value="starter">Starter · ₹2,999/month</option>
+                <option value="growth">Growth · ₹3,999/month</option>
+                <option value="custom">Custom · agreed price</option>
+              </select>
+            </div>
+            <div id="provision-custom-limits" class="grid gap-3 sm:grid-cols-3" hidden>
+              <label class="text-sm font-medium text-slate-700">Team members<input name="memberLimit" type="number" min="1" step="1" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"></label>
+              <label class="text-sm font-medium text-slate-700">Active implementations<input name="activeImplementationLimit" type="number" min="1" step="1" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"></label>
+              <label class="text-sm font-medium text-slate-700">Templates<input name="templateLimit" type="number" min="1" step="1" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"></label>
+            </div>
             <button id="provision-submit" type="submit" class="min-h-11 justify-self-start rounded-lg bg-sky-700 px-5 text-sm font-semibold text-white hover:bg-sky-800 disabled:opacity-60">Approve payment & create access</button>
-            <p id="provision-status" class="text-sm" role="status" aria-live="polite"></p>
+              <p id="provision-status" class="text-sm" role="status" aria-live="polite"></p>
           </form>
           <div id="provision-result" class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4" hidden role="status">
             <strong class="block text-sm text-emerald-900">Workspace created</strong>
@@ -73,7 +86,7 @@
             <li>Securely send the login page and initial password.</li>
             <li>After renewal payment, choose “Add 1 month.”</li>
           </ol>
-          <p class="mt-4 text-xs leading-5 text-slate-500">A client owner can invite teammates without extra payment in the current setup. Everyone in the workspace loses access when its subscription expires.</p>
+          <p class="mt-4 text-xs leading-5 text-slate-500">Each plan limits team members, including pending invitations. Everyone in the workspace loses access when its subscription expires.</p>
         </aside>
       </div>
 
@@ -87,18 +100,19 @@
         </div>
         <p id="workspace-status" class="px-5 pt-3 text-sm text-slate-600 sm:px-6" role="status" aria-live="polite"></p>
         <div class="overflow-x-auto p-3 sm:p-5">
-          <table class="w-full min-w-[620px] border-collapse text-left text-sm">
+          <table class="w-full min-w-[900px] border-collapse text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th scope="col" class="px-3 py-2 font-semibold">Workspace</th>
                 <th scope="col" class="px-3 py-2 font-semibold">Owner</th>
+                <th scope="col" class="px-3 py-2 font-semibold">Plan & limits</th>
                 <th scope="col" class="px-3 py-2 font-semibold">Access until</th>
                 <th scope="col" class="px-3 py-2 font-semibold">Status</th>
                 <th scope="col" class="px-3 py-2 font-semibold">Renewal</th>
               </tr>
             </thead>
             <tbody id="workspaces-body" class="divide-y divide-slate-100">
-              <tr><td colspan="5" class="px-3 py-7 text-center text-sm text-slate-500">Loading paid workspaces…</td></tr>
+              <tr><td colspan="6" class="px-3 py-7 text-center text-sm text-slate-500">Loading paid workspaces…</td></tr>
             </tbody>
           </table>
         </div>
@@ -115,6 +129,29 @@
     const ownerTools = document.getElementById("owner-tools");
     const workspaceBody = document.getElementById("workspaces-body");
     const workspaceStatus = document.getElementById("workspace-status");
+    const customLimitFields = [
+      ["memberLimit", "member_limit", "Members"],
+      ["activeImplementationLimit", "active_implementation_limit", "Active implementations"],
+      ["templateLimit", "template_limit", "Templates"]
+    ];
+
+    function planBody(plan, controls) {
+      const body = { plan };
+      if (plan === "custom") {
+        for (const [key] of customLimitFields) {
+          const value = Number(controls[key].value);
+          if (!Number.isSafeInteger(value) || value < 1) throw new Error("Custom limits must be positive whole numbers.");
+          body[key] = value;
+        }
+      }
+      return body;
+    }
+
+    function setCustomFields(select, container) {
+      const visible = select.value === "custom";
+      container.hidden = !visible;
+      for (const input of container.querySelectorAll("input")) input.required = visible;
+    }
 
     function errorMessage(value, fallback) {
       if (typeof value === "string" && value.trim()) return value.trim();
@@ -171,7 +208,7 @@
       if (!workspaces.length) {
         const row = document.createElement("tr");
         const cell = document.createElement("td");
-        cell.colSpan = 5;
+        cell.colSpan = 6;
         cell.className = "px-3 py-7 text-center text-sm text-slate-500";
         cell.textContent = "No paid workspaces yet. Create one after confirming your first client's payment.";
         row.append(cell);
@@ -180,13 +217,63 @@
       }
       for (const workspace of workspaces) {
         const row = document.createElement("tr");
-        const values = [`${workspace.name} (#${workspace.id})`, workspace.owner_email, formatDate(workspace.expires_at)];
+        const values = [`${workspace.name} (#${workspace.id})`, workspace.owner_email];
         for (const value of values) {
           const cell = document.createElement("td");
           cell.className = "px-3 py-3 align-top text-slate-700";
           cell.textContent = value;
           row.append(cell);
         }
+        const planCell = document.createElement("td");
+        planCell.className = "px-3 py-3 align-top";
+        const planSelect = document.createElement("select");
+        planSelect.className = "mb-2 min-h-9 w-full rounded border border-slate-300 px-2 text-xs";
+        for (const [value, label] of [["starter", "Starter"], ["growth", "Growth"], ["custom", "Custom"]]) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = label;
+          option.selected = workspace.plan === value;
+          planSelect.append(option);
+        }
+        planCell.append(planSelect);
+        const limitsSummary = document.createElement("p");
+        limitsSummary.className = "mb-2 text-[10px] leading-4 text-slate-500";
+        const displayLimit = (value) => value === null || value === undefined ? "Unlimited" : value;
+        limitsSummary.textContent =
+          `${displayLimit(workspace.member_limit)} members · ${displayLimit(workspace.active_implementation_limit)} active · ${displayLimit(workspace.template_limit)} templates`;
+        planCell.append(limitsSummary);
+        const controls = {};
+        const limitsContainer = document.createElement("div");
+        limitsContainer.className = "grid gap-1";
+        for (const [key, column, label] of customLimitFields) {
+          const labelElement = document.createElement("label");
+          labelElement.className = "text-[10px] text-slate-500";
+          labelElement.textContent = label;
+          const input = document.createElement("input");
+          input.type = "number";
+          input.min = "1";
+          input.step = "1";
+          input.className = "min-h-8 w-full rounded border border-slate-300 px-2 text-xs";
+          input.dataset.planLimit = key;
+          input.value = workspace[column] ?? "";
+          labelElement.append(input);
+          limitsContainer.append(labelElement);
+          controls[key] = input;
+        }
+        planCell.append(limitsContainer);
+        const savePlan = document.createElement("button");
+        savePlan.type = "button";
+        savePlan.dataset.planId = String(workspace.id);
+        savePlan.className = "mt-2 rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60";
+        savePlan.textContent = "Save plan";
+        planCell.append(savePlan);
+        planSelect.addEventListener("change", () => setCustomFields(planSelect, limitsContainer));
+        setCustomFields(planSelect, limitsContainer);
+        row.append(planCell);
+        const expiryCell = document.createElement("td");
+        expiryCell.className = "px-3 py-3 align-top text-slate-700";
+        expiryCell.textContent = formatDate(workspace.expires_at);
+        row.append(expiryCell);
         const statusCell = document.createElement("td");
         statusCell.className = `px-3 py-3 align-top font-semibold ${workspace.active ? "text-emerald-700" : "text-rose-700"}`;
         statusCell.textContent = workspace.active ? "Active" : "Expired";
@@ -252,7 +339,13 @@
       try {
         const data = await ownerRequest("/admin/workspaces", {
           method: "POST",
-          body: { workspaceName: values.get("workspaceName"), email: values.get("email") }
+          body: {
+            workspaceName: values.get("workspaceName"),
+            email: values.get("email"),
+            ...planBody(values.get("plan"), Object.fromEntries(
+              customLimitFields.map(([key]) => [key, form.elements.namedItem(key)])
+            ))
+          }
         });
         document.getElementById("provision-details").textContent =
           `${data.workspace.name} (#${data.workspace.id}) · ${data.workspace.ownerEmail} · access until ${formatDate(data.workspace.expires_at)}`;
@@ -260,6 +353,7 @@
         document.getElementById("copy-status").textContent = "";
         result.hidden = false;
         form.reset();
+        setCustomFields(provisionPlan, provisionCustomLimits);
         status.textContent = "Access is active for one calendar month.";
         await refreshWorkspaces();
       } catch (error) {
@@ -282,8 +376,37 @@
     });
 
     document.getElementById("refresh-workspaces").addEventListener("click", refreshWorkspaces);
+    const provisionPlan = document.getElementById("provision-plan");
+    const provisionCustomLimits = document.getElementById("provision-custom-limits");
+    provisionPlan.addEventListener("change", () => setCustomFields(provisionPlan, provisionCustomLimits));
+    setCustomFields(provisionPlan, provisionCustomLimits);
     workspaceBody.addEventListener("click", async (event) => {
-      const button = event.target instanceof Element ? event.target.closest("button[data-renew-id]") : null;
+      const target = event.target instanceof Element ? event.target.closest("button") : null;
+      if (!target) return;
+      const planId = target.dataset.planId;
+      if (planId) {
+        target.disabled = true;
+        workspaceStatus.textContent = "Updating workspace plan…";
+        try {
+          const row = target.closest("tr");
+          const select = row.querySelector("select");
+          const controls = Object.fromEntries(
+            customLimitFields.map(([key]) => [key, row.querySelector(`[data-plan-limit="${key}"]`)])
+          );
+          await ownerRequest(`/admin/workspaces/${encodeURIComponent(planId)}/plan`, {
+            method: "PUT",
+            body: planBody(select.value, controls)
+          });
+          workspaceStatus.textContent = "Workspace plan updated.";
+          await refreshWorkspaces();
+        } catch (error) {
+          workspaceStatus.textContent = error.message;
+        } finally {
+          target.disabled = false;
+        }
+        return;
+      }
+      const button = target.closest("button[data-renew-id]");
       if (!button) return;
       button.disabled = true;
       workspaceStatus.textContent = "Renewing access…";

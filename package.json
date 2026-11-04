@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev:cloudflare": "wrangler dev",
-    "deploy:cloudflare": "wrangler deploy",
+    "deploy:cloudflare": "node scripts/validate-cloudflare-config.js && wrangler deploy",
     "backup": "node scripts/backup-database.js",
     "db:migrate": "node scripts/migrate.js",
     "provision:workspace": "node scripts/provision-workspace.js",
