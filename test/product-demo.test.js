@@ -43,7 +43,8 @@ test("marketing pages expose the sample demo and disclose current product bounda
   const pricingPage = readFileSync(path.join(publicDir, "pricing.html"), "utf8");
 
   assert.match(homePage, /product\.html\?demo=workspace/);
-  assert.match(homePage, /Plans from ₹2,999 per month/);
+  assert.doesNotMatch(homePage, /Plans from ₹2,999 per month/);
+  assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
   assert.match(demoPage, /fictional data/i);
   assert.match(demoPage, /does not connect to your Relay account or backend/i);
   assert.match(solutionsPage, /not connected integrations today/i);
