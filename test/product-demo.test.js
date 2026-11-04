@@ -41,7 +41,12 @@ test("marketing pages expose the sample demo and disclose current product bounda
   const solutionsPage = readFileSync(path.join(publicDir, "features-services.html"), "utf8");
   const aboutPage = readFileSync(path.join(publicDir, "about.html"), "utf8");
   const pricingPage = readFileSync(path.join(publicDir, "pricing.html"), "utf8");
+  const favicon = readFileSync(path.join(publicDir, "favicon.png"));
 
+  assert.match(homePage, /<link rel="icon" type="image\/png" sizes="96x96" href="\/favicon\.png">/);
+  assert.equal(favicon.readUInt32BE(16), 96);
+  assert.equal(favicon.readUInt32BE(20), 96);
+  assert.equal(favicon[25], 6);
   assert.match(homePage, /product\.html\?demo=workspace/);
   assert.doesNotMatch(homePage, /Plans from ₹2,999 per month/);
   assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
