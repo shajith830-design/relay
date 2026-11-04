@@ -53,6 +53,8 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(pricingPage, /5 active implementations/);
   assert.match(pricingPage, /template revision history and restore/);
   assert.match(pricingPage, /before applicable taxes/i);
+  assert.match(pricingPage, /class="plan-grid"/);
+  assert.match(readFileSync(path.join(publicDir, "relay-motion.js"), "utf8"), /\.plan-card/);
 });
 
 test("local customer links work across tabs, validate submissions, and rotate", async () => {

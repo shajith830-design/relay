@@ -67,7 +67,7 @@
 
   const pointerBound = new WeakSet();
   const bindPointerEffects = () => {
-    document.querySelectorAll(".card, .offer, .form-card, .preview, .summary-card, .panel, .welcome-card, .metric, .auth-card, .template-card, .step-card").forEach((target) => {
+    document.querySelectorAll(".card, .offer, .form-card, .preview, .summary-card, .panel, .welcome-card, .metric, .auth-card, .template-card, .step-card, .plan-card").forEach((target) => {
       if (pointerBound.has(target)) return;
       pointerBound.add(target);
       target.addEventListener("pointermove", (event) => {
@@ -112,6 +112,8 @@
     ".auth-card",
     ".template-card",
     ".step-card",
+    ".plan-card",
+    ".plan-comparison tbody tr",
     ".section-intro",
     ".customer-privacy",
     ".list-row",

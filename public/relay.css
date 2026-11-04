@@ -409,6 +409,15 @@ h1::after {
 .plan-grid { display: grid; align-items: stretch; gap: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .plan-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; padding: 26px; background: #fff; box-shadow: 0 12px 30px rgb(15 23 42 / 5%); }
 .plan-card-featured { border-color: #0284c7; box-shadow: 0 16px 38px rgb(2 132 199 / 13%); }
+.plan-card { position: relative; overflow: hidden; transition: transform .3s cubic-bezier(.2,.75,.25,1), border-color .3s, box-shadow .3s; }
+.plan-card::after { position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(260px circle at var(--pointer-x, -100%) var(--pointer-y, -100%), rgb(2 132 199 / 9%), transparent 72%); content: ""; opacity: 0; pointer-events: none; transition: opacity .25s; }
+.plan-card:hover { transform: translateY(-5px); border-color: rgb(2 132 199 / 42%); box-shadow: 0 22px 46px -30px rgb(2 132 199 / 38%); }
+.plan-card:hover::after { opacity: 1; }
+.plan-card > * { position: relative; z-index: 1; }
+.plan-card-featured::before { position: absolute; top: -90px; right: -80px; width: 220px; height: 220px; border-radius: 50%; background: radial-gradient(circle, rgb(56 189 248 / 12%), transparent 70%); content: ""; pointer-events: none; }
+.motion-ready .plan-card.motion-reveal { transform: translateY(18px); transition: opacity .7s cubic-bezier(.2,.75,.25,1), transform .7s cubic-bezier(.2,.75,.25,1), border-color .3s, box-shadow .3s; }
+.motion-ready .plan-card.motion-reveal.is-visible { transform: translateY(0); }
+.motion-ready .plan-card.motion-reveal.is-visible:hover { transform: translateY(-5px); }
 .plan-card h2 { margin: 8px 0 0; color: var(--ink); font-size: 25px; }
 .plan-price { margin: 18px 0 10px; color: var(--ink); font-size: 32px; font-weight: 800; letter-spacing: -.04em; }
 .plan-price span { margin-left: 5px; color: var(--muted); font-size: 13px; font-weight: 500; letter-spacing: 0; }
@@ -423,6 +432,8 @@ h1::after {
 .plan-comparison thead { background: #f8fafc; color: #334155; }
 .plan-comparison tbody th { width: 39%; color: #334155; font-weight: 600; }
 .plan-comparison td { color: #475569; }
+.plan-comparison tbody tr { transition: background-color .2s, color .2s; }
+.plan-comparison tbody tr:hover { background: #f0f9ff; }
 .plan-comparison tr:last-child > * { border-bottom: 0; }
 .pricing-faq { display: grid; align-items: start; gap: 52px; grid-template-columns: .8fr 1.2fr; }
 .pricing-faq .section-head { margin: 0; }
@@ -444,4 +455,8 @@ h1::after {
   .plan-grid { grid-template-columns: 1fr; }
   .pricing-faq { gap: 28px; }
   .pricing-page .page-hero { padding-block: 48px 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .motion-ready .plan-card.motion-reveal,
+  .motion-ready .plan-card.motion-reveal.is-visible:hover { transform: none; }
 }
