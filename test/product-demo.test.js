@@ -41,14 +41,10 @@ test("marketing pages expose the sample demo and disclose current product bounda
   const solutionsPage = readFileSync(path.join(publicDir, "features-services.html"), "utf8");
   const aboutPage = readFileSync(path.join(publicDir, "about.html"), "utf8");
   const pricingPage = readFileSync(path.join(publicDir, "pricing.html"), "utf8");
-  const favicon = readFileSync(path.join(publicDir, "favicon.png"));
-  const faviconIco = readFileSync(path.join(publicDir, "favicon.ico"));
+  const favicon = readFileSync(path.join(publicDir, "relayautomation-favicon.png"));
 
-  assert.match(homePage, /<link rel="icon" href="\/favicon\.ico\?v=2">/);
-  assert.match(homePage, /<link rel="icon" type="image\/png" sizes="96x96" href="\/favicon\.png\?v=2">/);
-  assert.equal(faviconIco.readUInt16LE(0), 0);
-  assert.equal(faviconIco.readUInt16LE(2), 1);
-  assert.equal(faviconIco.readUInt16LE(4), 3);
+  assert.match(homePage, /<link rel="icon" type="image\/png" href="\/relayautomation-favicon\.png">/);
+  assert.doesNotMatch(homePage, /href="\/favicon\.(?:ico|png)/);
   assert.equal(favicon.readUInt32BE(16), 96);
   assert.equal(favicon.readUInt32BE(20), 96);
   assert.equal(favicon[25], 6);
