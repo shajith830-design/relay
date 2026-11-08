@@ -165,7 +165,14 @@
               <div class="field"><label for="step-assignee">Assigned workspace member</label><select id="step-assignee" required></select></div>
               <div class="field"><label for="step-stage">Stage</label><input id="step-stage" maxlength="100" value="Implementation" required></div>
               <div class="field"><label for="step-due-offset">Due after start (days)</label><input id="step-due-offset" type="number" min="0" max="3650" value="0" required></div>
-              <div class="field" data-growth-only="dependencies"><label for="step-dependencies">Prerequisite steps</label><select id="step-dependencies" multiple size="4"></select><small>Hold Ctrl or Command to choose more than one.</small></div>
+              <div class="field" data-growth-only="dependencies">
+                <label for="step-dependencies-search">Prerequisite steps (optional)</label>
+                <small>Choose steps that must be completed before this step can be marked done.</small>
+                <input id="step-dependencies-search" type="search" placeholder="Find a process step">
+                <div id="step-dependencies" class="dependency-options" role="group" aria-label="Prerequisite steps"></div>
+                <small id="step-dependencies-empty">Add another process step first to set prerequisites.</small>
+                <small id="step-dependencies-no-results" hidden>No matching steps.</small>
+              </div>
               <button class="button primary" id="step-submit" type="submit">Add step</button>
               <button class="text-button" id="cancel-step-edit" type="button" hidden>Cancel edit</button>
             </form>
@@ -323,7 +330,7 @@
         </form>
         <button class="text-button help-clear" id="help-clear" type="button">Clear my help history</button>
       </section>
-      <button class="help-launcher" id="help-open" type="button" aria-expanded="false" aria-controls="help-panel">
+      <button class="help-launcher" id="help-open" type="button" aria-label="Open Ray" aria-expanded="false" aria-controls="help-panel">
         <img class="ray-logo" src="assets/Ray%20Robot%20Mascot%20Logo%20%281%29.png" alt=""> Ray
       </button>
     </div>

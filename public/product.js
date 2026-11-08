@@ -14,6 +14,7 @@ const isRayDemo = new URLSearchParams(window.location.search).get("demo") === "r
 const isWorkspaceDemo = Boolean(window.relayWorkspaceDemo);
 let appearanceSaveQueue = Promise.resolve();
 let subscriptionExpiryTimer;
+let processLoadRequestId = 0;
 const state = {
   authMode: "login",
   inviteToken: new URLSearchParams(window.location.search).get("invite") || "",
@@ -597,7 +598,6 @@ function setView(name) {
   document.getElementById("view-title").textContent = titles[name][1];
   document.getElementById("refresh-button").hidden = name === "settings";
   globalStatus.textContent = "";
-  if (name === "processes" && state.selectedProcessId) loadProcess(state.selectedProcessId).catch(showError);
   if (name === "settings") loadAccountDeletionChoices().catch(showError);
   return true;
 }
@@ -850,7 +850,9 @@ function renderTeam() {
 
 async function loadProcess(processId) {
   if (dirtyScopes.size && !confirmDiscardChanges()) return false;
+  const requestId = ++processLoadRequestId;
   const { process } = await api(`/api/product/processes/${processId}`);
+  if (requestId !== processLoadRequestId) return false;
   state.process = process;
   state.selectedProcessId = process.id;
   renderProcesses();
@@ -866,9 +868,14 @@ async function loadProcess(processId) {
   document.getElementById("save-template").title = process.checked
     ? ""
     : "Run a successful process check before saving a template.";
-  document.getElementById("step-dependencies").innerHTML = process.steps.map((step) =>
-    `<option value="${step.id}" ${step.id === state.editingStepId ? "disabled" : ""}>${escapeHtml(step.title)}</option>`
+  const dependencies = document.getElementById("step-dependencies");
+  const availableDependencies = process.steps.filter((step) => step.id !== state.editingStepId);
+  dependencies.innerHTML = availableDependencies.map((step) =>
+    `<label><input type="checkbox" value="${step.id}"><span>${escapeHtml(step.title)}</span></label>`
   ).join("");
+  document.getElementById("step-dependencies-search").value = "";
+  document.getElementById("step-dependencies-empty").hidden = availableDependencies.length > 0;
+  document.getElementById("step-dependencies-no-results").hidden = true;
   document.getElementById("step-assignee").value = state.user?.id ? String(state.user.id) : "";
   document.getElementById("process-step-list").classList.toggle("empty-state", process.steps.length === 0);
   document.getElementById("process-step-list").innerHTML = process.steps.length
@@ -1472,9 +1479,18 @@ document.getElementById("process-form").addEventListener("submit", async (event)
 document.getElementById("process-list").addEventListener("click", (event) => {
   const openButton = event.target.closest("[data-select-process]");
   if (openButton) {
+    if (openButton.disabled) return;
+    openButton.disabled = true;
+    const openLabel = openButton.textContent;
+    openButton.textContent = "Opening...";
     loadProcess(openButton.dataset.selectProcess).then((loaded) => {
       if (loaded) state.editingStepId = null;
-    }).catch(showError);
+    }).catch(showError).finally(() => {
+      if (openButton.isConnected) {
+        openButton.disabled = false;
+        openButton.textContent = openLabel;
+      }
+    });
     return;
   }
   const deleteButton = event.target.closest("[data-delete-process]");
@@ -1531,7 +1547,7 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
         assigneeUserId: document.getElementById("step-assignee").value || null,
         stage: document.getElementById("step-stage").value,
         dueOffsetDays: Number(document.getElementById("step-due-offset").value),
-        dependsOn: [...document.getElementById("step-dependencies").selectedOptions].map((option) => Number(option.value))
+        dependsOn: [...document.querySelectorAll("#step-dependencies input:checked")].map((input) => Number(input.value))
       }
     });
     state.editingStepId = null;
@@ -1573,9 +1589,9 @@ document.getElementById("process-step-list").addEventListener("click", async (ev
     document.getElementById("step-assignee").value = step.assignee_user_id ? String(step.assignee_user_id) : "";
     document.getElementById("step-stage").value = step.stage;
     document.getElementById("step-due-offset").value = step.due_offset_days;
-    [...document.getElementById("step-dependencies").options].forEach((option) => {
-      option.disabled = Number(option.value) === step.id;
-      option.selected = step.dependsOn.includes(Number(option.value));
+    [...document.querySelectorAll("#step-dependencies input")].forEach((input) => {
+      input.disabled = Number(input.value) === step.id;
+      input.checked = step.dependsOn.includes(Number(input.value));
     });
     document.getElementById("step-submit").textContent = "Save step";
     document.getElementById("cancel-step-edit").hidden = false;
@@ -1616,6 +1632,16 @@ document.getElementById("process-step-list").addEventListener("click", async (ev
       showError(error);
     }
   }
+});
+
+document.getElementById("step-dependencies-search").addEventListener("input", (event) => {
+  const query = event.currentTarget.value.trim().toLocaleLowerCase();
+  const options = [...document.querySelectorAll("#step-dependencies label")];
+  for (const option of options) {
+    option.hidden = !option.textContent.toLocaleLowerCase().includes(query);
+  }
+  document.getElementById("step-dependencies-no-results").hidden = !query
+    || options.some((option) => !option.hidden);
 });
 
 document.getElementById("delete-process").addEventListener("click", () => {
@@ -1742,11 +1768,23 @@ document.getElementById("template-list").addEventListener("click", async (event)
   if (deleteButton) {
     if (!window.confirm("Delete this template? Existing implementations cannot be deleted with it.")
       || !confirmDiscardChanges()) return;
+    const deleteLabel = deleteButton.textContent;
+    deleteButton.disabled = true;
+    deleteButton.textContent = "Deleting...";
     try {
       await api(`/api/product/templates/${deleteButton.dataset.deleteTemplate}`, { method: "DELETE" });
-      await loadWorkspace();
+      const deletedTemplateId = Number(deleteButton.dataset.deleteTemplate);
+      state.data.templates = state.data.templates.filter((template) => template.id !== deletedTemplateId);
+      renderTemplates();
+      renderImplementations();
+      renderRequirements();
+      renderOverview();
       showToast("Template deleted.");
     } catch (error) {
+      if (deleteButton.isConnected) {
+        deleteButton.disabled = false;
+        deleteButton.textContent = deleteLabel;
+      }
       showError(error);
     }
   }

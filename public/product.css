@@ -196,6 +196,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .task-controls textarea, .info-row textarea { min-height: 58px; resize: vertical; }
 .task-controls .check-field, .info-row .check-field { display: flex; align-items: center; }
 .task-controls .status.warning { margin-top: 9px; }
+.dependency-options { display: grid; max-height: 180px; gap: 5px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--surface); }
+.dependency-options:empty { display: none; }
+.dependency-options label { display: flex; align-items: center; gap: 8px; border-radius: 5px; padding: 6px; color: var(--ink-subtle); font-size: 12px; font-weight: 500; cursor: pointer; }
+.dependency-options label:hover { background: var(--surface-hover); }
+.dependency-options input { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--blue); }
 .step-number { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; font-weight: 800; }
 .step-card strong { font-size: 12px; }
 .step-card p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
@@ -351,6 +356,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .step-card .task-controls, .step-card .button-row { grid-column: 2; width: 100%; }
   .step-card > :last-child { grid-column: 2; justify-self: stretch; }
   .help-widget { right: 12px; bottom: 12px; left: 12px; }
+  .help-launcher { width: 48px; min-height: 48px; justify-content: center; gap: 0; padding: 0; font-size: 0; }
+  .help-launcher .ray-logo { width: 32px; height: 32px; }
   .help-panel { width: 100%; height: min(590px, calc(100dvh - 97px)); min-height: min(360px, calc(100dvh - 97px)); }
 }
 
