@@ -770,19 +770,25 @@ function renderNotificationSettings() {
   document.getElementById("notifications-reminder-days").value = settings.reminder_days_before;
   const form = document.getElementById("notification-settings-form");
   const owner = state.workspace.role === "owner";
-  for (const control of form.elements) control.disabled = !owner || isWorkspaceDemo;
+  for (const control of form.elements) control.disabled = !owner;
+  document.getElementById("notifications-demo-note").hidden = !isWorkspaceDemo;
   document.getElementById("integration-status").textContent = state.workspace.role === "owner"
     ? "" : "Only a workspace owner can connect or disconnect integrations.";
+  document.getElementById("integrations-demo-note").hidden = !isWorkspaceDemo;
 }
 
 function renderIntegrations() {
   const connected = new Set((state.data.integrations || []).map((item) => item.provider));
   document.getElementById("integration-list").innerHTML = ["hubspot", "slack"].map((provider) => {
-    const name = provider === "hubspot" ? "HubSpot" : "Slack";
-    return `<div class="list-row"><div><strong>${name}</strong><small>${connected.has(provider) ? "Connected" : "Not connected"}</small></div>
+    const name = provider === "hubspot" ? "CRM connection" : "Team messaging connection";
+    const isConnected = connected.has(provider);
+    const stateLabel = isWorkspaceDemo
+      ? isConnected ? "Preview connected · no external service linked" : "Not connected"
+      : isConnected ? "Connected" : "Not connected";
+    return `<div class="list-row"><div><strong>${name}</strong><small>${stateLabel}</small></div>
       ${connected.has(provider)
-        ? `<button class="text-button" type="button" data-disconnect-integration="${provider}" ${isWorkspaceDemo || state.workspace.role !== "owner" ? "disabled" : ""}>Disconnect</button>`
-        : `<button class="button secondary" type="button" data-connect-integration="${provider}" ${isWorkspaceDemo || state.workspace.role !== "owner" ? "disabled" : ""}>Connect ${name}</button>`}</div>`;
+        ? `<button class="text-button" type="button" data-disconnect-integration="${provider}" ${state.workspace.role !== "owner" ? "disabled" : ""}>${isWorkspaceDemo ? "Clear preview" : "Disconnect"}</button>`
+        : `<button class="button secondary" type="button" data-connect-integration="${provider}" ${state.workspace.role !== "owner" ? "disabled" : ""}>${isWorkspaceDemo ? "Preview connection" : `Connect ${name}`}</button>`}</div>`;
   }).join("");
 }
 
@@ -1313,6 +1319,12 @@ document.getElementById("integration-list").addEventListener("click", async (eve
         method: "POST",
         body: {}
       });
+      if (isWorkspaceDemo) {
+        await loadWorkspace();
+        document.getElementById("integration-status").textContent =
+          "Preview only: no external integration was authorized or connected.";
+        return;
+      }
       window.location.assign(authorizationUrl);
       return;
     }

@@ -34,6 +34,43 @@ test("public sample workspace requires an explicit demo query and uses only the 
   assert.equal(response.workspace.name, "Northstar Demo Workspace");
 });
 
+test("sample workspace previews portfolio health, notification settings, and integration connections locally", async () => {
+  const { adapter } = makeDemoAdapter();
+  const workspace = await adapter.request("/api/product/workspace");
+  const implementation = workspace.implementations.find((item) => item.id === 9040);
+
+  assert.equal(implementation.blocked_steps, 1);
+  assert.equal(implementation.overdue_steps, 1);
+  assert.match(implementation.projected_completion, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(workspace.notificationSettings.email_enabled, false);
+
+  const savedSettings = await adapter.request("/api/product/notifications", {
+    method: "PATCH",
+    body: { emailEnabled: true, reminderDaysBefore: 5 }
+  });
+  assert.deepEqual({ ...savedSettings }, { emailEnabled: true, reminderDaysBefore: 5 });
+  assert.deepEqual(
+    { ...((await adapter.request("/api/product/workspace")).notificationSettings) },
+    { email_enabled: true, reminder_days_before: 5 }
+  );
+  await assert.rejects(adapter.request("/api/product/notifications", {
+    method: "PATCH",
+    body: { emailEnabled: true, reminderDaysBefore: 31 }
+  }), /between 0 and 30/);
+
+  const connection = await adapter.request("/api/product/integrations/hubspot/connect", {
+    method: "POST",
+    body: {}
+  });
+  assert.equal(connection.demoConnected, true);
+  let integrations = (await adapter.request("/api/product/workspace")).integrations;
+  assert.equal(integrations.length, 1);
+  assert.equal(integrations[0].demo, true);
+  await adapter.request("/api/product/integrations/hubspot", { method: "DELETE" });
+  integrations = (await adapter.request("/api/product/workspace")).integrations;
+  assert.equal(integrations.length, 0);
+});
+
 test("marketing pages expose the sample demo and disclose current product boundaries", () => {
   const publicDir = path.join(__dirname, "..", "public");
   const homePage = readFileSync(path.join(publicDir, "index.html"), "utf8");

@@ -277,6 +277,7 @@
             </div>
             <div class="panel">
               <div class="panel-heading"><div><h2>Notifications and reminders</h2><p>Send implementation updates and due-date reminders to workspace members by email.</p></div></div>
+              <p id="notifications-demo-note" class="empty-state" hidden>Sample preview: settings are saved locally; no email is sent.</p>
               <form id="notification-settings-form" class="inline-form vertical">
                 <label class="check-field"><input id="notifications-email-enabled" type="checkbox"> Enable email notifications</label>
                 <div class="field"><label for="notifications-reminder-days">Remind before a task is due (days)</label>
@@ -287,7 +288,8 @@
               </form>
             </div>
             <div class="panel">
-              <div class="panel-heading"><div><h2>Connect your tools</h2><p>Authorize each workspace’s HubSpot and Slack accounts. Tokens are encrypted before storage.</p></div></div>
+              <div class="panel-heading"><div><h2>Integrations</h2><p>Workspace owners can authorize supported integrations after setup.</p></div></div>
+              <p id="integrations-demo-note" class="empty-state" hidden>Sample preview: connection controls do not contact an external service.</p>
               <div id="integration-list" class="list-stack"></div>
               <p id="integration-status" class="appearance-status" role="status" aria-live="polite"></p>
             </div>

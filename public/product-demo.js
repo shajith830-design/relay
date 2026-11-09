@@ -24,6 +24,7 @@
     },
     preferences: { theme: "light", accent: "blue" },
     notificationSettings: { email_enabled: false, reminder_days_before: 2 },
+    integrations: [],
     onboardingDismissed: false,
     members: [
       { id: ownerId, email: "owner@demo.invalid", role: "owner" },
@@ -78,21 +79,24 @@
           owner: "Implementation lead", position: 1, status: "done", updated_at: new Date().toISOString(),
           stage: "Kickoff", assignee_user_id: ownerId, assignee_email: "owner@demo.invalid",
           customer_visible: true,
-          due_at: dateOffset(-2), is_blocked: false, blocker_reason: "", blocker_next_action: "", waiting_on: ""
+          due_at: dateOffset(-2), is_blocked: false, blocker_reason: "", blocker_next_action: "", waiting_on: "",
+          last_completed_at: new Date(Date.now() - 86400000).toISOString()
         },
         {
           id: 9042, title: "Configure the workspace", description: "Set up the workspace using the confirmed project requirements.",
           owner: "Setup specialist", position: 2, status: "in_progress", updated_at: new Date().toISOString(),
           stage: "Configuration", assignee_user_id: memberId, assignee_email: "teammate@demo.invalid",
           customer_visible: true,
-          due_at: dateOffset(2), is_blocked: false, blocker_reason: "", blocker_next_action: "", waiting_on: "", dependsOn: [9041]
+          due_at: dateOffset(2), is_blocked: false, blocker_reason: "",
+          blocker_next_action: "", waiting_on: "", dependsOn: [9041]
         },
         {
           id: 9043, title: "Review launch readiness", description: "Review configuration with the customer and record open questions.",
           owner: "Implementation lead", position: 3, status: "not_started", updated_at: new Date().toISOString(),
           stage: "Launch", assignee_user_id: ownerId, assignee_email: "owner@demo.invalid",
           customer_visible: false,
-          due_at: dateOffset(7), is_blocked: false, blocker_reason: "", blocker_next_action: "", waiting_on: "Configure the workspace", dependsOn: [9042]
+          due_at: dateOffset(-1), is_blocked: true, blocker_reason: "Final approval is still pending.",
+          blocker_next_action: "The implementation lead will follow up with the customer admin.", waiting_on: "Configure the workspace", dependsOn: [9042]
         }
       ],
       requirements: [
@@ -149,7 +153,7 @@
     const overdue = open.filter((step) => step.due_at && step.due_at < dateOffset(0));
     const waiting = open.filter((step) => step.waiting_on);
     const unowned = open.filter((step) => !step.assignee_user_id);
-    return {
+    const summary = {
       ...implementation,
       total_steps: steps.length,
       open_steps: open.length,
@@ -169,6 +173,20 @@
       waiting_steps: waiting.length,
       waiting_step_names: waiting.map((step) => step.title).join(", ")
     };
+    const lastCompleted = steps
+      .filter((step) => step.status === "done")
+      .map((step) => step.last_completed_at || step.updated_at)
+      .sort()
+      .at(-1);
+    if (summary.completed_steps > 0 && summary.open_steps > 0 && lastCompleted) {
+      const elapsedDays = Math.max(1,
+        (Date.parse(lastCompleted) - Date.parse(implementation.created_at)) / 86400000);
+      const daysRemaining = Math.ceil((elapsedDays / summary.completed_steps) * summary.open_steps);
+      summary.projected_completion = dateOffset(daysRemaining);
+    } else {
+      summary.projected_completion = summary.open_steps === 0 ? dateOffset(0) : "";
+    }
+    return summary;
   }
 
   function workspaceData() {
@@ -204,7 +222,7 @@
         };
       }),
       notificationSettings: clone(data.notificationSettings),
-      integrations: [],
+      integrations: clone(data.integrations),
       role: "owner"
     };
   }
@@ -335,6 +353,31 @@
       return Promise.resolve({ dismissed: data.onboardingDismissed });
     }
     if (path === "/api/product/workspace") return Promise.resolve(workspaceData());
+    if (path === "/api/product/notifications" && method === "PATCH") {
+      const reminderDaysBefore = Number(body.reminderDaysBefore);
+      if (!Number.isInteger(reminderDaysBefore) || reminderDaysBefore < 0 || reminderDaysBefore > 30) {
+        return Promise.reject(new Error("Reminder days must be a whole number between 0 and 30."));
+      }
+      data.notificationSettings = {
+        email_enabled: body.emailEnabled === true,
+        reminder_days_before: reminderDaysBefore
+      };
+      return Promise.resolve({
+        emailEnabled: data.notificationSettings.email_enabled,
+        reminderDaysBefore: data.notificationSettings.reminder_days_before
+      });
+    }
+    if ((match = path.match(/^\/api\/product\/integrations\/(hubspot|slack)\/connect$/)) && method === "POST") {
+      const provider = match[1];
+      if (!data.integrations.some((integration) => integration.provider === provider)) {
+        data.integrations.push({ provider, connected_at: new Date().toISOString(), demo: true });
+      }
+      return Promise.resolve({ demoConnected: true });
+    }
+    if ((match = path.match(/^\/api\/product\/integrations\/(hubspot|slack)$/)) && method === "DELETE") {
+      data.integrations = data.integrations.filter((integration) => integration.provider !== match[1]);
+      return Promise.resolve({ success: true });
+    }
     if (path === "/api/product/account-deletion/workspaces") {
       return Promise.resolve({
         workspaces: [{
