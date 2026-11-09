@@ -180,7 +180,7 @@ before(async () => {
   });
   await waitForServer();
   const initializedMigration = await testQuery("SELECT version FROM relay_schema_migrations");
-  assert.deepEqual(initializedMigration.rows.map((row) => row.version), [1, 2, 3]);
+  assert.deepEqual(initializedMigration.rows.map((row) => row.version), [1, 2, 3, 4, 5]);
   const removedHelpConsentTable = await testQuery("SELECT to_regclass('product_help_consents') AS relation");
   assert.equal(removedHelpConsentTable.rows[0].relation, null);
 });
@@ -1440,7 +1440,7 @@ test("public pages and the inquiry app remain available", {
   assert.doesNotMatch(productScript, /consentAccepted|helpConsented/);
   assert.match(relayHelpReply("hi"), /Hi! I’m Ray/);
   assert.match(relayHelpReply("hello Ray"), /What are you working on today/);
-  assert.match(relayHelpReply("Does Relay integrate with Jira and Slack?"), /doesn’t synchronize with external project-management tools/i);
+  assert.match(relayHelpReply("Does Relay integrate with Jira and Slack?"), /HubSpot.*Slack.*not connected today/i);
   assert.match(relayHelpReply("How do I map prerequisites between process steps?"), /Open Process map/i);
   assert.match(relayHelpReply("If I update a template, will existing plans change?"), /Existing implementations.*not changed/i);
   assert.match(relayHelpReply("Can I delete my account, and what happens to customer information?"), /private link/i);
@@ -1464,6 +1464,7 @@ test("public pages and the inquiry app remain available", {
   assert.match(envExample, /^INQUIRIES_API_TOKEN=replace-with-[^\r\n]+$/m);
   assert.match(envExample, /^OWNER_ADMIN_TOKEN=replace-with-[^\r\n]+$/m);
   assert.match(envExample, /^RESEND_API_KEY=replace-with-[^\r\n]+$/m);
+  assert.match(envExample, /^INQUIRY_NOTIFICATION_EMAIL=inquiries@example\.com$/m);
   const productAlias = await fetch(`${baseUrl}/product?demo=ray`, { redirect: "manual" });
   assert.equal(productAlias.status, 302);
   assert.equal(productAlias.headers.get("location"), "/product.html?demo=ray");
@@ -1475,12 +1476,28 @@ test("public pages and the inquiry app remain available", {
   const productStyles = await fetch(`${baseUrl}/product.css`).then((response) => response.text());
   assert.match(productStyles, /\*, \*::before, \*::after\s*\{\s*animation:\s*none !important;\s*transition:\s*none !important;/);
 
+  const invalidInquiry = await request("/api/inquiries", {
+    method: "POST",
+    body: {
+      name: "Invalid User",
+      company: "Example Co",
+      email: "not-an-email",
+      phone: "+15551234567",
+      message: "Invalid email test",
+      inquiryType: "Sales inquiry"
+    }
+  });
+  assert.equal(invalidInquiry.response.status, 400);
+
   const inquiry = await request("/api/inquiries", {
     method: "POST",
     body: {
       name: "Test User",
+      company: "Example Co",
+      email: "user@example.test",
       phone: "+15551234567",
-      message: "Company: Example Co\nWork email: user@example.test\nDetails: Test inquiry"
+      message: "Test inquiry",
+      inquiryType: "Sales inquiry"
     }
   });
   assert.equal(inquiry.response.status, 201);
@@ -1491,19 +1508,24 @@ test("public pages and the inquiry app remain available", {
   assert.deepEqual(firstInquiryEmail.to, ["relayautomations@gmail.com"]);
   assert.equal(firstInquiryEmail.subject, "New Relay contact or demo inquiry");
   assert.match(firstInquiryEmail.text, /Test User/);
+  assert.match(firstInquiryEmail.text, /Company: Example Co/);
   assert.match(firstInquiryEmail.text, /user@example\.test/);
   assert.match(firstInquiryEmail.text, /Test inquiry/);
+  assert.equal(firstInquiryEmail.reply_to, "user@example.test");
   assert.equal(telegramMessages.length, 1);
   assert.equal(telegramMessages[0].chat_id, "test-telegram-chat");
-  assert.match(telegramMessages[0].text, /New Customer Onboarding Inquiry/);
+  assert.match(telegramMessages[0].text, /New Sales inquiry/);
 
   telegramProviderStatus = 503;
   const inquiryWithFailedNotification = await request("/api/inquiries", {
     method: "POST",
     body: {
       name: "Second Test User",
+      company: "Example Co",
+      email: "second@example.test",
       phone: "+15551234568",
-      message: "Company: Example Co\nWork email: second@example.test\nDetails: Notification failure test"
+      message: "Notification failure test",
+      inquiryType: "Demo request"
     }
   });
   assert.equal(inquiryWithFailedNotification.response.status, 201);
@@ -1578,6 +1600,16 @@ test("public pages and the inquiry app remain available", {
   });
   assert.equal(inquiryRead.response.status, 200);
   assert.equal(inquiryRead.data.count, 2);
-  assert.ok(inquiryRead.data.inquiries.some((entry) => /user@example\.test/.test(entry.message)));
-  assert.ok(inquiryRead.data.inquiries.some((entry) => /second@example\.test/.test(entry.message)));
+  assert.ok(inquiryRead.data.inquiries.some((entry) =>
+    entry.email === "user@example.test"
+      && entry.company === "Example Co"
+      && entry.inquiry_type === "Sales inquiry"
+      && entry.message === "Test inquiry"
+  ));
+  assert.ok(inquiryRead.data.inquiries.some((entry) =>
+    entry.email === "second@example.test"
+      && entry.company === "Example Co"
+      && entry.inquiry_type === "Demo request"
+      && entry.message === "Notification failure test"
+  ));
 });

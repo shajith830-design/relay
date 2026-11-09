@@ -19,6 +19,16 @@
       <h1 id="customer-title">Help us get your implementation ready.</h1>
       <p class="muted" id="customer-intro">Share the requested information with your implementation team.</p>
       <div id="customer-loading" class="status" role="status" aria-live="polite">Loading your secure request…</div>
+      <section id="customer-progress" class="customer-progress" hidden aria-label="Implementation progress">
+        <h2>Implementation progress</h2>
+        <p id="customer-progress-label"></p>
+        <progress id="customer-progress-bar" max="100" value="0"></progress>
+        <div id="customer-milestones" class="customer-milestones"></div>
+      </section>
+      <section id="customer-tasks-section" hidden>
+        <h2>Next steps for you</h2>
+        <div id="customer-tasks" class="customer-tasks"></div>
+      </section>
       <form id="customer-form" hidden>
         <div id="customer-fields"></div>
         <p class="customer-privacy">Only submit the information requested for setup. Never share passwords, payment card details, or other secrets through this form.</p>

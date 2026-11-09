@@ -23,6 +23,7 @@
       subscriptionExpiresAt: new Date(Date.now() + 30 * 86400000).toISOString()
     },
     preferences: { theme: "light", accent: "blue" },
+    notificationSettings: { email_enabled: false, reminder_days_before: 2 },
     onboardingDismissed: false,
     members: [
       { id: ownerId, email: "owner@demo.invalid", role: "owner" },
@@ -45,17 +46,17 @@
         {
           id: 9011, title: "Confirm project goals", description: "Agree on success measures and the project owner.",
           owner: "Implementation lead", position: 1, stage: "Kickoff", due_offset_days: 0,
-          assignee_user_id: ownerId, assignee_email: "owner@demo.invalid", dependsOn: []
+          assignee_user_id: ownerId, assignee_email: "owner@demo.invalid", customer_visible: true, dependsOn: []
         },
         {
           id: 9012, title: "Configure the workspace", description: "Set up the workspace using the confirmed project requirements.",
           owner: "Setup specialist", position: 2, stage: "Configuration", due_offset_days: 3,
-          assignee_user_id: memberId, assignee_email: "teammate@demo.invalid", dependsOn: [9011]
+          assignee_user_id: memberId, assignee_email: "teammate@demo.invalid", customer_visible: true, dependsOn: [9011]
         },
         {
           id: 9013, title: "Review launch readiness", description: "Review configuration with the customer and record open questions.",
           owner: "Implementation lead", position: 3, stage: "Launch", due_offset_days: 7,
-          assignee_user_id: ownerId, assignee_email: "owner@demo.invalid", dependsOn: [9012]
+          assignee_user_id: ownerId, assignee_email: "owner@demo.invalid", customer_visible: false, dependsOn: [9012]
         }
       ]
     }],
@@ -76,18 +77,21 @@
           id: 9041, title: "Confirm project goals", description: "Agree on success measures and the project owner.",
           owner: "Implementation lead", position: 1, status: "done", updated_at: new Date().toISOString(),
           stage: "Kickoff", assignee_user_id: ownerId, assignee_email: "owner@demo.invalid",
+          customer_visible: true,
           due_at: dateOffset(-2), is_blocked: false, blocker_reason: "", blocker_next_action: "", waiting_on: ""
         },
         {
           id: 9042, title: "Configure the workspace", description: "Set up the workspace using the confirmed project requirements.",
           owner: "Setup specialist", position: 2, status: "in_progress", updated_at: new Date().toISOString(),
           stage: "Configuration", assignee_user_id: memberId, assignee_email: "teammate@demo.invalid",
+          customer_visible: true,
           due_at: dateOffset(2), is_blocked: false, blocker_reason: "", blocker_next_action: "", waiting_on: "", dependsOn: [9041]
         },
         {
           id: 9043, title: "Review launch readiness", description: "Review configuration with the customer and record open questions.",
           owner: "Implementation lead", position: 3, status: "not_started", updated_at: new Date().toISOString(),
           stage: "Launch", assignee_user_id: ownerId, assignee_email: "owner@demo.invalid",
+          customer_visible: false,
           due_at: dateOffset(7), is_blocked: false, blocker_reason: "", blocker_next_action: "", waiting_on: "Configure the workspace", dependsOn: [9042]
         }
       ],
@@ -189,6 +193,18 @@
       requirements: clone(data.requirements),
       members: clone(data.members),
       invites: clone(data.invites),
+      teamWorkload: data.members.map((member) => {
+        const tasks = data.implementations.flatMap((implementation) => implementation.steps)
+          .filter((step) => step.assignee_user_id === member.id && step.status !== "done");
+        return {
+          id: member.id,
+          email: member.email,
+          open_tasks: tasks.length,
+          overdue_tasks: tasks.filter((step) => step.due_at && step.due_at < dateOffset(0)).length
+        };
+      }),
+      notificationSettings: clone(data.notificationSettings),
+      integrations: [],
       role: "owner"
     };
   }
@@ -205,7 +221,8 @@
       position: index + 1,
       dependsOnPositions: step.dependsOn.map((dependency) =>
         process.steps.findIndex((candidate) => candidate.id === dependency) + 1
-      ).filter((position) => position > 0)
+      ).filter((position) => position > 0),
+      customerVisible: step.customer_visible === true
     }));
     return {
       id, process_id: process.id, name, revision: 1,
@@ -246,7 +263,17 @@
     portals[token] = {
       implementationId: implementation.id,
       customerName: implementation.customer_name,
-      requirements: clone(implementation.requirements)
+      requirements: clone(implementation.requirements),
+      tasks: implementation.steps.filter((step) => step.customer_visible).map((step) => ({
+        id: step.id,
+        title: step.title,
+        description: step.description,
+        stage: step.stage,
+        status: step.status,
+        due_at: step.due_at,
+        waiting: Boolean(step.waiting_on),
+        dependsOn: clone(step.dependsOn || [])
+      }))
     };
     window.localStorage.setItem(portalStorageKey, JSON.stringify(portals));
   }
@@ -389,6 +416,7 @@
         position: process.steps.length + 1, stage: String(body.stage || "Implementation"),
         due_offset_days: Number(body.dueOffsetDays || 0), assignee_user_id: body.assigneeUserId ? Number(body.assigneeUserId) : null,
         assignee_email: data.members.find((member) => member.id === Number(body.assigneeUserId))?.email || null,
+        customer_visible: body.customerVisible === true,
         dependsOn
       };
       process.steps.push(step);
@@ -427,6 +455,7 @@
         due_offset_days: Number(body.dueOffsetDays || 0),
         assignee_user_id: body.assigneeUserId ? Number(body.assigneeUserId) : null,
         assignee_email: data.members.find((member) => member.id === Number(body.assigneeUserId))?.email || null,
+        customer_visible: body.customerVisible === true,
         dependsOn
       });
       process.revision += 1;
@@ -526,6 +555,7 @@
           id: nextId++, title: step.title, description: step.description, owner: step.owner,
           position: index + 1, status: "not_started", updated_at: new Date().toISOString(),
           stage: step.stage, assignee_user_id: step.assigneeUserId || null, assignee_email: step.assigneeEmail || null,
+          customer_visible: step.customerVisible === true,
           due_at: dateOffset(step.dueOffsetDays || 0), is_blocked: false, blocker_reason: "", blocker_next_action: "",
           waiting_on: "", dependsOn: []
         })),
@@ -563,17 +593,42 @@
       const portal = implementation ? null : findPortalSnapshot(token);
       if (!implementation && !portal) return Promise.reject(new Error("Customer link not found or no longer available."));
       if (method === "GET") {
+        const tasks = implementation
+          ? implementation.steps.filter((step) => step.customer_visible).map((step) => ({
+            id: step.id, title: step.title, description: step.description, stage: step.stage,
+            status: step.status, due_at: step.due_at, waiting: Boolean(step.waiting_on)
+          }))
+          : (portal.tasks || []).map((step) => ({
+            id: step.id, title: step.title, description: step.description, stage: step.stage,
+            status: step.status, due_at: step.due_at, waiting: Boolean(step.waiting)
+          }));
+        const milestones = [...new Set(tasks.map((task) => task.stage))].map((stage) => {
+          const stageTasks = tasks.filter((task) => task.stage === stage);
+          return {
+            name: stage,
+            total: stageTasks.length,
+            completed: stageTasks.filter((task) => task.status === "done").length
+          };
+        });
         return Promise.resolve({
           customerName: implementation?.customer_name || portal.customerName,
-          requirements: clone(implementation?.requirements || portal.requirements)
+          requirements: clone(implementation?.requirements || portal.requirements),
+          tasks,
+          milestones,
+          progress: tasks.length ? Math.round((tasks.filter((task) => task.status === "done").length / tasks.length) * 100) : null
         });
       }
       if (method === "POST") {
-        if (!Array.isArray(body.inputs) || body.inputs.length > 50) {
+        const inputs = body.inputs === undefined ? [] : body.inputs;
+        const completedStepIds = body.completedStepIds === undefined ? [] : body.completedStepIds;
+        if (!Array.isArray(inputs) || inputs.length > 50) {
           return Promise.reject(new Error("Submit a valid list of information."));
         }
+        if (!Array.isArray(completedStepIds) || completedStepIds.length > 200) {
+          return Promise.reject(new Error("Submit a valid list of customer tasks."));
+        }
         const submitted = new Map();
-        for (const input of body.inputs) {
+        for (const input of inputs) {
           const requirementId = Number(input?.requirementId);
           const requirements = implementation?.requirements || portal.requirements;
           const requirement = requirements.find((item) => item.id === requirementId);
@@ -586,15 +641,45 @@
           submitted.set(requirementId, value);
         }
         const requirements = implementation?.requirements || portal.requirements;
-        const missing = requirements.find((requirement) => requirement.required
-          && !(submitted.has(requirement.id) ? submitted.get(requirement.id) : requirement.value).trim());
+        const missing = (inputs.length || completedStepIds.length === 0)
+          ? requirements.find((requirement) => requirement.required
+            && !(submitted.has(requirement.id) ? submitted.get(requirement.id) : requirement.value).trim())
+          : null;
         if (missing) return Promise.reject(new Error(`Required information is missing: ${missing.name}.`));
+        const taskIds = completedStepIds.map(Number);
+        const availableTasks = implementation
+          ? implementation.steps.filter((step) => step.customer_visible)
+          : (portal.tasks || []);
+        if (taskIds.some((id) => !Number.isSafeInteger(id) || id < 1)
+          || new Set(taskIds).size !== taskIds.length
+          || taskIds.some((id) => !availableTasks.some((task) => task.id === id))) {
+          return Promise.reject(new Error("One or more customer tasks are unavailable."));
+        }
+        if (taskIds.some((id) => {
+          const task = availableTasks.find((item) => item.id === id);
+          return Boolean(task?.waiting_on || task?.waiting);
+        })) {
+          return Promise.reject(new Error("Complete the prerequisite steps before marking this task done."));
+        }
         for (const [requirementId, value] of submitted) {
           const requirement = requirements.find((item) => item.id === requirementId);
           requirement.value = value;
         }
+        for (const taskId of taskIds) {
+          const task = availableTasks.find((item) => item.id === taskId);
+          task.status = "done";
+          task.updated_at = new Date().toISOString();
+          if (task.dependsOn && implementation) {
+            const implementationStep = implementation.steps.find((item) => item.id === taskId);
+            if (implementationStep) implementationStep.status = "done";
+          }
+        }
+        if (implementation) updateWaitingTasks(implementation);
         if (implementation) savePortalSnapshot(token, implementation);
-        else window.localStorage.setItem(portalStorageKey, JSON.stringify({ ...readPortalSnapshots(), [token]: portal }));
+        else {
+          portal.tasks = availableTasks;
+          window.localStorage.setItem(portalStorageKey, JSON.stringify({ ...readPortalSnapshots(), [token]: portal }));
+        }
         return Promise.resolve({ success: true });
       }
     }
@@ -609,6 +694,7 @@
       Object.assign(step, {
         status: body.status, owner: body.owner, assignee_user_id: body.assigneeUserId ? Number(body.assigneeUserId) : null,
         assignee_email: data.members.find((member) => member.id === Number(body.assigneeUserId))?.email || null,
+        customer_visible: body.customerVisible === true,
         due_at: body.dueAt, is_blocked: body.isBlocked,
         blocker_reason: body.isBlocked ? body.blockerReason : "",
         blocker_next_action: body.isBlocked ? body.blockerNextAction : "",

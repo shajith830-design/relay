@@ -18,6 +18,9 @@ function withHyperdriveId(config, id) {
 
 test("Cloudflare configuration routes production and backend requests through Relay", () => {
   assert.doesNotThrow(() => validateCloudflareConfig(configuration));
+  assert.match(configuration, /"crons"\s*:\s*\[\s*"\*\/5 \* \* \* \*"\s*\]/);
+  assert.match(readFileSync(path.join(__dirname, "..", "cloudflare-worker.mjs"), "utf8"),
+    /006_customer_portal_notifications_integrations\.sql/);
 });
 
 test("Cloudflare deployment validation rejects the Hyperdrive placeholder", () => {

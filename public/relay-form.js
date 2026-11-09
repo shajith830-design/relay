@@ -9,12 +9,6 @@ document.querySelectorAll("#inquiry-form").forEach((form) => {
     const status = document.getElementById("form-status");
     const button = form.querySelector('button[type="submit"]');
     const originalText = button.textContent;
-    const message = [
-      `Inquiry type: ${form.dataset.inquiryType || "Onboarding inquiry"}`,
-      `Company: ${data.get("company")}`,
-      `Work email: ${data.get("email")}`,
-      `Details: ${data.get("details")}`
-    ].join("\n");
 
     if (window.location.protocol === "file:") {
       status.classList.add("error");
@@ -33,8 +27,11 @@ document.querySelectorAll("#inquiry-form").forEach((form) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: data.get("name"),
+          company: data.get("company"),
+          email: data.get("email"),
           phone: data.get("phone"),
-          message
+          message: data.get("details"),
+          inquiryType: form.dataset.inquiryType || "Contact inquiry"
         })
       });
       let result;

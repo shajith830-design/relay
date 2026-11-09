@@ -2,7 +2,11 @@
 
 const {
   createHash,
-  randomBytes
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+  createCipheriv,
+  createDecipheriv
 } = require("node:crypto");
 const { makePasswordHash, checkPassword } = require("./product-auth");
 const { getPlanDetails } = require("./product-plans");
@@ -14,6 +18,27 @@ const rateLimitBuckets = new Map();
 
 function hashToken(token) {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function integrationKey() {
+  const value = process.env.INTEGRATION_ENCRYPTION_KEY?.trim() || "";
+  const key = Buffer.from(value, "base64");
+  if (key.length !== 32) throw new Error("INTEGRATION_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
+  return key;
+}
+
+function encryptIntegrationValue(value) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", integrationKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return [iv, cipher.getAuthTag(), encrypted].map((part) => part.toString("base64url")).join(".");
+}
+
+function decryptIntegrationValue(value) {
+  const [iv, tag, encrypted] = value.split(".").map((part) => Buffer.from(part, "base64url"));
+  const decipher = createDecipheriv("aes-256-gcm", integrationKey(), iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
 }
 
 function validId(value) {
@@ -140,6 +165,15 @@ function asyncRoute(handler) {
 function installProductRoutes(app, db, isProduction) {
   const database = db.database;
 
+  async function enqueueWorkspaceEvent(workspaceId, implementationId, eventType, payload = {}) {
+    const eventKey = `${eventType}:${implementationId}:${randomUUID()}`;
+    await database.prepare(`
+      INSERT INTO product_workspace_events
+        (event_key, workspace_id, implementation_id, event_type, payload)
+      VALUES ($1, $2, $3, $4, $5::jsonb)
+    `).run(eventKey, workspaceId, implementationId, eventType, JSON.stringify(payload));
+  }
+
   function requirePlanFeature(req, res, feature, featureName) {
     if (req.product.planDetails.features[feature]) return true;
     sendError(res, 403, `${featureName} is included with Growth and Custom plans. Upgrade this workspace to use it.`);
@@ -191,7 +225,7 @@ function installProductRoutes(app, db, isProduction) {
   async function processSteps(processId) {
     const steps = await (database.prepare(
       `SELECT s.id, s.title, s.description, s.owner, s.position, s.stage, s.due_offset_days,
-        s.assignee_user_id, u.email AS assignee_email
+        s.assignee_user_id, s.customer_visible, u.email AS assignee_email
        FROM product_process_steps s
        JOIN product_processes p ON p.id = s.process_id
        LEFT JOIN product_users u ON u.id = s.assignee_user_id
@@ -923,6 +957,8 @@ function installProductRoutes(app, db, isProduction) {
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id) AS total_steps,
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status != 'done') AS open_steps,
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status = 'done') AS completed_steps,
+        (SELECT MAX(s.updated_at) FROM product_implementation_steps s
+          WHERE s.implementation_id = i.id AND s.status = 'done') AS last_completed_at,
         (SELECT COUNT(*) FROM product_implementation_steps s WHERE s.implementation_id = i.id AND s.status = 'in_progress') AS in_progress_steps,
         (SELECT string_agg(DISTINCT s.assignee_user_id::text, ',') FROM product_implementation_steps s
           WHERE s.implementation_id = i.id AND s.assignee_user_id IS NOT NULL) AS assigned_member_ids,
@@ -973,6 +1009,14 @@ function installProductRoutes(app, db, isProduction) {
         implementation.missing_input_names = [implementation.missing_input_names, implementation.invalid_input_names]
           .filter(Boolean).join(", ");
       }
+      if (implementation.completed_steps > 0 && implementation.open_steps > 0 && implementation.last_completed_at) {
+        const elapsedDays = Math.max(1,
+          (Date.parse(implementation.last_completed_at) - Date.parse(implementation.created_at)) / 86400000);
+        const daysRemaining = Math.ceil((elapsedDays / implementation.completed_steps) * implementation.open_steps);
+        implementation.projected_completion = new Date(Date.now() + daysRemaining * 86400000).toISOString().slice(0, 10);
+      } else {
+        implementation.projected_completion = implementation.open_steps === 0 ? new Date().toISOString().slice(0, 10) : "";
+      }
     }
     const requirements = await (database.prepare(
       "SELECT id, name, description, required, input_type, template_id FROM product_requirements WHERE workspace_id = $1 ORDER BY id"
@@ -989,6 +1033,27 @@ function installProductRoutes(app, db, isProduction) {
       WHERE workspace_id = $1 AND accepted_at IS NULL AND expires_at > $2
       ORDER BY created_at DESC
     `).all(workspaceId, new Date().toISOString()));
+    const teamWorkload = await (database.prepare(`
+      SELECT u.id, u.email,
+        COUNT(s.id) FILTER (WHERE s.status != 'done') AS open_tasks,
+        COUNT(s.id) FILTER (WHERE s.status != 'done' AND s.due_at != '' AND s.due_at < CURRENT_DATE::text) AS overdue_tasks
+      FROM product_memberships m
+      JOIN product_users u ON u.id = m.user_id
+      LEFT JOIN product_implementation_steps s ON s.assignee_user_id = u.id
+      LEFT JOIN product_implementations i ON i.id = s.implementation_id AND i.workspace_id = m.workspace_id
+      WHERE m.workspace_id = $1 AND (s.id IS NULL OR i.id IS NOT NULL)
+      GROUP BY u.id, u.email
+      ORDER BY open_tasks DESC, lower(u.email)
+    `).all(workspaceId));
+    const notificationSettings = await (database.prepare(`
+      SELECT email_enabled, reminder_days_before
+      FROM product_workspace_notification_settings WHERE workspace_id = $1
+    `).get(workspaceId)) || { email_enabled: false, reminder_days_before: 2 };
+    const integrations = await (database.prepare(`
+      SELECT provider, external_account_id, updated_at
+      FROM product_workspace_integrations WHERE workspace_id = $1
+      ORDER BY provider
+    `).all(workspaceId));
     const activeImplementationCount = await countActiveImplementations(workspaceId);
     return res.json({
       processes,
@@ -997,6 +1062,9 @@ function installProductRoutes(app, db, isProduction) {
       requirements,
       members,
       invites,
+      teamWorkload,
+      notificationSettings,
+      integrations,
       role: req.product.role,
       plan: req.product.planDetails,
       usage: {
@@ -1007,6 +1075,415 @@ function installProductRoutes(app, db, isProduction) {
       }
     });
   });
+
+  app.patch("/api/product/notifications", sameOrigin, requireSession, async (req, res) => {
+      if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can change notification settings.");
+      const emailEnabled = req.body.emailEnabled;
+      const reminderDaysBefore = req.body.reminderDaysBefore;
+      if (typeof emailEnabled !== "boolean" || !Number.isInteger(reminderDaysBefore)
+        || reminderDaysBefore < 0 || reminderDaysBefore > 30) {
+        return sendError(res, 400, "Choose whether email notifications are enabled and a reminder window from 0 to 30 days.");
+      }
+      await database.prepare(`
+        INSERT INTO product_workspace_notification_settings (workspace_id, email_enabled, reminder_days_before, updated_at)
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        ON CONFLICT (workspace_id) DO UPDATE SET
+          email_enabled = excluded.email_enabled,
+          reminder_days_before = excluded.reminder_days_before,
+          updated_at = CURRENT_TIMESTAMP
+      `).run(req.product.workspaceId, emailEnabled, reminderDaysBefore);
+      return res.json({ emailEnabled, reminderDaysBefore });
+    });
+
+  app.post("/api/product/integrations/:provider/connect", sameOrigin, requireSession, async (req, res) => {
+      const { provider } = req.params;
+      if (!["hubspot", "slack"].includes(provider)) return sendError(res, 404, "Integration not found.");
+      if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can connect integrations.");
+      const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`]?.trim();
+      const clientSecret = process.env[`${provider.toUpperCase()}_CLIENT_SECRET`]?.trim();
+      const baseUrl = process.env.PUBLIC_BASE_URL?.trim();
+      if (!clientId || !clientSecret || !baseUrl) return sendError(res, 503, `${provider === "hubspot" ? "HubSpot" : "Slack"} connection is not configured by Relay yet.`);
+      try {
+        integrationKey();
+      } catch (error) {
+        console.error(JSON.stringify({ event: "integration_encryption_not_configured", provider, message: error.message }));
+        return sendError(res, 503, "Integration storage is not configured by Relay yet.");
+      }
+      let callbackUrl;
+      try {
+        const parsedBaseUrl = new URL(baseUrl);
+        if (isProduction && parsedBaseUrl.protocol !== "https:") throw new Error("PUBLIC_BASE_URL must use HTTPS.");
+        callbackUrl = new URL(`/api/product/integrations/callback/${provider}`, parsedBaseUrl).toString();
+      } catch {
+        return sendError(res, 503, "Integration callback URL is not configured correctly.");
+      }
+      const rawState = randomBytes(32).toString("base64url");
+      await database.prepare(`
+        DELETE FROM product_integration_states WHERE expires_at <= CURRENT_TIMESTAMP
+      `).run();
+      await database.prepare(`
+        INSERT INTO product_integration_states (state_hash, workspace_id, provider, created_by, expires_at)
+        VALUES ($1, $2, $3, $4, $5)
+      `).run(hashToken(rawState), req.product.workspaceId, provider, req.product.userId,
+        new Date(Date.now() + 10 * 60 * 1000).toISOString());
+      const authorizationUrl = new URL(provider === "hubspot"
+        ? "https://app.hubspot.com/oauth/authorize"
+        : "https://slack.com/oauth/v2/authorize");
+      authorizationUrl.searchParams.set("client_id", clientId);
+      authorizationUrl.searchParams.set("redirect_uri", callbackUrl);
+      authorizationUrl.searchParams.set("state", rawState);
+      authorizationUrl.searchParams.set("scope", provider === "hubspot"
+        ? "crm.objects.deals.read crm.objects.deals.write"
+        : "incoming-webhook");
+      return res.json({ authorizationUrl: authorizationUrl.toString() });
+    });
+
+  app.get("/api/product/integrations/callback/:provider", async (req, res) => {
+      const { provider } = req.params;
+      const stateToken = typeof req.query.state === "string" ? req.query.state : "";
+      const code = typeof req.query.code === "string" ? req.query.code : "";
+      const redirectToSettings = (result) => res.redirect(303, `/product.html?integration=${encodeURIComponent(result)}`);
+      if (!["hubspot", "slack"].includes(provider) || !/^[A-Za-z0-9_-]{40,60}$/.test(stateToken) || !code) {
+        return redirectToSettings("connect_failed");
+      }
+      const pending = await database.prepare(`
+        SELECT state_hash, workspace_id, created_by
+        FROM product_integration_states
+        WHERE state_hash = $1 AND provider = $2 AND expires_at > CURRENT_TIMESTAMP
+      `).get(hashToken(stateToken), provider);
+      if (!pending) return redirectToSettings("connect_failed");
+      const consumed = await database.prepare(
+        "DELETE FROM product_integration_states WHERE state_hash = $1 AND expires_at > CURRENT_TIMESTAMP"
+      ).run(pending.state_hash);
+      if (!consumed.changes) return redirectToSettings("connect_failed");
+
+      const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`]?.trim();
+      const clientSecret = process.env[`${provider.toUpperCase()}_CLIENT_SECRET`]?.trim();
+      const baseUrl = process.env.PUBLIC_BASE_URL?.trim();
+      try {
+        if (!clientId || !clientSecret || !baseUrl) throw new Error("OAuth client is not configured.");
+        const callbackUrl = new URL(`/api/product/integrations/callback/${provider}`, baseUrl).toString();
+        const body = new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: callbackUrl,
+          code
+        });
+        const tokenEndpoint = provider === "hubspot"
+          ? "https://api.hubapi.com/oauth/v1/token"
+          : "https://slack.com/api/oauth.v2.access";
+        const response = await fetch(tokenEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body,
+          signal: AbortSignal.timeout(10000)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || (provider === "slack" && !result.ok) || !result.access_token) {
+          console.error(JSON.stringify({ event: "integration_oauth_exchange_failed", provider, provider_status: response.status }));
+          return redirectToSettings("connect_failed");
+        }
+        const webhookUrl = provider === "slack" ? result.incoming_webhook?.url : "";
+        if (provider === "slack" && (!webhookUrl || new URL(webhookUrl).protocol !== "https:")) {
+          console.error(JSON.stringify({ event: "integration_oauth_webhook_missing", provider }));
+          return redirectToSettings("connect_failed");
+        }
+        await database.prepare(`
+          INSERT INTO product_workspace_integrations
+            (workspace_id, provider, access_token_cipher, refresh_token_cipher, webhook_url_cipher,
+             token_expires_at, external_account_id, connected_by, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+          ON CONFLICT (workspace_id, provider) DO UPDATE SET
+            access_token_cipher = excluded.access_token_cipher,
+            refresh_token_cipher = excluded.refresh_token_cipher,
+            webhook_url_cipher = excluded.webhook_url_cipher,
+            token_expires_at = excluded.token_expires_at,
+            external_account_id = excluded.external_account_id,
+            connected_by = excluded.connected_by,
+            updated_at = CURRENT_TIMESTAMP
+        `).run(
+          pending.workspace_id,
+          provider,
+          encryptIntegrationValue(result.access_token),
+          result.refresh_token ? encryptIntegrationValue(result.refresh_token) : "",
+          webhookUrl ? encryptIntegrationValue(webhookUrl) : "",
+          Number.isFinite(result.expires_in) ? new Date(Date.now() + result.expires_in * 1000).toISOString() : null,
+          String(provider === "hubspot" ? result.hub_id || "" : result.team?.id || ""),
+          pending.created_by
+        );
+        return redirectToSettings(`${provider}_connected`);
+      } catch (error) {
+        console.error(JSON.stringify({ event: "integration_oauth_callback_failed", provider, message: error.message }));
+        return redirectToSettings("connect_failed");
+      }
+    });
+
+  app.delete("/api/product/integrations/:provider", sameOrigin, requireSession, async (req, res) => {
+      const { provider } = req.params;
+      if (!["hubspot", "slack"].includes(provider)) return sendError(res, 404, "Integration not found.");
+      if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can disconnect integrations.");
+      await database.prepare(
+        "DELETE FROM product_workspace_integrations WHERE workspace_id = $1 AND provider = $2"
+      ).run(req.product.workspaceId, provider);
+      return res.json({ success: true });
+    });
+
+  app.post("/api/product/internal/process-events", async (req, res) => {
+      const expectedToken = process.env.NOTIFICATIONS_CRON_SECRET?.trim() || "";
+      const authorization = req.get("Authorization") || "";
+      const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+      const expectedBuffer = Buffer.from(expectedToken);
+      const suppliedBuffer = Buffer.from(suppliedToken);
+      if (!expectedToken) return sendError(res, 503, "Event processing is not configured.");
+      if (expectedBuffer.length !== suppliedBuffer.length || !timingSafeEqual(expectedBuffer, suppliedBuffer)) {
+        return sendError(res, 401, "Not authorized.");
+      }
+
+      const reminders = await database.prepare(`
+        SELECT i.workspace_id, i.id AS implementation_id, s.id AS task_id, s.title,
+          s.due_at, s.due_at < CURRENT_DATE::text AS is_overdue,
+          s.assignee_user_id, i.customer_name,
+          CASE WHEN s.due_at < CURRENT_DATE::text THEN CURRENT_DATE::text ELSE s.due_at END AS reminder_day
+        FROM product_workspace_notification_settings n
+        JOIN product_implementations i ON i.workspace_id = n.workspace_id
+        JOIN product_workspace_subscriptions subscription ON subscription.workspace_id = i.workspace_id
+        JOIN product_implementation_steps s ON s.implementation_id = i.id
+        WHERE n.email_enabled = TRUE AND subscription.expires_at > CURRENT_TIMESTAMP
+          AND s.status != 'done' AND s.due_at != ''
+          AND s.due_at <= (CURRENT_DATE + n.reminder_days_before)::text
+      `).all();
+      for (const reminder of reminders) {
+        const eventKey = `reminder:${reminder.task_id}:${reminder.due_at}:${reminder.reminder_day}`;
+        await database.prepare(`
+          INSERT INTO product_workspace_events
+            (event_key, workspace_id, implementation_id, event_type, payload)
+          VALUES ($1, $2, $3, 'task.reminder', $4::jsonb)
+          ON CONFLICT (event_key) DO NOTHING
+        `).run(eventKey, reminder.workspace_id, reminder.implementation_id, JSON.stringify({
+          taskId: reminder.task_id,
+          taskTitle: reminder.title,
+          dueAt: reminder.due_at,
+          isOverdue: reminder.is_overdue,
+          assignedUserId: reminder.assignee_user_id,
+          customerName: reminder.customer_name
+        }));
+      }
+
+      const events = await database.prepare(`
+        UPDATE product_workspace_events
+        SET status = 'processing', available_at = CURRENT_TIMESTAMP + INTERVAL '10 minutes'
+        WHERE id IN (
+          SELECT id FROM product_workspace_events
+          WHERE status IN ('pending', 'processing') AND available_at <= CURRENT_TIMESTAMP
+          ORDER BY id
+          LIMIT 50
+          FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id, workspace_id, implementation_id, event_type, payload, attempts,
+          email_sent_at, slack_sent_at, hubspot_synced_at
+      `).all();
+      let processed = 0;
+      let failures = 0;
+      for (const event of events) {
+        try {
+          const implementation = event.implementation_id ? await database.prepare(`
+            SELECT i.customer_name, i.created_at,
+              COUNT(s.id) AS total_tasks,
+              COUNT(s.id) FILTER (WHERE s.status = 'done') AS completed_tasks,
+              COUNT(s.id) FILTER (WHERE s.status != 'done' AND s.due_at != '' AND s.due_at < CURRENT_DATE::text) AS overdue_tasks,
+              COUNT(s.id) FILTER (WHERE s.status != 'done' AND s.is_blocked) AS blocked_tasks
+            FROM product_implementations i
+            LEFT JOIN product_implementation_steps s ON s.implementation_id = i.id
+            WHERE i.id = $1 AND i.workspace_id = $2
+            GROUP BY i.id
+          `).get(event.implementation_id, event.workspace_id) : null;
+          const message = event.event_type === "task.reminder"
+            ? `Reminder: ${event.payload.taskTitle} for ${event.payload.customerName} ${event.payload.isOverdue ? "is overdue (was due)" : "is due"} ${event.payload.dueAt}.`
+            : event.event_type === "implementation.created"
+              ? `Implementation started for ${implementation?.customer_name || "a customer"}.`
+              : event.event_type === "customer.information_submitted"
+                ? `Customer information was submitted for ${implementation?.customer_name || "a customer"}.`
+                : event.event_type === "customer.tasks_completed"
+                  ? `Customer completed ${event.payload.count} task(s) for ${implementation?.customer_name || "a customer"}.`
+                  : `Task “${event.payload.taskTitle || "Implementation task"}” for ${implementation?.customer_name || "a customer"} is now ${event.payload.status || "updated"}${event.payload.isBlocked ? " and blocked" : ""}.`;
+          const settings = await database.prepare(`
+            SELECT email_enabled FROM product_workspace_notification_settings WHERE workspace_id = $1
+          `).get(event.workspace_id);
+          if (!event.email_sent_at) {
+            if (settings?.email_enabled) {
+              const apiKey = process.env.RESEND_API_KEY?.trim();
+              const from = process.env.AUTH_EMAIL_FROM?.trim();
+              if (!apiKey || !from) throw new Error("Email notifications are enabled but Resend is not configured.");
+              const recipientRows = event.event_type === "task.reminder" && event.payload.assignedUserId
+                ? await database.prepare(`
+                  SELECT email FROM product_users WHERE id = $1
+                `).all(event.payload.assignedUserId)
+                : await database.prepare(`
+                  SELECT u.email FROM product_memberships m
+                  JOIN product_users u ON u.id = m.user_id WHERE m.workspace_id = $1
+                `).all(event.workspace_id);
+              if (recipientRows.length) {
+                const emailUrl = process.env.NODE_ENV === "test" && process.env.AUTH_EMAIL_API_URL
+                  ? process.env.AUTH_EMAIL_API_URL
+                  : "https://api.resend.com/emails";
+                const response = await fetch(emailUrl, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    from,
+                    to: recipientRows.map((row) => row.email),
+                    subject: `Relay update: ${event.payload.taskTitle || implementation?.customer_name || "customer implementation"}`,
+                    text: `${message}\n\nOpen your Relay workspace to review the next steps.`
+                  }),
+                  signal: AbortSignal.timeout(10000)
+                });
+                if (!response.ok) throw new Error(`Email provider returned HTTP ${response.status}.`);
+              }
+            }
+            await database.prepare(
+              "UPDATE product_workspace_events SET email_sent_at = CURRENT_TIMESTAMP WHERE id = $1"
+            ).run(event.id);
+          }
+
+          const integrations = await database.prepare(`
+            SELECT provider, access_token_cipher, refresh_token_cipher, webhook_url_cipher,
+              token_expires_at
+            FROM product_workspace_integrations WHERE workspace_id = $1
+          `).all(event.workspace_id);
+          const slack = integrations.find((item) => item.provider === "slack");
+          if (!event.slack_sent_at) {
+            if (slack?.webhook_url_cipher) {
+              const webhookUrl = decryptIntegrationValue(slack.webhook_url_cipher);
+              const response = await fetch(webhookUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: message, mrkdwn: false }),
+                signal: AbortSignal.timeout(10000)
+              });
+              if (!response.ok) throw new Error(`Slack webhook returned HTTP ${response.status}.`);
+            }
+            await database.prepare(
+              "UPDATE product_workspace_events SET slack_sent_at = CURRENT_TIMESTAMP WHERE id = $1"
+            ).run(event.id);
+          }
+
+          const hubspot = integrations.find((item) => item.provider === "hubspot");
+          if (!event.hubspot_synced_at) {
+            if (hubspot && implementation) {
+              let accessToken = decryptIntegrationValue(hubspot.access_token_cipher);
+              if (hubspot.token_expires_at && Date.parse(hubspot.token_expires_at) <= Date.now()) {
+                if (!hubspot.refresh_token_cipher) throw new Error("HubSpot authorization expired. Reconnect HubSpot.");
+                const refreshResponse = await fetch("https://api.hubapi.com/oauth/v1/token", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                  body: new URLSearchParams({
+                    grant_type: "refresh_token",
+                    client_id: process.env.HUBSPOT_CLIENT_ID || "",
+                    client_secret: process.env.HUBSPOT_CLIENT_SECRET || "",
+                    refresh_token: decryptIntegrationValue(hubspot.refresh_token_cipher)
+                  }),
+                  signal: AbortSignal.timeout(10000)
+                });
+                const refreshed = await refreshResponse.json().catch(() => ({}));
+                if (!refreshResponse.ok || !refreshed.access_token) throw new Error("HubSpot authorization could not be refreshed.");
+                accessToken = refreshed.access_token;
+                await database.prepare(`
+                  UPDATE product_workspace_integrations SET access_token_cipher = $1,
+                    token_expires_at = $2, updated_at = CURRENT_TIMESTAMP
+                  WHERE workspace_id = $3 AND provider = 'hubspot'
+                `).run(encryptIntegrationValue(accessToken),
+                  new Date(Date.now() + refreshed.expires_in * 1000).toISOString(), event.workspace_id);
+              }
+              const deal = await database.prepare(`
+                SELECT deal_id FROM product_hubspot_implementation_links
+                WHERE implementation_id = $1 AND workspace_id = $2
+              `).get(event.implementation_id, event.workspace_id);
+              const properties = {
+                dealname: `${implementation.customer_name} onboarding`,
+                description: `Relay implementation: ${implementation.completed_tasks}/${implementation.total_tasks} tasks complete; ${implementation.overdue_tasks} overdue; ${implementation.blocked_tasks} blocked.`
+              };
+              const dealResponse = await fetch(deal
+                ? `https://api.hubapi.com/crm/v3/objects/deals/${encodeURIComponent(deal.deal_id)}`
+                : "https://api.hubapi.com/crm/v3/objects/deals", {
+                method: deal ? "PATCH" : "POST",
+                headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties }),
+                signal: AbortSignal.timeout(10000)
+              });
+              const dealResult = dealResponse.status === 204 ? {} : await dealResponse.json().catch(() => ({}));
+              if (!dealResponse.ok || (!deal && !dealResult.id)) throw new Error(`HubSpot CRM returned HTTP ${dealResponse.status}.`);
+              if (!deal) {
+                await database.prepare(`
+                  INSERT INTO product_hubspot_implementation_links (implementation_id, workspace_id, deal_id)
+                  VALUES ($1, $2, $3)
+                  ON CONFLICT (implementation_id) DO UPDATE SET deal_id = excluded.deal_id,
+                    workspace_id = excluded.workspace_id, updated_at = CURRENT_TIMESTAMP
+                `).run(event.implementation_id, event.workspace_id, String(dealResult.id));
+              }
+            }
+            await database.prepare(
+              "UPDATE product_workspace_events SET hubspot_synced_at = CURRENT_TIMESTAMP WHERE id = $1"
+            ).run(event.id);
+          }
+          await database.prepare(`
+            UPDATE product_workspace_events
+            SET status = 'sent', processed_at = CURRENT_TIMESTAMP, attempts = attempts + 1
+            WHERE id = $1
+          `).run(event.id);
+          processed += 1;
+        } catch (error) {
+          failures += 1;
+          const nextAttempt = event.attempts + 1;
+          const retrySeconds = Math.min(3600, 60 * (2 ** Math.min(nextAttempt, 6)));
+          await database.prepare(`
+            UPDATE product_workspace_events SET
+              status = CASE WHEN $2 >= 5 THEN 'failed' ELSE 'pending' END,
+              attempts = $2, available_at = CURRENT_TIMESTAMP + ($3 * INTERVAL '1 second'),
+              processed_at = CASE WHEN $2 >= 5 THEN CURRENT_TIMESTAMP ELSE NULL END
+            WHERE id = $1
+          `).run(event.id, nextAttempt, retrySeconds);
+          console.error(JSON.stringify({
+            event: "workspace_event_delivery_failed",
+            event_id: event.id,
+            event_type: event.event_type,
+            attempt: nextAttempt,
+            message: error.message
+          }));
+        }
+      }
+      return res.json({ processed, failures, remindersQueued: reminders.length });
+    });
+
+  app.get("/api/product/portfolio.csv", requireSession, async (req, res) => {
+      const rows = await database.prepare(`
+        SELECT i.customer_name, t.name AS template_name, i.created_at,
+          COUNT(s.id) AS total_tasks,
+          COUNT(s.id) FILTER (WHERE s.status = 'done') AS completed_tasks,
+          COUNT(s.id) FILTER (WHERE s.status != 'done' AND s.due_at != '' AND s.due_at < CURRENT_DATE::text) AS overdue_tasks,
+          COUNT(s.id) FILTER (WHERE s.status != 'done' AND s.is_blocked) AS blocked_tasks
+        FROM product_implementations i
+        JOIN product_templates t ON t.id = i.template_id
+        LEFT JOIN product_implementation_steps s ON s.implementation_id = i.id
+        WHERE i.workspace_id = $1
+        GROUP BY i.id, t.name
+        ORDER BY i.created_at DESC, i.id DESC
+      `).all(req.product.workspaceId);
+      const quote = (value) => {
+        let text = String(value ?? "");
+        if (/^[=+\-@]/.test(text)) text = `'${text}`;
+        return `"${text.replaceAll('"', '""')}"`;
+      };
+      const csv = [
+        ["Customer", "Template", "Started", "Total tasks", "Completed tasks", "Overdue tasks", "Blocked tasks"],
+        ...rows.map((row) => [row.customer_name, row.template_name, row.created_at, row.total_tasks,
+          row.completed_tasks, row.overdue_tasks, row.blocked_tasks])
+      ].map((row) => row.map(quote).join(",")).join("\r\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="relay-implementation-portfolio.csv"');
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(csv);
+    });
 
   app.post("/api/product/invites", sameOrigin, requireSession, async (req, res) => {
     if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can invite teammates.");
@@ -1129,7 +1606,8 @@ function installProductRoutes(app, db, isProduction) {
     if (dependsOn.some((id) => !id) || new Set(dependsOn).size !== dependsOn.length) {
       return sendError(res, 400, "Choose valid, unique prerequisite steps.");
     }
-    if (!processId || !title || !stage || !assignee.valid || !Number.isInteger(dueOffsetDays) || dueOffsetDays < 0 || dueOffsetDays > 3650) {
+    if (!processId || !title || !stage || !assignee.valid || !Number.isInteger(dueOffsetDays) || dueOffsetDays < 0 || dueOffsetDays > 3650
+      || (req.body.customerVisible !== undefined && typeof req.body.customerVisible !== "boolean")) {
       return sendError(res, 400, "Enter a step name, stage, and valid due-date offset.");
     }
     if (dependsOn.length && !requirePlanFeature(req, res, "dependencies", "Task prerequisites")) return;
@@ -1147,9 +1625,10 @@ function installProductRoutes(app, db, isProduction) {
       ).get(processId)).position;
       const step = await (database.prepare(`
         INSERT INTO product_process_steps
-          (process_id, title, description, owner, position, stage, due_offset_days, assignee_user_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, title, description, owner, position, stage, due_offset_days, assignee_user_id
-      `).get(processId, title, description, owner, position, stage, dueOffsetDays, assignee.id));
+            (process_id, title, description, owner, position, stage, due_offset_days, assignee_user_id, customer_visible)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          RETURNING id, title, description, owner, position, stage, due_offset_days, assignee_user_id, customer_visible
+        `).get(processId, title, description, owner, position, stage, dueOffsetDays, assignee.id, req.body.customerVisible === true));
       const addDependency = database.prepare(
         "INSERT INTO product_process_step_dependencies (process_step_id, depends_on_step_id) VALUES ($1, $2)"
       );
@@ -1173,6 +1652,7 @@ function installProductRoutes(app, db, isProduction) {
     if (!processId || !stepId || !title || !stage || !Number.isInteger(dueOffsetDays)
       || dueOffsetDays < 0 || dueOffsetDays > 3650 || !dependsOn
       || dependsOn.some((id) => !id) || new Set(dependsOn).size !== dependsOn.length || !assignee.valid
+      || (req.body.customerVisible !== undefined && typeof req.body.customerVisible !== "boolean")
       || dependsOn.includes(stepId)) {
       return sendError(res, 400, "Enter valid step details and prerequisites.");
     }
@@ -1193,11 +1673,13 @@ function installProductRoutes(app, db, isProduction) {
       dependsOn: item.id === stepId ? dependsOn : item.dependsOn
     }));
     if (hasCycle(proposed)) return sendError(res, 400, "Prerequisites cannot form a cycle.");
+    const customerVisible = req.body.customerVisible === undefined ? Boolean(step.customer_visible) : req.body.customerVisible;
     await database.transaction(async () => {
       await (database.prepare(`
         UPDATE product_process_steps SET title = $1, description = $2, owner = $3, stage = $4,
-          due_offset_days = $5, assignee_user_id = $6 WHERE id = $7 AND process_id = $8
-      `).run(title, description, owner, stage, dueOffsetDays, assignee.id, stepId, processId));
+          due_offset_days = $5, assignee_user_id = $6, customer_visible = $7
+        WHERE id = $8 AND process_id = $9
+      `).run(title, description, owner, stage, dueOffsetDays, assignee.id, customerVisible, stepId, processId));
       await (database.prepare("DELETE FROM product_process_step_dependencies WHERE process_step_id = $1").run(stepId));
       const addDependency = database.prepare(
         "INSERT INTO product_process_step_dependencies (process_step_id, depends_on_step_id) VALUES ($1, $2)"
@@ -1294,6 +1776,7 @@ function installProductRoutes(app, db, isProduction) {
         assigneeEmail: step.assignee_email,
         stage: step.stage,
         dueOffsetDays: step.due_offset_days,
+        customerVisible: step.customer_visible,
         dependsOn: step.dependsOn.map((id) => steps.find((candidate) => candidate.id === id)?.title).filter(Boolean)
       })) : []
     });
@@ -1326,6 +1809,7 @@ function installProductRoutes(app, db, isProduction) {
       assigneeEmail: step.assignee_email,
       stage: step.stage,
       dueOffsetDays: step.due_offset_days,
+      customerVisible: step.customer_visible,
       position: step.position,
       dependsOnPositions: step.dependsOn.map((id) => stepPositions.get(id)).filter(Number.isInteger)
     }));
@@ -1494,8 +1978,8 @@ function installProductRoutes(app, db, isProduction) {
       ).get(req.product.workspaceId, templateId, customerName, hashToken(rawPortalToken)));
       const insertStep = database.prepare(
         `INSERT INTO product_implementation_steps
-          (implementation_id, title, description, owner, position, due_at, stage, assignee_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`
+          (implementation_id, title, description, owner, position, due_at, stage, assignee_user_id, customer_visible)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`
       );
       const stepIdsByPosition = new Map();
       for (const step of steps) {
@@ -1510,7 +1994,8 @@ function installProductRoutes(app, db, isProduction) {
           step.position,
           Number.isInteger(step.dueOffsetDays) ? dueDate.toISOString().slice(0, 10) : "",
           step.stage || "Implementation",
-          step.assigneeUserId || null
+          step.assigneeUserId || null,
+          step.customerVisible === true
         ));
         stepIdsByPosition.set(step.position, inserted.lastInsertRowid);
       }
@@ -1530,6 +2015,7 @@ function installProductRoutes(app, db, isProduction) {
         SELECT $1, id FROM product_requirements
         WHERE workspace_id = $2 AND (template_id IS NULL OR template_id = $3)
       `).run(implementation.id, req.product.workspaceId, templateId));
+      await enqueueWorkspaceEvent(req.product.workspaceId, implementation.id, "implementation.created");
       return implementation;
     });
     if (!implementation) return sendError(res, 409, "This workspace has reached its active implementation limit. Complete an implementation or upgrade the plan.");
@@ -1565,7 +2051,7 @@ function installProductRoutes(app, db, isProduction) {
     if (!implementation) return sendError(res, 404, "Implementation not found.");
     implementation.steps = await (database.prepare(`
       SELECT s.id, s.title, s.description, s.owner, s.position, s.status, s.updated_at, s.stage,
-        s.assignee_user_id, u.email AS assignee_email,
+        s.assignee_user_id, s.customer_visible, u.email AS assignee_email,
         s.due_at, s.is_blocked, s.blocker_reason, s.blocker_next_action,
         COALESCE((SELECT string_agg(parent.title, ', ')
           FROM product_implementation_step_dependencies d
@@ -1602,9 +2088,11 @@ function installProductRoutes(app, db, isProduction) {
       : typeof req.body.blockerReason === "string" ? req.body.blockerReason.trim().slice(0, 500) : null;
     const blockerNextAction = req.body.blockerNextAction === undefined ? step.blocker_next_action
       : typeof req.body.blockerNextAction === "string" ? req.body.blockerNextAction.trim().slice(0, 500) : null;
+    const customerVisible = req.body.customerVisible === undefined ? Boolean(step.customer_visible) : req.body.customerVisible;
     if (!["not_started", "in_progress", "done"].includes(status) || owner === null || !assignee.valid
       || (dueAt !== "" && !validDate(dueAt))
       || typeof isBlocked !== "boolean" || blockerReason === null || blockerNextAction === null
+      || typeof customerVisible !== "boolean"
       || (isBlocked && (!blockerReason || !blockerNextAction))
       || (status === "done" && isBlocked && req.product.planDetails.features.blockers)) {
       return sendError(res, 400, "Enter a valid task status, owner, due date, and blocker details.");
@@ -1622,12 +2110,19 @@ function installProductRoutes(app, db, isProduction) {
       `).get(stepId));
       if (waiting) return sendError(res, 409, `Complete prerequisite “${waiting.title}” before marking this task done.`);
     }
-    await (database.prepare(`
-      UPDATE product_implementation_steps
-      SET status = $1, owner = $2, assignee_user_id = $3, due_at = $4, is_blocked = $5, blocker_reason = $6,
-        blocker_next_action = $7, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $8 AND implementation_id = $9
-    `).run(status, owner, assignee.id, dueAt, isBlocked, isBlocked ? blockerReason : "", isBlocked ? blockerNextAction : "", stepId, implementationId));
+    await database.transaction(async () => {
+      await database.prepare(`
+        UPDATE product_implementation_steps
+        SET status = $1, owner = $2, assignee_user_id = $3, due_at = $4, is_blocked = $5, blocker_reason = $6,
+          blocker_next_action = $7, customer_visible = $8, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $9 AND implementation_id = $10
+      `).run(status, owner, assignee.id, dueAt, isBlocked, isBlocked ? blockerReason : "", isBlocked ? blockerNextAction : "", customerVisible, stepId, implementationId);
+      await enqueueWorkspaceEvent(req.product.workspaceId, implementationId, "task.updated", {
+        taskTitle: step.title,
+        status,
+        isBlocked
+      });
+    });
     return res.json({ success: true });
   });
 
@@ -1707,15 +2202,48 @@ function installProductRoutes(app, db, isProduction) {
     `).get(hashToken(token)));
     if (!implementation) return sendError(res, 404, "Customer link not found or no longer available.");
     const requirements = await (implementationRequirements(implementation.id, implementation.workspace_id, implementation.template_id));
+    const tasks = await database.prepare(`
+      SELECT s.id, s.title, s.description, s.stage, s.status, s.due_at,
+        EXISTS (
+          SELECT 1
+          FROM product_implementation_step_dependencies d
+          JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id
+          WHERE d.implementation_step_id = s.id AND parent.status != 'done'
+        ) AS waiting
+      FROM product_implementation_steps s
+      WHERE s.implementation_id = $1 AND s.customer_visible = TRUE
+      ORDER BY s.position, s.id
+    `).all(implementation.id);
+    const milestones = [...new Set(tasks.map((task) => task.stage))].map((stage) => {
+      const stageTasks = tasks.filter((task) => task.stage === stage);
+      return {
+        name: stage,
+        total: stageTasks.length,
+        completed: stageTasks.filter((task) => task.status === "done").length
+      };
+    });
     res.setHeader("Referrer-Policy", "no-referrer");
-    return res.json({ customerName: implementation.customer_name, requirements });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({
+      customerName: implementation.customer_name,
+      requirements,
+      tasks,
+      milestones,
+      progress: tasks.length
+        ? Math.round((tasks.filter((task) => task.status === "done").length / tasks.length) * 100)
+        : null
+    });
   });
 
   app.post("/api/product/customer/:token", sameOrigin, async (req, res) => {
     const token = req.params.token;
     if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return sendError(res, 404, "Customer link not found.");
-    const inputs = req.body.inputs;
+    const inputs = req.body.inputs === undefined ? [] : req.body.inputs;
+    const completedStepIds = req.body.completedStepIds === undefined ? [] : req.body.completedStepIds;
     if (!Array.isArray(inputs) || inputs.length > 50) return sendError(res, 400, "Submit a valid list of information.");
+    if (!Array.isArray(completedStepIds) || completedStepIds.length > 200) {
+      return sendError(res, 400, "Submit a valid list of customer tasks.");
+    }
     const implementation = await (database.prepare(`
       SELECT i.id, i.workspace_id, i.template_id
       FROM product_implementations i
@@ -1744,18 +2272,36 @@ function installProductRoutes(app, db, isProduction) {
       entries.push({ requirementId, value });
     }
     const submittedValues = new Map(entries.map((entry) => [entry.requirementId, entry.value]));
-    const missingRequired = validRequirements.find((requirement) => requirement.required
+    const missingRequired = (entries.length || completedStepIds.length === 0) ? validRequirements.find((requirement) => requirement.required
       && !(submittedValues.has(requirement.id)
         ? submittedValues.get(requirement.id)
-        : requirement.current_value).trim());
+        : requirement.current_value).trim()) : null;
     if (missingRequired) {
       return sendError(res, 400, `Required information is missing: ${missingRequired.name}.`);
     }
-    const invalidSavedValue = validRequirements.find((requirement) => {
+    const invalidSavedValue = entries.length ? validRequirements.find((requirement) => {
       const value = submittedValues.has(requirement.id) ? submittedValues.get(requirement.id) : requirement.current_value.trim();
       return value && inputValueError(requirement.input_type, value);
-    });
+    }) : null;
     if (invalidSavedValue) return sendError(res, 400, `${invalidSavedValue.name} must be corrected before submission.`);
+    const stepIds = completedStepIds.map(validId);
+    if (stepIds.some((id) => !id) || new Set(stepIds).size !== stepIds.length) {
+      return sendError(res, 400, "One or more customer tasks are invalid.");
+    }
+    if (stepIds.length) {
+      const customerSteps = await database.prepare(`
+        SELECT s.id, EXISTS (
+          SELECT 1 FROM product_implementation_step_dependencies d
+          JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id
+          WHERE d.implementation_step_id = s.id AND parent.status != 'done'
+        ) AS waiting
+        FROM product_implementation_steps s
+        WHERE s.implementation_id = $1 AND s.customer_visible = TRUE
+          AND s.id = ANY($2::integer[])
+      `).all(implementation.id, stepIds);
+      if (customerSteps.length !== stepIds.length) return sendError(res, 400, "One or more customer tasks are unavailable.");
+      if (customerSteps.some((step) => step.waiting)) return sendError(res, 409, "Complete the prerequisite steps before marking this task done.");
+    }
     await database.transaction(async () => {
       const save = database.prepare(`
         INSERT INTO product_customer_inputs (implementation_id, requirement_id, value, updated_at)
@@ -1764,6 +2310,18 @@ function installProductRoutes(app, db, isProduction) {
         DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
       `);
       for (const entry of entries) await (save.run(implementation.id, entry.requirementId, entry.value));
+      if (stepIds.length) {
+        await database.prepare(`
+          UPDATE product_implementation_steps SET status = 'done', updated_at = CURRENT_TIMESTAMP
+          WHERE implementation_id = $1 AND customer_visible = TRUE AND id = ANY($2::integer[])
+        `).run(implementation.id, stepIds);
+        await enqueueWorkspaceEvent(implementation.workspace_id, implementation.id, "customer.tasks_completed", {
+          count: stepIds.length
+        });
+      }
+      if (entries.length) {
+        await enqueueWorkspaceEvent(implementation.workspace_id, implementation.id, "customer.information_submitted");
+      }
     });
     res.setHeader("Referrer-Policy", "no-referrer");
     return res.json({ success: true });

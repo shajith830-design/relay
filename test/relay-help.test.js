@@ -16,7 +16,7 @@ test("Ray answers supported Relay workflows", () => {
   assert.match(relayHelpReply("How do I add a process step?"), /Open Process map/);
   assert.match(relayHelpReply("How do I update a template without changing existing work?"), /Existing implementations.*not changed/i);
   assert.match(relayHelpReply("My customer's link is invalid. What can I do?"), /create a replacement customer link/i);
-  assert.match(relayHelpReply("Does Relay connect to Slack?"), /doesn’t synchronize with external project-management tools/i);
+  assert.match(relayHelpReply("Does Relay connect to Slack?"), /Workspace owners can connect HubSpot.*Slack/i);
 });
 
 test("Ray explains what Relay features are for, not only how to configure them", () => {

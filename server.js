@@ -86,8 +86,9 @@ async function sendInquiryNotification(inquiry) {
           body: JSON.stringify({
             from: emailFrom,
             to: [notificationEmail],
+            ...(inquiry.email ? { reply_to: inquiry.email } : {}),
             subject: "New Relay contact or demo inquiry",
-            text: `A new inquiry was submitted through the Relay website.\n\nName: ${inquiry.name}\nPhone: ${inquiry.phone}\n\n${inquiry.message}\n\nInquiry ID: ${inquiry.id}`
+            text: `A new ${inquiry.inquiry_type.toLowerCase()} was submitted through the Relay website.\n\nName: ${inquiry.name}\nCompany: ${inquiry.company || "Not provided"}\nWork email: ${inquiry.email || "Not provided"}\nPhone: ${inquiry.phone}\n\nMessage:\n${inquiry.message}\n\nInquiry ID: ${inquiry.id}`
           }),
           signal: AbortSignal.timeout(10000)
         });
@@ -121,8 +122,10 @@ async function sendInquiryNotification(inquiry) {
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   const messageText =
-    `📩 *New Customer Onboarding Inquiry*\n\n` +
+    `📩 *New ${inquiry.inquiry_type}*\n\n` +
     `👤 *Name:* ${inquiry.name}\n` +
+    `🏢 *Company:* ${inquiry.company || "Not provided"}\n` +
+    `✉️ *Email:* ${inquiry.email || "Not provided"}\n` +
     `📞 *Phone:* ${inquiry.phone}\n` +
     `💬 *Message:* ${inquiry.message}`;
 
@@ -198,17 +201,23 @@ app.options("/api/inquiries", allowInquirySubmissionCors, (_req, res) => {
 
 app.post("/api/inquiries", allowInquirySubmissionCors, rateLimitInquirySubmission, asyncRoute(async (req, res) => {
   const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+  const company = typeof req.body.company === "string" ? req.body.company.trim() : "";
+  const email = typeof req.body.email === "string" ? req.body.email.trim() : "";
   const phone = typeof req.body.phone === "string" ? req.body.phone.trim() : "";
   const message = typeof req.body.message === "string" ? req.body.message.trim() : "";
+  const inquiryType = typeof req.body.inquiryType === "string" ? req.body.inquiryType.trim() : "Contact inquiry";
 
-  if (!name || name.length > 120 || !/^\+[1-9]\d{7,14}$/.test(phone) || !message || message.length > 2000) {
+  if (!name || name.length > 120 || company.length > 160
+    || (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))
+    || !/^\+[1-9]\d{7,14}$/.test(phone) || !message || message.length > 1500
+    || !["Contact inquiry", "Sales inquiry", "Demo request"].includes(inquiryType)) {
     return res.status(400).json({
       success: false,
-      error: "Name (up to 120 characters), a valid E.164 phone number, and a message (up to 2000 characters) are required"
+      error: "Provide a name (up to 120 characters), optional company, valid email if provided, E.164 phone number, and message (up to 1500 characters)."
     });
   }
 
-  const inquiry = await db.createInquiry({ name, phone, message });
+  const inquiry = await db.createInquiry({ name, company, email, phone, message, inquiryType });
   await sendInquiryNotification(inquiry);
   return res.status(201).json({ success: true, inquiry: { id: inquiry.id } });
 }));

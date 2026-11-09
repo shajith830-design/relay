@@ -28,6 +28,34 @@ An empty local `.env` does not affect the deployed Worker: it gets its database 
    - `GET /inquiries` without a bearer token returns `401`, not `404`.
    - A valid dummy contact/demo submission to `POST /api/inquiries` returns `201`.
    - Test sign-in, password recovery (if configured), customer link submission, and workspace actions with a dedicated staging account before onboarding clients.
+   - Verify customer-facing tasks are explicitly selected, only those tasks appear in the customer portal, and a customer can complete only an eligible task.
+
+## Customer portal, notifications, and integrations
+
+Migration `006_customer_portal_notifications_integrations.sql` is applied automatically at startup and by the Worker. Only tasks explicitly marked **Show this task to the customer in their portal** are visible through a customer link. Customer-visible task titles, instructions, stages, due dates, and completion state are public to anyone holding that link; never mark internal-only work visible.
+
+Workspace owners can enable email notifications in **Settings**. Configure `RESEND_API_KEY` and a verified `AUTH_EMAIL_FROM` first. Event emails go to workspace members; due-date reminders go to the assignee, or workspace members if the task is unassigned. Reminders are generated once per due date and then once per day for overdue tasks. Delivery failures are logged and retried up to five times.
+
+Cloudflare runs the event queue every five minutes using the Worker Cron Trigger in `wrangler.jsonc`; set the secret `NOTIFICATIONS_CRON_SECRET` before enabling notifications. For Node/Docker hosting, configure an external scheduler to POST to `/api/product/internal/process-events` every five minutes with `Authorization: Bearer <NOTIFICATIONS_CRON_SECRET>`. Do not expose or paste that token. If email is enabled without working Resend credentials, event delivery is retried and logged as a failure.
+
+To enable workspace OAuth connections, configure these secrets in Cloudflare (or the local Node environment):
+
+| Variable | Purpose |
+| --- | --- |
+| `INTEGRATION_ENCRYPTION_KEY` | Base64-encoded random 32-byte key used to encrypt stored OAuth tokens and Slack webhook URLs. Keep it backed up securely; rotating it requires disconnecting and reconnecting integrations. |
+| `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET` | HubSpot OAuth app credentials. Request `crm.objects.deals.read` and `crm.objects.deals.write`. |
+| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | Slack OAuth app credentials with the `incoming-webhook` scope. |
+| `NOTIFICATIONS_CRON_SECRET` | High-entropy bearer secret for the scheduled event processor. |
+
+Generate the encryption key locally; do not commit it:
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+```
+
+Set the HubSpot and Slack app redirect/callback URL to `https://relayautomation.tech/api/product/integrations/callback/hubspot` or `https://relayautomation.tech/api/product/integrations/callback/slack`, respectively (replace the hostname for non-production environments). Workspace owners connect tools from **Product → Settings**. HubSpot receives Relay implementation deals with progress, overdue, and blocked-task summaries; Slack receives implementation/task updates and reminders. Relay does not import CRM records. OAuth tokens are encrypted at rest; do not change the encryption key after connections have been stored unless you plan to reconnect each integration.
+
+The **Portfolio** view shows task load, overdue work, implementation health, and a directional finish-date estimate based on completed-task pace. **Export CSV** downloads the current workspace portfolio. Treat the estimate as planning guidance, not a delivery commitment.
 
 This is a low-cost pilot setup, not an uptime guarantee. Workers Free allows 100,000 Worker requests per day and 10 ms CPU per request. Relay's scrypt password hashing may exceed that CPU limit, so verify account creation and sign-in on the deployed Free Worker before inviting the client; do not weaken password hashing to bypass the limit. Supabase Free can pause after a week without activity. Review each provider's current quotas and have a recovery plan before relying on the service for client operations. See Cloudflare's [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [Hyperdrive pricing](https://developers.cloudflare.com/hyperdrive/platform/pricing/), and [Supabase pricing](https://supabase.com/pricing).
 
@@ -56,6 +84,10 @@ This is a low-cost pilot setup, not an uptime guarantee. Workers Free allows 100
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional inquiry notification provider credentials. |
 | `RESEND_API_KEY` | Email provider API key for password recovery. |
 | `AUTH_EMAIL_FROM` | Sender address verified with the email provider. |
+| `NOTIFICATIONS_CRON_SECRET` | Secret bearer token for the scheduled notification/event processor. |
+| `INTEGRATION_ENCRYPTION_KEY` | Base64-encoded random 32-byte AES key for connected-provider credentials. |
+| `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET` | HubSpot OAuth app credentials. |
+| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | Slack OAuth app credentials. |
 | `INQUIRY_NOTIFICATION_EMAIL` | Inbox for contact and demo inquiry notifications. |
 | `PUBLIC_BASE_URL` | Public HTTPS origin used in password recovery links. |
 | `TRUST_PROXY_HOPS` | Number of trusted reverse proxies in front of Relay. Configure only when appropriate for the host. |
@@ -90,9 +122,9 @@ Starter includes 3 members, 5 active implementations, and 3 templates. Growth in
 
 Migration `004_workspace_plans.sql` preserves existing subscriptions as Custom with no capacity caps, so current access and features are not reduced. Review existing workspaces in the owner console and change each to its agreed plan and limits. The `npm run provision:workspace` operator command also asks for a plan and, for Custom, its limits.
 
-Demo and contact forms submit to Relay's `/api/inquiries` endpoint and require the deployed Worker and its configured Hyperdrive database. Opening an HTML page directly as a `file://` URL will not submit inquiries; use the deployed HTTPS website or run Relay with its database configured.
+Demo and contact forms submit to Relay's `/api/inquiries` endpoint and require the deployed Worker and its configured Hyperdrive database. Submissions are stored in PostgreSQL with separate name, company, work email, phone, inquiry type, message, and timestamp fields. Opening an HTML page directly as a `file://` URL will not submit inquiries; use the deployed HTTPS website or run Relay with its database configured.
 
-To receive each submitted contact or demo inquiry by email, configure `INQUIRY_NOTIFICATION_EMAIL`, `RESEND_API_KEY`, and `AUTH_EMAIL_FROM` in the deployment environment. Verify the sender address/domain with Resend. The inquiry is saved even if the notification provider is temporarily unavailable; check the `inquiry_email_notification_failed` server event if an email does not arrive.
+To receive each submitted contact or demo inquiry by email, configure `INQUIRY_NOTIFICATION_EMAIL`, `RESEND_API_KEY`, and `AUTH_EMAIL_FROM` in the deployment environment. Verify the sender address/domain with Resend. For local Node development, copy `.env.example` to `.env`, replace the example values with your real settings, and run `npm start`; the server loads `.env` automatically. Do not commit `.env` or paste credentials into source code. The inquiry is saved even if the notification provider is temporarily unavailable; check the `inquiry_email_notification_failed` server event if an email does not arrive.
 
 ## Schema initialization and deployment
 

@@ -4,6 +4,8 @@ import initialMigration from "./migrations/001_initial.sql";
 import subscriptionMigration from "./migrations/002_manual_subscriptions.sql";
 import removeHelpConsentsMigration from "./migrations/003_remove_help_consents.sql";
 import workspacePlansMigration from "./migrations/004_workspace_plans.sql";
+import inquiryContactFieldsMigration from "./migrations/005_inquiry_contact_fields.sql";
+import customerPortalMigration from "./migrations/006_customer_portal_notifications_integrations.sql";
 
 const backendPaths = [
   "/api",
@@ -27,11 +29,26 @@ async function getBackendHandler(env) {
 
   process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
   process.env.RELAY_CLOUDFLARE_WORKER = "1";
+  for (const key of [
+    "PUBLIC_BASE_URL",
+    "RESEND_API_KEY",
+    "AUTH_EMAIL_FROM",
+    "INTEGRATION_ENCRYPTION_KEY",
+    "HUBSPOT_CLIENT_ID",
+    "HUBSPOT_CLIENT_SECRET",
+    "SLACK_CLIENT_ID",
+    "SLACK_CLIENT_SECRET",
+    "NOTIFICATIONS_CRON_SECRET"
+  ]) {
+    if (env[key]) process.env[key] = env[key];
+  }
   globalThis.__RELAY_MIGRATIONS__ ??= {
     "001_initial.sql": initialMigration,
     "002_manual_subscriptions.sql": subscriptionMigration,
     "003_remove_help_consents.sql": removeHelpConsentsMigration,
-    "004_workspace_plans.sql": workspacePlansMigration
+    "004_workspace_plans.sql": workspacePlansMigration,
+    "005_inquiry_contact_fields.sql": inquiryContactFieldsMigration,
+    "006_customer_portal_notifications_integrations.sql": customerPortalMigration
   };
 
   handlerPromise ??= (async () => {
@@ -77,5 +94,21 @@ export default {
         { status: 503, headers: { "Cache-Control": "no-store" } }
       );
     }
+  },
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil((async () => {
+      const { serverHandler, database } = await getBackendHandler(env);
+      const response = await database.database.withRequestClient(() => serverHandler.fetch(
+        new Request("https://relayautomation.tech/api/product/internal/process-events", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${env.NOTIFICATIONS_CRON_SECRET || ""}` }
+        }),
+        env,
+        ctx
+      ));
+      if (!response.ok) {
+        console.error(JSON.stringify({ event: "scheduled_event_processing_failed", status: response.status }));
+      }
+    })());
   }
 };

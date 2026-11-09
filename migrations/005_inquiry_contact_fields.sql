@@ -1,0 +1,4 @@
+ALTER TABLE inquiries
+  ADD COLUMN IF NOT EXISTS company TEXT,
+  ADD COLUMN IF NOT EXISTS email TEXT,
+  ADD COLUMN IF NOT EXISTS inquiry_type TEXT NOT NULL DEFAULT 'Contact inquiry';

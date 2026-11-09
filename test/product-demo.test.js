@@ -57,7 +57,13 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
   assert.match(demoPage, /fictional data/i);
   assert.match(demoPage, /does not connect to your Relay account or backend/i);
-  assert.match(solutionsPage, /not connected integrations today/i);
+  assert.match(solutionsPage, /Allow integrations for your workspace/i);
+  assert.doesNotMatch([homePage, aboutPage, solutionsPage, pricingPage].join("\n"), /HubSpot|Slack|Salesforce|Microsoft Teams|Jira|Linear|Asana/i);
+  assert.match(homePage, /Portfolio health/i);
+  assert.match(homePage, /CSV report/i);
+  assert.match(homePage, /daily reminders/i);
+  assert.match(solutionsPage, /private portal/i);
+  assert.match(pricingPage, /Integration connections/i);
   assert.match(aboutPage, /does not currently publish customer case studies/i);
   assert.match(pricingPage, /₹2,999/);
   assert.match(pricingPage, /₹3,999/);
@@ -66,6 +72,24 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(pricingPage, /before applicable taxes/i);
   assert.match(pricingPage, /class="plan-grid"/);
   assert.match(readFileSync(path.join(publicDir, "relay-motion.js"), "utf8"), /\.plan-card/);
+});
+
+test("workspace views are siblings so each navigation target can render independently", () => {
+  const productHtml = readFileSync(path.join(__dirname, "..", "public", "product.html"), "utf8");
+  const sectionTags = [...productHtml.matchAll(/<\/?section\b[^>]*>/g)];
+  const sections = [];
+
+  for (const [tag] of sectionTags) {
+    if (tag.startsWith("</")) {
+      sections.pop();
+      continue;
+    }
+    const viewId = tag.match(/id="(view-[^"]+)"/)?.[1];
+    if (viewId) {
+      assert.equal(sections.some(Boolean), false, `${viewId} must not be nested inside another workspace view`);
+    }
+    sections.push(viewId || null);
+  }
 });
 
 test("local customer links work across tabs, validate submissions, and rotate", async () => {
@@ -79,6 +103,8 @@ test("local customer links work across tabs, validate submissions, and rotate", 
 
   assert.equal(portal.customerName, "Acme Example Co.");
   assert.equal(portal.requirements.find((item) => item.name === "Project contact email").required, true);
+  assert.equal(portal.tasks.length, 2);
+  assert.equal(portal.tasks[1].waiting, false);
   await assert.rejects(
     firstPage.request(`/api/product/customer/${firstToken}`, { method: "POST", body: { inputs: [] } }),
     /Required information is missing: Project contact email/
@@ -94,11 +120,24 @@ test("local customer links work across tabs, validate submissions, and rotate", 
     method: "POST",
     body: { inputs: [{ requirementId: 9030, value: "client@example.test" }] }
   });
+  await firstPage.request(`/api/product/customer/${firstToken}`, {
+    method: "POST",
+    body: { inputs: [], completedStepIds: [9042] }
+  });
 
   const refreshedPortal = await makeDemoAdapter(storage).adapter.request(
     `/api/product/customer/${firstToken}`
   );
   assert.equal(refreshedPortal.requirements.find((item) => item.id === 9030).value, "client@example.test");
+  assert.equal(refreshedPortal.tasks.find((item) => item.id === 9042).status, "done");
+  assert.equal(refreshedPortal.progress, 100);
+  await assert.rejects(
+    firstPage.request(`/api/product/customer/${firstToken}`, {
+      method: "POST",
+      body: { inputs: [], completedStepIds: [9043] }
+    }),
+    /unavailable/
+  );
 
   const { customerPortalToken: replacementToken } = await adapter.request(
     "/api/product/implementations/9040/customer-link",
@@ -113,4 +152,67 @@ test("local customer links work across tabs, validate submissions, and rotate", 
     (await makeDemoAdapter(storage).adapter.request(`/api/product/customer/${replacementToken}`)).customerName,
     "Acme Example Co."
   );
+});
+
+test("customer-visible tasks stay blocked until their prerequisite is complete", async () => {
+  const { adapter } = makeDemoAdapter();
+  const { customerPortalToken } = await adapter.request(
+    "/api/product/implementations/9040/customer-link",
+    { method: "POST" }
+  );
+  await adapter.request("/api/product/implementations/9040/steps/9043", {
+    method: "PATCH",
+    body: {
+      status: "not_started",
+      owner: "Implementation lead",
+      assigneeUserId: 9001,
+      customerVisible: true,
+      dueAt: "",
+      isBlocked: false
+    }
+  });
+
+  let portal = await adapter.request(`/api/product/customer/${customerPortalToken}`);
+  assert.equal(portal.tasks.find((task) => task.id === 9043).waiting, true);
+  await assert.rejects(
+    adapter.request(`/api/product/customer/${customerPortalToken}`, {
+      method: "POST",
+      body: { inputs: [], completedStepIds: [9043] }
+    }),
+    /prerequisite/
+  );
+
+  await adapter.request(`/api/product/customer/${customerPortalToken}`, {
+    method: "POST",
+    body: { inputs: [], completedStepIds: [9042] }
+  });
+  portal = await adapter.request(`/api/product/customer/${customerPortalToken}`);
+  assert.equal(portal.tasks.find((task) => task.id === 9043).waiting, false);
+  await adapter.request(`/api/product/customer/${customerPortalToken}`, {
+    method: "POST",
+    body: { inputs: [], completedStepIds: [9043] }
+  });
+  portal = await adapter.request(`/api/product/customer/${customerPortalToken}`);
+  assert.equal(portal.tasks.find((task) => task.id === 9043).status, "done");
+});
+
+test("local process steps preserve customer visibility", async () => {
+  const { adapter } = makeDemoAdapter();
+  const { step } = await adapter.request("/api/product/processes/9010/steps", {
+    method: "POST",
+    body: {
+      title: "Share launch checklist",
+      description: "Review launch tasks with the customer.",
+      owner: "Implementation lead",
+      assigneeUserId: 9001,
+      stage: "Launch",
+      dueOffsetDays: 2,
+      customerVisible: true,
+      dependsOn: [9011]
+    }
+  });
+
+  assert.equal(step.customer_visible, true);
+  const { process } = await adapter.request("/api/product/processes/9010");
+  assert.equal(process.steps.at(-1).customer_visible, true);
 });

@@ -90,6 +90,7 @@
       <div class="workspace-label"><img class="workspace-avatar" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span id="workspace-name-display"></span></div>
       <nav class="side-nav" aria-label="Workspace">
         <button class="nav-item active" data-view="overview"><span>◫</span> Overview</button>
+        <button class="nav-item" data-view="portfolio"><span>◧</span> Portfolio</button>
         <button class="nav-item" data-view="processes"><span>≋</span> Process map</button>
         <button class="nav-item" data-view="templates"><span>▤</span> Templates</button>
         <button class="nav-item" data-view="implementations"><span>◷</span> Implementations</button>
@@ -135,6 +136,19 @@
         </div>
       </section>
 
+      <section class="view" id="view-portfolio">
+        <div class="section-intro"><h2>Portfolio health and delivery capacity</h2><p>Review workload, implementation risk, overdue tasks, and estimated finish dates across this workspace.</p></div>
+        <div class="panel">
+          <div class="panel-heading"><div><h2>Team workload</h2><p>Open tasks assigned to each team member.</p></div></div>
+          <div id="portfolio-workload" class="metric-grid"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-heading"><div><h2>Implementation health</h2><p>Estimated finish dates use the pace of completed tasks so far and are directional, not commitments.</p></div>
+            <button class="button secondary" id="export-portfolio" type="button">Export CSV</button></div>
+          <div id="portfolio-implementations" class="table-wrap"></div>
+        </div>
+      </section>
+
       <section class="view" id="view-processes">
         <div class="section-intro"><h2>Map the way your team works</h2><p>Write down stages, ordered steps, instructions, responsible roles, prerequisites, and due-date offsets. Check the workflow before saving it as a reusable template.</p></div>
         <div class="two-column">
@@ -165,6 +179,7 @@
               <div class="field"><label for="step-assignee">Assigned workspace member</label><select id="step-assignee" required></select></div>
               <div class="field"><label for="step-stage">Stage</label><input id="step-stage" maxlength="100" value="Implementation" required></div>
               <div class="field"><label for="step-due-offset">Due after start (days)</label><input id="step-due-offset" type="number" min="0" max="3650" value="0" required></div>
+              <label class="check-field"><input id="step-customer-visible" type="checkbox"> Show this task to the customer in their portal</label>
               <div class="field" data-growth-only="dependencies">
                 <label for="step-dependencies-search">Prerequisite steps (optional)</label>
                 <small>Choose steps that must be completed before this step can be marked done.</small>
@@ -259,6 +274,22 @@
                 <option value="dark">Dark</option>
               </select>
               <small>Dark mode uses a darker workspace and panels.</small>
+            </div>
+            <div class="panel">
+              <div class="panel-heading"><div><h2>Notifications and reminders</h2><p>Send implementation updates and due-date reminders to workspace members by email.</p></div></div>
+              <form id="notification-settings-form" class="inline-form vertical">
+                <label class="check-field"><input id="notifications-email-enabled" type="checkbox"> Enable email notifications</label>
+                <div class="field"><label for="notifications-reminder-days">Remind before a task is due (days)</label>
+                  <input id="notifications-reminder-days" type="number" min="0" max="30" value="2" required>
+                  <small>Reminders are sent once on the due date and daily while overdue. Email requires a configured Resend sender.</small>
+                </div>
+                <button class="button secondary" type="submit">Save notification settings</button>
+              </form>
+            </div>
+            <div class="panel">
+              <div class="panel-heading"><div><h2>Connect your tools</h2><p>Authorize each workspace’s HubSpot and Slack accounts. Tokens are encrypted before storage.</p></div></div>
+              <div id="integration-list" class="list-stack"></div>
+              <p id="integration-status" class="appearance-status" role="status" aria-live="polite"></p>
             </div>
             <div class="field">
               <label for="theme-accent">Accent color</label>

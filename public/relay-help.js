@@ -31,7 +31,7 @@ function relayHelpReply(message) {
     return "I’m Ray, Relay’s built-in product guide. I use prepared Relay-specific answers—not an external AI service—and can’t access private workspace records.";
   }
   if (/(jira|slack|integration|integrate|synchronize|sync with|external project)/.test(question)) {
-    return "Relay manages onboarding workflows in its own workspace; it doesn’t synchronize with external project-management tools such as Slack or Jira.";
+    return "Workspace owners can connect HubSpot to sync implementation progress and Slack to receive workspace updates. Salesforce, Microsoft Teams, Jira, Linear, and Asana are not connected today.";
   }
   if (/(?:relay.{0,35}(?:price|pricing|cost|subscription)|(?:price|pricing|cost|subscription).{0,35}relay|₹|rupee)/.test(question)) {
     return "Relay offers Starter at ₹2,999 per month (3 team members, 5 active implementations, 3 templates) and Growth at ₹3,999 per month (10 members, 20 active implementations, unlimited templates, plus prerequisites, blocker tracking, and template history/restore). Prices are before applicable taxes. Custom limits and pricing are agreed in advance. See the Pricing page for details.";

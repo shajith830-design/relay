@@ -53,6 +53,10 @@ These steps require access to your provider accounts, confidential values, or cl
 - [ ] Create a temporary staging workspace/account. Test sign-in, sign-out, session persistence, and expired-subscription behavior.
 - [ ] If email recovery is configured, test password reset using a test mailbox.
 - [ ] Test customer onboarding against the deployed backend: create information requests, generate a link, open it signed out, submit valid and invalid responses, and confirm answers appear on the correct implementation.
+- [ ] Test the customer portal with staging data: verify only explicitly customer-visible tasks are shown, milestones/progress are correct, and customers cannot complete hidden or prerequisite-blocked work.
+- [ ] If email notifications are in scope, configure Resend and the scheduled event processor, enable workspace notifications, and verify event emails, due-date reminders, retries, and overdue reminders.
+- [ ] If HubSpot or Slack is in scope, connect the staging workspace through OAuth and verify implementation progress sync and channel notifications before connecting a customer workspace.
+- [ ] Check portfolio workload and health counts against staging tasks, and confirm CSV export opens with customer text treated as data rather than spreadsheet formulas.
 - [ ] Test the client's selected features end-to-end using fictional/test data until ready for client data.
 - [ ] If inquiry intake is in scope, submit a synthetic inquiry and confirm expected storage/notification behavior.
 - [ ] Review Cloudflare logs for database/startup errors, CPU-limit errors, and failed requests. A Wrangler dry run proves bundling only; it does not prove runtime health.
@@ -95,6 +99,10 @@ Do not onboard a real client until all of these are true:
 - [ ] Provider setup is complete and the intended Worker/domain are confirmed.
 - [x] The deployed health endpoint and signed-out authentication endpoint return the expected results.
 - [ ] The deployed customer link and submission flow pass with staging data.
+- [ ] The customer portal exposes only approved tasks and customer task completion works end-to-end.
+- [ ] Enabled email notifications and scheduled reminders work, or are clearly excluded from the client offer.
+- [ ] Any promised HubSpot/Slack connection has passed staging OAuth and event-sync checks.
+- [ ] Portfolio workload, risk indicators, estimated finish dates, and CSV export have been reviewed with staging data.
 - [ ] Client sign-in and the specific workflows they will use pass in staging.
 - [ ] Free-tier/runtime limitations, email-recovery availability, and backup expectations are understood and communicated.
 

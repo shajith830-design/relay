@@ -177,7 +177,7 @@
         <table class="w-full min-w-[760px] border-collapse text-left text-sm">
           <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th class="px-5 py-3 font-semibold" scope="col">Contact Name</th>
+              <th class="px-5 py-3 font-semibold" scope="col">Contact</th>
               <th class="px-5 py-3 font-semibold" scope="col">Phone</th>
               <th class="px-5 py-3 font-semibold" scope="col">Status</th>
               <th class="px-5 py-3 font-semibold" scope="col">Inquiry</th>
@@ -278,8 +278,20 @@
       for (const inquiry of inquiries) {
         const row = document.createElement("tr");
         row.className = "transition hover:bg-slate-50/80";
+        const contactCell = document.createElement("td");
+        contactCell.className = "px-5 py-4 align-top";
+        const contactDetails = document.createElement("div");
+        contactDetails.className = "font-medium text-slate-900";
+        contactDetails.textContent = inquiry.name || "—";
+        const company = document.createElement("div");
+        company.className = "mt-1 text-slate-700";
+        company.textContent = inquiry.company || "Company not provided";
+        const email = document.createElement("div");
+        email.className = "mt-1 text-slate-500";
+        email.textContent = inquiry.email || "Email not provided";
+        contactCell.append(contactDetails, company, email);
         row.append(
-          createCell(inquiry.name || "—", "whitespace-nowrap px-5 py-4 align-top font-medium text-slate-900"),
+          contactCell,
           createCell(inquiry.phone || "—", "whitespace-nowrap px-5 py-4 align-top text-slate-700")
         );
 

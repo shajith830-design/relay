@@ -1,5 +1,9 @@
 "use strict";
 
+if (process.env.RELAY_CLOUDFLARE_WORKER !== "1") {
+  require("dotenv").config();
+}
+
 const fs = require("node:fs");
 const path = require("node:path");
 const { AsyncLocalStorage } = require("node:async_hooks");
@@ -162,19 +166,19 @@ module.exports = {
       if (pool) await pool.end();
     }
   },
-  async createInquiry({ name, phone, message }) {
+  async createInquiry({ name, company, email, phone, message, inquiryType }) {
     await ready;
     const result = await query(`
-      INSERT INTO inquiries (name, phone, message)
-      VALUES ($1, $2, $3)
-      RETURNING id, name, phone, status, message, created_at
-    `, [name, phone, message]);
+      INSERT INTO inquiries (name, company, email, phone, message, inquiry_type)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, name, company, email, phone, status, message, inquiry_type, created_at
+    `, [name, company || null, email || null, phone, message, inquiryType]);
     return result.rows[0];
   },
   async getInquiries() {
     await ready;
     const result = await query(`
-      SELECT id, name, phone, status, message, created_at
+      SELECT id, name, company, email, phone, status, message, inquiry_type, created_at
       FROM inquiries
       ORDER BY created_at DESC, id DESC
     `);

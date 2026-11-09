@@ -5,6 +5,32 @@ const form = document.getElementById("customer-form");
 const status = document.getElementById("customer-status");
 const loading = document.getElementById("customer-loading");
 let requirements = [];
+let customerTasks = [];
+
+function renderPortalProgress(data) {
+  const progress = document.getElementById("customer-progress");
+  progress.hidden = !customerTasks.length;
+  document.getElementById("customer-progress-label").textContent =
+    data.progress === null ? "Your implementation steps will appear here when the team shares them."
+      : `${data.progress}% complete across the customer-facing work.`;
+  document.getElementById("customer-progress-bar").value = data.progress || 0;
+  document.getElementById("customer-milestones").innerHTML = (data.milestones || []).map((milestone) => `
+    <div class="customer-milestone"><strong>${escapeHtml(milestone.name)}</strong>
+      <span>${milestone.completed} of ${milestone.total} complete</span>
+    </div>`).join("");
+  const section = document.getElementById("customer-tasks-section");
+  section.hidden = !customerTasks.length;
+  document.getElementById("customer-tasks").innerHTML = customerTasks.map((task) => `
+    <article class="customer-task">
+      <div><strong>${escapeHtml(task.title)}</strong><p>${escapeHtml(task.description || "")}</p>
+        <small>${escapeHtml(task.stage)}${task.due_at ? ` · Due ${escapeHtml(task.due_at)}` : ""}</small>
+        ${task.waiting ? '<small class="customer-waiting">Waiting for a prerequisite step.</small>' : ""}
+      </div>
+      ${task.status === "done"
+        ? '<span class="badge ready">Complete</span>'
+        : `<button class="button secondary" type="button" data-complete-customer-task="${task.id}" ${task.waiting ? "disabled" : ""}>Mark complete</button>`}
+    </article>`).join("");
+}
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({
@@ -42,7 +68,9 @@ async function loadRequest() {
   if (!validToken) throw new Error("This customer link is missing or invalid.");
   const data = await request(`/api/product/customer/${encodeURIComponent(token)}`);
   requirements = data.requirements;
+  customerTasks = data.tasks || [];
   document.getElementById("customer-title").textContent = `Setup information for ${data.customerName}`;
+  renderPortalProgress(data);
   const fields = document.getElementById("customer-fields");
   if (!requirements.length) {
     fields.innerHTML = '<p class="empty-state">Your implementation team has not requested any information yet.</p>';
@@ -59,6 +87,30 @@ async function loadRequest() {
   loading.hidden = true;
   form.hidden = false;
 }
+
+document.getElementById("customer-tasks").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-complete-customer-task]");
+  if (!button) return;
+  button.disabled = true;
+  status.textContent = "";
+  const currentValues = new Map(
+    [...form.querySelectorAll("[data-requirement]")].map((field) => [field.dataset.requirement, field.value])
+  );
+  try {
+    await request(`/api/product/customer/${encodeURIComponent(token)}`, {
+      method: "POST",
+      body: { inputs: [], completedStepIds: [Number(button.dataset.completeCustomerTask)] }
+    });
+    await loadRequest();
+    for (const field of form.querySelectorAll("[data-requirement]")) {
+      if (currentValues.has(field.dataset.requirement)) field.value = currentValues.get(field.dataset.requirement);
+    }
+    status.textContent = "Your task was marked complete.";
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+  }
+});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

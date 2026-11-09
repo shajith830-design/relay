@@ -22,7 +22,7 @@ const state = {
   inviteUrl: "",
   user: null,
   workspace: null,
-  data: { processes: [], templates: [], implementations: [], requirements: [], members: [], invites: [], role: "member", usage: null, plan: null },
+  data: { processes: [], templates: [], implementations: [], requirements: [], members: [], invites: [], teamWorkload: [], integrations: [], notificationSettings: null, role: "member", usage: null, plan: null },
   selectedProcessId: null,
   process: null,
   editingStepId: null,
@@ -42,6 +42,7 @@ let nextFieldErrorId = 0;
 
 const titles = {
   overview: ["Your workspace", "Overview"],
+  portfolio: ["See delivery health", "Portfolio"],
   processes: ["Plan your work", "Process map"],
   templates: ["Reuse what works", "Templates"],
   implementations: ["Run customer work", "Implementations"],
@@ -308,6 +309,27 @@ window.addEventListener("beforeunload", (event) => {
   event.returnValue = "";
 });
 
+document.getElementById("export-portfolio").addEventListener("click", () => {
+  const rows = [
+    ["Customer", "Template", "Started", "Total tasks", "Completed tasks", "Overdue tasks", "Blocked tasks"],
+    ...(state.data.implementations || []).map((item) => [
+      item.customer_name, item.template_name, item.created_at, item.total_steps,
+      item.completed_steps, item.overdue_steps, item.blocked_steps
+    ])
+  ];
+  const csv = rows.map((row) => row.map((value) => {
+    let text = String(value ?? "");
+    if (/^[=+\-@]/.test(text)) text = `'${text}`;
+    return `"${text.replaceAll('"', '""')}"`;
+  }).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "relay-implementation-portfolio.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+});
+
 function showAuth(message = "") {
   window.clearTimeout(subscriptionExpiryTimer);
   state.user = null;
@@ -512,6 +534,16 @@ async function loadWorkspace() {
   const data = await api("/api/product/workspace");
   state.data = data;
   renderWorkspace();
+  const integrationResult = new URLSearchParams(window.location.search).get("integration");
+  if (integrationResult) {
+    const messages = {
+      hubspot_connected: "HubSpot connected. New and updated implementations will sync during event processing.",
+      slack_connected: "Slack connected. Workspace updates will be delivered during event processing.",
+      connect_failed: "The integration could not be connected. Check its OAuth app settings and try again."
+    };
+    document.getElementById("integration-status").textContent = messages[integrationResult] || "Integration connection completed.";
+    window.history.replaceState(null, "", window.location.pathname);
+  }
   return true;
 }
 
@@ -708,6 +740,52 @@ function renderOverview() {
   applyPlanGates();
 }
 
+function renderPortfolio() {
+  const workload = state.data.teamWorkload || [];
+  document.getElementById("portfolio-workload").innerHTML = workload.length
+    ? workload.map((member) => `<article class="metric">
+        <strong>${member.open_tasks}</strong>
+        <span>${escapeHtml(member.email)} · open tasks · ${member.overdue_tasks} overdue</span>
+      </article>`).join("")
+    : '<p class="empty-state">No team workload to show yet.</p>';
+  const implementations = state.data.implementations || [];
+  document.getElementById("portfolio-implementations").innerHTML = implementations.length
+    ? `<table class="data-table"><thead><tr><th>Customer</th><th>Progress</th><th>Health</th><th>Estimated finish</th></tr></thead><tbody>
+      ${implementations.map((item) => {
+        const total = Number(item.total_steps) || 0;
+        const completed = Number(item.completed_steps) || 0;
+        const percent = total ? Math.round((completed / total) * 100) : 0;
+        const health = item.overdue_steps || item.blocked_steps || item.missing_inputs
+          ? "Needs attention" : "On track";
+        return `<tr><td><strong>${escapeHtml(item.customer_name)}</strong><small>${escapeHtml(item.template_name)}</small></td>
+          <td>${percent}% (${completed}/${total})</td><td><span class="badge ${health === "On track" ? "ready" : "attention"}">${health}</span></td>
+          <td>${escapeHtml(item.projected_completion || "Not enough completed tasks")}</td></tr>`;
+      }).join("")}</tbody></table>`
+    : '<p class="empty-state">Start an implementation to see portfolio health.</p>';
+}
+
+function renderNotificationSettings() {
+  const settings = state.data.notificationSettings || { email_enabled: false, reminder_days_before: 2 };
+  document.getElementById("notifications-email-enabled").checked = settings.email_enabled;
+  document.getElementById("notifications-reminder-days").value = settings.reminder_days_before;
+  const form = document.getElementById("notification-settings-form");
+  const owner = state.workspace.role === "owner";
+  for (const control of form.elements) control.disabled = !owner || isWorkspaceDemo;
+  document.getElementById("integration-status").textContent = state.workspace.role === "owner"
+    ? "" : "Only a workspace owner can connect or disconnect integrations.";
+}
+
+function renderIntegrations() {
+  const connected = new Set((state.data.integrations || []).map((item) => item.provider));
+  document.getElementById("integration-list").innerHTML = ["hubspot", "slack"].map((provider) => {
+    const name = provider === "hubspot" ? "HubSpot" : "Slack";
+    return `<div class="list-row"><div><strong>${name}</strong><small>${connected.has(provider) ? "Connected" : "Not connected"}</small></div>
+      ${connected.has(provider)
+        ? `<button class="text-button" type="button" data-disconnect-integration="${provider}" ${isWorkspaceDemo || state.workspace.role !== "owner" ? "disabled" : ""}>Disconnect</button>`
+        : `<button class="button secondary" type="button" data-connect-integration="${provider}" ${isWorkspaceDemo || state.workspace.role !== "owner" ? "disabled" : ""}>Connect ${name}</button>`}</div>`;
+  }).join("");
+}
+
 function renderPlanSummary() {
   const panel = document.getElementById("plan-summary");
   const plan = state.data.plan;
@@ -884,6 +962,7 @@ async function loadProcess(processId) {
         <div><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.description)}</p>
           <small>${escapeHtml(step.stage)} · Role: ${escapeHtml(step.owner || "Not assigned")} · Due ${step.due_offset_days} days after start</small>
           <small>Assigned to: ${escapeHtml(step.assignee_email || "No workspace member assigned")}</small>
+          ${step.customer_visible ? '<small class="badge ready">Visible to customer</small>' : ""}
           ${state.data.plan?.features.dependencies && step.dependsOn.length ? `<small>Prerequisites: ${escapeHtml(step.dependsOn.map((id) => process.steps.find((item) => item.id === id)?.title || "").filter(Boolean).join(", "))}</small>` : ""}
         </div>
         <div class="button-row">
@@ -991,11 +1070,14 @@ function renderRequirements() {
 function renderWorkspace() {
   renderPlanSummary();
   renderOverview();
+  renderPortfolio();
   renderProcesses();
   renderTemplates();
   renderImplementations();
   renderRequirements();
   renderTeam();
+  renderNotificationSettings();
+  renderIntegrations();
   renderGettingStarted();
 }
 
@@ -1033,6 +1115,7 @@ async function openImplementation(implementationId) {
             </select>
           </label>
           <label>Due date<input data-task-due="${step.id}" type="date" value="${escapeHtml(step.due_at)}"></label>
+          <label class="check-field"><input data-task-customer-visible="${step.id}" type="checkbox" ${step.customer_visible ? "checked" : ""}> Show to customer in portal</label>
           <label class="check-field" data-growth-only="blockers"><input data-task-blocked="${step.id}" type="checkbox" ${step.is_blocked ? "checked" : ""}> Blocked</label>
           <label data-growth-only="blockers">Blocker reason<textarea data-task-reason="${step.id}" maxlength="500">${escapeHtml(step.blocker_reason)}</textarea></label>
           <label data-growth-only="blockers">Next action<textarea data-task-action="${step.id}" maxlength="500">${escapeHtml(step.blocker_next_action)}</textarea></label>
@@ -1192,6 +1275,53 @@ document.getElementById("team-invite-list").addEventListener("click", async (eve
     showToast("Invitation revoked.");
   } catch (error) {
     showError(error);
+  }
+});
+
+document.getElementById("notification-settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const status = formStatus(form);
+  status.textContent = "Saving notification preferences...";
+  try {
+    const settings = await api("/api/product/notifications", {
+      method: "PATCH",
+      body: {
+        emailEnabled: document.getElementById("notifications-email-enabled").checked,
+        reminderDaysBefore: Number(document.getElementById("notifications-reminder-days").value)
+      }
+    });
+    state.data.notificationSettings = {
+      email_enabled: settings.emailEnabled,
+      reminder_days_before: settings.reminderDaysBefore
+    };
+    status.textContent = "Notification preferences saved.";
+  } catch (error) {
+    if (activeSubmissionForm === form) activeSubmissionForm = null;
+    finishForm(form, error.message);
+    status.setAttribute("role", "alert");
+  }
+});
+
+document.getElementById("integration-list").addEventListener("click", async (event) => {
+  const connect = event.target.closest("[data-connect-integration]");
+  const disconnect = event.target.closest("[data-disconnect-integration]");
+  if (!connect && !disconnect) return;
+  try {
+    if (connect) {
+      const { authorizationUrl } = await api(`/api/product/integrations/${connect.dataset.connectIntegration}/connect`, {
+        method: "POST",
+        body: {}
+      });
+      window.location.assign(authorizationUrl);
+      return;
+    }
+    if (!window.confirm(`Disconnect ${disconnect.dataset.disconnectIntegration}?`)) return;
+    await api(`/api/product/integrations/${disconnect.dataset.disconnectIntegration}`, { method: "DELETE" });
+    await loadWorkspace();
+    showToast("Integration disconnected.");
+  } catch (error) {
+    document.getElementById("integration-status").textContent = error.message;
   }
 });
 
@@ -1547,6 +1677,7 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
         assigneeUserId: document.getElementById("step-assignee").value || null,
         stage: document.getElementById("step-stage").value,
         dueOffsetDays: Number(document.getElementById("step-due-offset").value),
+        customerVisible: document.getElementById("step-customer-visible").checked,
         dependsOn: [...document.querySelectorAll("#step-dependencies input:checked")].map((input) => Number(input.value))
       }
     });
@@ -1554,6 +1685,7 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
     event.target.reset();
     document.getElementById("step-stage").value = "Implementation";
     document.getElementById("step-due-offset").value = "0";
+    document.getElementById("step-customer-visible").checked = false;
     document.getElementById("step-submit").textContent = "Add step";
     document.getElementById("cancel-step-edit").hidden = true;
     await loadProcess(state.selectedProcessId);
@@ -1571,6 +1703,7 @@ document.getElementById("cancel-step-edit").addEventListener("click", () => {
   form.reset();
   document.getElementById("step-stage").value = "Implementation";
   document.getElementById("step-due-offset").value = "0";
+  document.getElementById("step-customer-visible").checked = false;
   document.getElementById("step-submit").textContent = "Add step";
   document.getElementById("cancel-step-edit").hidden = true;
   if (state.selectedProcessId) loadProcess(state.selectedProcessId).catch(showError);
@@ -1589,6 +1722,7 @@ document.getElementById("process-step-list").addEventListener("click", async (ev
     document.getElementById("step-assignee").value = step.assignee_user_id ? String(step.assignee_user_id) : "";
     document.getElementById("step-stage").value = step.stage;
     document.getElementById("step-due-offset").value = step.due_offset_days;
+    document.getElementById("step-customer-visible").checked = step.customer_visible === true;
     [...document.querySelectorAll("#step-dependencies input")].forEach((input) => {
       input.disabled = Number(input.value) === step.id;
       input.checked = step.dependsOn.includes(Number(input.value));
@@ -1838,7 +1972,8 @@ document.getElementById("implementation-step-list").addEventListener("click", as
       status: root.querySelector(`[data-step-status="${stepId}"]`).value,
       owner: root.querySelector(`[data-task-owner="${stepId}"]`).value,
       assigneeUserId: root.querySelector(`[data-task-assignee="${stepId}"]`).value || null,
-      dueAt: root.querySelector(`[data-task-due="${stepId}"]`).value
+      dueAt: root.querySelector(`[data-task-due="${stepId}"]`).value,
+      customerVisible: root.querySelector(`[data-task-customer-visible="${stepId}"]`).checked
     };
     if (state.data.plan?.features.blockers) {
       taskUpdate.isBlocked = root.querySelector(`[data-task-blocked="${stepId}"]`).checked;
