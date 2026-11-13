@@ -6,6 +6,7 @@ const { randomBytes, timingSafeEqual } = require("node:crypto");
 const path = require("node:path");
 const { makePasswordHash } = require("./product-auth");
 const { getPlanDetails, isPlanCode, validateCustomLimits } = require("./product-plans");
+const { createStarterTemplates } = require("./product-starter-templates");
 
 /*
  * Environment variables:
@@ -323,6 +324,7 @@ app.post("/admin/workspaces", asyncRoute(async (req, res) => {
         plan.activeImplementationLimit,
         plan.templateLimit
       );
+      await createStarterTemplates(db.database, createdWorkspace.id, owner.id, plan);
       return { ...createdWorkspace, ownerEmail: owner.email, ...subscription };
     });
     console.info(JSON.stringify({

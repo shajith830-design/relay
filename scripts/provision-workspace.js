@@ -6,6 +6,7 @@ const readline = require("node:readline/promises");
 const db = require("../db");
 const { makePasswordHash } = require("../product-auth");
 const { getPlanDetails, isPlanCode, validateCustomLimits } = require("../product-plans");
+const { createStarterTemplates } = require("../product-starter-templates");
 
 async function provisionWorkspace() {
   const prompt = readline.createInterface({ input: stdin, output: stdout });
@@ -59,6 +60,7 @@ async function provisionWorkspace() {
         plan.activeImplementationLimit,
         plan.templateLimit
       );
+      await createStarterTemplates(db.database, workspace.id, user.id, plan);
       return { user, workspace };
     });
 

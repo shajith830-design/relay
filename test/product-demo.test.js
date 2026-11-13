@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 const { runInNewContext } = require("node:vm");
@@ -90,15 +90,27 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/pricing\.html<\/loc>/);
   assert.doesNotMatch(sitemapXml, /dashboard\.html|customer\.html|relay-owner-console\.html/);
   assert.match(homePage, /product\.html\?demo=workspace/);
+  assert.match(homePage, /Try Sample Workspace \(No Login Required\)/);
+  assert.match(homePage, /<video controls playsinline/);
+  assert.match(homePage, /relay-60-second-overview\.mp4/);
+  assert.match(homePage, /relay-preview-(?:overview|portfolio|customer-portal|process-map)\.png/);
+  assert.match(homePage, /HubSpot/);
+  assert.match(homePage, /Slack/);
+  assert.match(homePage, /Built by the founder/);
+  assert.match(homePage, /three months of Relay access/i);
+  assert.ok(existsSync(path.join(publicDir, "assets", "relay-60-second-overview.mp4")));
+  for (const screenshot of ["overview", "portfolio", "customer-portal", "process-map"]) {
+    assert.ok(existsSync(path.join(publicDir, "assets", `relay-preview-${screenshot}.png`)));
+  }
   assert.doesNotMatch(homePage, /Plans from ₹2,999 per month/);
   assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
   assert.match(demoPage, /fictional data/i);
   assert.match(demoPage, /does not connect to your Relay account or backend/i);
   assert.match(solutionsPage, /Allow integrations for your workspace/i);
-  assert.doesNotMatch([homePage, aboutPage, solutionsPage, pricingPage].join("\n"), /HubSpot|Slack|Salesforce|Microsoft Teams|Jira|Linear|Asana/i);
-  assert.match(homePage, /Portfolio health/i);
-  assert.match(homePage, /CSV report/i);
-  assert.match(homePage, /daily reminders/i);
+  assert.doesNotMatch([aboutPage, solutionsPage, pricingPage].join("\n"), /Salesforce|Microsoft Teams|Jira|Linear|Asana/i);
+  assert.match([homePage, solutionsPage].join("\n"), /portfolio health/i);
+  assert.match([homePage, solutionsPage].join("\n"), /CSV/i);
+  assert.match([homePage, solutionsPage].join("\n"), /daily reminders/i);
   assert.match(solutionsPage, /private portal/i);
   assert.match(pricingPage, /Integration connections/i);
   assert.match(aboutPage, /does not currently publish customer case studies/i);

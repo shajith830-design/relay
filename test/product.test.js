@@ -1581,6 +1581,12 @@ test("public pages and the inquiry app remain available", {
     (await request("/api/product/me", { cookie: provisionedCookie })).data.workspace.name,
     "Approved Client"
   );
+  const provisionedWorkspace = await request("/api/product/workspace", { cookie: provisionedCookie });
+  assert.deepEqual(
+    provisionedWorkspace.data.templates.map((template) => template.name).sort(),
+    ["API Integration Onboarding", "Standard SaaS Implementation"]
+  );
+  assert.equal(provisionedWorkspace.data.implementations.length, 0);
   const renewWorkspace = await request(`/admin/workspaces/${provisioned.data.workspace.id}/renew`, {
     method: "POST",
     adminToken: "test-owner-admin-token",

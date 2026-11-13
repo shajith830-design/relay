@@ -463,3 +463,52 @@ h1::after {
   .motion-ready .plan-card.motion-reveal,
   .motion-ready .plan-card.motion-reveal.is-visible:hover { transform: none; }
 }
+
+.home-page .hero { padding-block: 58px 54px; }
+.home-page .hero-content { max-width: 1030px; text-align: center; }
+.home-page .hero-content > .eyebrow { margin-bottom: 14px; }
+.home-page .hero-content h1 { max-width: 950px; margin: 0 auto 26px; font-size: clamp(40px, 5.2vw, 64px); }
+.home-page .hero-video { max-width: 900px; margin: 0 auto 20px; }
+.hero-video video { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid #dbe3eb; border-radius: 16px; background: #0f172a; box-shadow: 0 24px 70px -38px rgb(15 23 42 / 42%); object-fit: cover; }
+.hero-video figcaption { margin-top: 9px; color: var(--muted); font-size: 12px; }
+.home-page .hero-description { max-width: 760px; margin: 0 auto; color: #52525b; font-size: 18px; }
+.home-page .hero-actions { justify-content: center; margin-top: 22px; }
+.home-page .hero-actions .button { min-height: 54px; padding-inline: 24px; }
+.home-page .hero .note { max-width: none; margin: 12px auto 0; }
+.guided-demo-link { margin: 10px 0 0; font-size: 14px; }
+.guided-demo-link a, .text-link { color: #0369a1; font-weight: 700; text-underline-offset: 4px; }
+.product-gallery { padding-top: 68px; }
+.screenshot-grid { display: grid; gap: 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.screenshot-card { min-width: 0; overflow: hidden; margin: 0; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 14px 35px rgb(15 23 42 / 5%); }
+.screenshot-card img { display: block; width: 100%; aspect-ratio: 1.44; border-bottom: 1px solid var(--line); background: #f8fafc; object-fit: contain; }
+.screenshot-card figcaption { display: grid; gap: 5px; padding: 18px 20px 20px; }
+.screenshot-card figcaption strong { font-size: 16px; }
+.screenshot-card figcaption span { color: var(--muted); font-size: 14px; line-height: 1.55; }
+.integration-section { display: grid; align-items: center; gap: 35px; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); }
+.integration-section h2, .founder-story h2 { margin-top: 10px; }
+.integration-section p:last-child { max-width: 640px; margin-bottom: 0; }
+.integration-list { display: flex; flex-wrap: wrap; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.integration-list li { display: inline-flex; min-width: 150px; align-items: center; gap: 11px; border: 1px solid var(--line); border-radius: 12px; padding: 13px 17px; background: #fff; color: #334155; font-size: 16px; font-weight: 700; box-shadow: 0 8px 20px rgb(15 23 42 / 4%); }
+.integration-mark { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; color: #fff; font-size: 17px; font-weight: 800; }
+.hubspot-mark { background: #ff7a59; }
+.slack-mark { background: #4a154b; }
+.founder-grid { display: grid; align-items: stretch; gap: 26px; grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); }
+.founder-story, .design-partner-card { border: 1px solid var(--line); border-radius: 14px; padding: clamp(24px, 4vw, 40px); background: #fff; }
+.founder-story > p:not(.eyebrow) { max-width: 680px; color: #52525b; font-size: 16px; }
+.founder-proof-note { margin: 20px 0 0; border-left: 3px solid #38bdf8; padding: 4px 0 4px 14px; color: var(--muted) !important; font-size: 13px !important; }
+.design-partner-card { background: #f8fafc; }
+.design-partner-card h3 { margin-top: 12px; font-size: clamp(22px, 2.5vw, 28px); }
+.design-partner-card p:not(.eyebrow) { margin: 12px 0 20px; color: #52525b; font-size: 15px; }
+.home-page .callout { padding: clamp(26px, 4vw, 42px); }
+.home-page .callout .button { white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .home-page .hero { padding-block: 46px 42px; }
+  .home-page .hero-content h1 { margin-bottom: 20px; font-size: clamp(38px, 10vw, 52px); }
+  .home-page .hero-description { font-size: 16px; }
+  .screenshot-grid, .integration-section, .founder-grid { grid-template-columns: 1fr; }
+  .integration-list { gap: 10px; }
+  .integration-list li { flex: 1 1 130px; }
+  .home-page .callout { align-items: flex-start; }
+  .home-page .callout .button { white-space: normal; }
+}
