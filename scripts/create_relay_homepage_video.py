@@ -1,6 +1,7 @@
 from pathlib import Path
 import subprocess
 import sys
+import wave
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -14,6 +15,7 @@ VOICEOVER = ROOT / "scripts" / "relay-homepage-voiceover.wav"
 VOICE_SCRIPT = ROOT / "scripts" / "generate_relay_homepage_voiceover.ps1"
 
 WIDTH, HEIGHT, FPS, DURATION = 1920, 1080, 24, 30
+MAX_VOICEOVER_DURATION = DURATION - 1
 FONT_REG = "C:/Windows/Fonts/arial.ttf"
 FONT_BOLD = "C:/Windows/Fonts/arialbd.ttf"
 INK = (15, 42, 66)
@@ -41,6 +43,10 @@ def ease(value):
 
 def rounded(draw, box, radius, fill, outline=None, width=1):
     draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
+
+
+def tint(color, amount):
+    return tuple(int(channel + (255 - channel) * amount) for channel in color)
 
 
 def make_background():
@@ -80,8 +86,8 @@ def draw_title(draw, title, subtitle, dark=False):
 
 def draw_icon(draw, center, kind, color, radius=38):
     x, y = center
-    pale = tuple(int(channel * 0.11 + 255 * 0.89) for channel in color)
-    outline = tuple(int(channel * 0.44 + 255 * 0.56) for channel in color)
+    pale = tint(color, 0.89)
+    outline = tint(color, 0.56)
     draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=pale, outline=outline, width=3)
     if kind == "check":
         draw.line((x - 17, y, x - 4, y + 13, x + 21, y - 16), fill=color, width=7, joint="curve")
@@ -115,17 +121,19 @@ def draw_flow_line(draw, start, end, color, width=7):
 def draw_scene(scene_index, local_time):
     image = BASE.copy()
     draw = ImageDraw.Draw(image)
-    draw_brand(draw)
+    if scene_index != 5:
+        draw_brand(draw)
     scenes = [
         ("The contract is signed.", "Now every handoff matters."),
         ("Bring the setup work together.", "Requests, owners, and next steps in one clear flow."),
         ("Start with a process you can reuse.", "Keep each implementation consistent from kickoff to launch."),
-        ("Give customers a clear next step.", "Collect the setup information your team needs."),
+        ("Give customers clear next steps.", "Collect setup details."),
         ("See what needs attention.", "Find missing details and work waiting on follow-up."),
-        ("Make every next step clear.", "Relay · Customer implementation readiness"),
+        ("Make every next step clear.", "Relay · Customer onboarding, made clear"),
     ]
     title, subtitle = scenes[scene_index]
-    draw_title(draw, title, subtitle)
+    if scene_index != 5:
+        draw_title(draw, title, subtitle)
 
     entrance = ease(local_time / 0.75)
     bob = int(5 * np.sin(local_time * 2.2))
@@ -135,15 +143,15 @@ def draw_scene(scene_index, local_time):
             rounded(draw, box, 34, WHITE, (215, 229, 239), 2)
         draw_icon(draw, (390, 545), "document", BLUE, 43)
         draw.text((462, 522), "SIGNED", font=font(22, True), fill=BLUE, anchor="lm")
-        draw.text((462, 567), "Customer agreement", font=font(26, True), fill=INK, anchor="lm")
+        draw.text((462, 567), "Customer agreement", font=font(22, True), fill=INK, anchor="lm")
         draw_icon(draw, (1360, 545), "spark", GREEN, 43)
         draw.text((1430, 522), "NEXT", font=font(22, True), fill=GREEN, anchor="lm")
-        draw.text((1430, 567), "Customer go-live", font=font(26, True), fill=INK, anchor="lm")
+        draw.text((1430, 567), "Customer go-live", font=font(22, True), fill=INK, anchor="lm")
         draw_flow_line(draw, (740, 545), (1170, 545), (90, 163, 209), 8)
         for index, (label, x) in enumerate((("SETUP", 860), ("OWNERS", 960), ("LAUNCH", 1060))):
             y = 520 + (index % 2) * 50 + bob
             draw.ellipse((x - 11, y - 11, x + 11, y + 11), fill=CYAN)
-            draw.text((x, 607), label, font=font(13, True), fill=MUTED, anchor="mm")
+            draw.text((x, 607), label, font=font(18, True), fill=MUTED, anchor="mm")
     elif scene_index == 1:
         center = (960, 520 + bob)
         cards = [
@@ -152,10 +160,12 @@ def draw_scene(scene_index, local_time):
             ("Next action", "clock", (775, 655, 1145, 765), AMBER),
         ]
         for label, icon, box, color in cards:
+            start_y = box[1] if box[1] > center[1] else box[3]
+            draw.line((((box[0] + box[2]) // 2, start_y), center), fill=(136, 182, 211), width=4)
+        for label, icon, box, color in cards:
             rounded(draw, box, 27, WHITE, (219, 231, 240), 2)
             draw_icon(draw, (box[0] + 52, (box[1] + box[3]) // 2), icon, color, 28)
             draw.text((box[0] + 101, (box[1] + box[3]) // 2), label, font=font(23, True), fill=INK, anchor="lm")
-            draw.line(((box[0] + box[2]) // 2, box[3], *center), fill=(136, 182, 211), width=4)
         draw.ellipse((center[0] - 25, center[1] - 25, center[0] + 25, center[1] + 25), fill=BLUE)
         draw.ellipse((center[0] - 9, center[1] - 9, center[0] + 9, center[1] + 9), fill=WHITE)
     elif scene_index == 2:
@@ -165,31 +175,34 @@ def draw_scene(scene_index, local_time):
             ("03", "Review readiness", "Team and customer", GREEN),
         ]
         left, top, width, gap = 320, 390, 390, 105
+        for index in range(len(labels) - 1):
+            y = top + index * gap + int((1 - entrance) * 70)
+            x = left + index * (width + gap)
+            draw.line((x + width, y + 38, x + width + gap, y + gap + 38),
+                      fill=(120, 175, 207), width=4)
         for index, (number, title_text, owner, color) in enumerate(labels):
             y = top + index * gap + int((1 - entrance) * 70)
             x = left + index * (width + gap)
             rounded(draw, (x, y, x + width, y + 76), 24, WHITE, (216, 231, 241), 2)
-            draw.ellipse((x + 19, y + 18, x + 59, y + 58), fill=(*color, 32))
-            draw.text((x + 39, y + 38), number, font=font(14, True), fill=color, anchor="mm")
-            draw.text((x + 78, y + 25), title_text, font=font(20, True), fill=INK)
-            draw.text((x + 78, y + 52), owner, font=font(14), fill=MUTED)
-            if index < 2:
-                draw.line((x + width - 18, y + 38, x + width + gap + 20, y + 38), fill=(120, 175, 207), width=4)
+            draw.ellipse((x + 19, y + 18, x + 59, y + 58),
+                         fill=tint(color, 0.89), outline=tint(color, 0.56), width=2)
+            draw.text((x + 39, y + 38), number, font=font(18, True), fill=color, anchor="mm")
+            draw.text((x + 78, y + 25), title_text, font=font(22, True), fill=INK)
+            draw.text((x + 78, y + 52), owner, font=font(18), fill=MUTED)
         draw_icon(draw, (960, 794), "check", GREEN, 31)
-        draw.text((1010, 794), "One checked workflow. Ready to reuse.", font=font(20, True), fill=INK, anchor="lm")
+        draw.text((1010, 794), "One checked workflow. Ready to reuse.", font=font(22, True), fill=INK, anchor="lm")
     elif scene_index == 3:
         rounded(draw, (610, 340, 1310, 790), 42, WHITE, (214, 231, 239), 2)
-        draw.ellipse((916, 382, 1004, 470), fill=(221, 246, 238))
         draw_icon(draw, (960, 426), "document", GREEN, 33)
         draw.text((960, 512), "Customer setup", font=font(31, True), fill=INK, anchor="mm")
-        draw.text((960, 559), "Share the details needed to get started", font=font(18), fill=MUTED, anchor="mm")
+        draw.text((960, 559), "Share the details needed to get started", font=font(20), fill=MUTED, anchor="mm")
         for index, (label, icon, color) in enumerate(
             (("Project contact", "person", BLUE), ("Workspace details", "document", CYAN))
         ):
             y = 604 + index * 75
             rounded(draw, (690, y, 1230, y + 58), 18, PALE, (225, 235, 243), 1)
             draw_icon(draw, (726, y + 29), icon, color, 18)
-            draw.text((765, y + 29), label, font=font(19, True), fill=INK, anchor="lm")
+            draw.text((765, y + 29), label, font=font(21, True), fill=INK, anchor="lm")
             draw.ellipse((1174, y + 19, 1194, y + 39), fill=GREEN)
             draw.line((1179, y + 29, 1184, y + 34, 1190, y + 24), fill=WHITE, width=3)
     elif scene_index == 4:
@@ -198,25 +211,25 @@ def draw_scene(scene_index, local_time):
         draw.text((505, 437), "Setup information", font=font(26, True), fill=INK)
         draw.text((505, 481), "Customer contact details still needed", font=font(18), fill=MUTED)
         rounded(draw, (1260, 424, 1510, 482), 24, (255, 246, 228))
-        draw.text((1385, 453), "NEEDS FOLLOW-UP", font=font(14, True), fill=AMBER, anchor="mm")
+        draw.text((1385, 453), "NEEDS FOLLOW-UP", font=font(18, True), fill=AMBER, anchor="mm")
         draw.line((430, 545, 1490, 545), fill=(229, 237, 243), width=2)
         draw_icon(draw, (442, 625), "person", GREEN, 31)
-        draw.text((500, 604), "Next action", font=font(16, True), fill=MUTED)
+        draw.text((500, 604), "Next action", font=font(20, True), fill=MUTED)
         draw.text((500, 648), "Request the required customer detail", font=font(22, True), fill=INK)
         rounded(draw, (1265, 593, 1508, 661), 21, BLUE)
-        draw.text((1386, 627), "Keep it moving", font=font(17, True), fill=WHITE, anchor="mm")
+        draw.text((1386, 627), "Keep it moving", font=font(20, True), fill=WHITE, anchor="mm")
     else:
-        draw_brand(draw, dark=True)
         overlay = Image.new("RGB", image.size, (14, 43, 68))
         image = Image.blend(image, overlay, 0.91)
         draw = ImageDraw.Draw(image)
         draw_brand(draw, dark=True)
+        draw_title(draw, title, subtitle, dark=True)
         draw.ellipse((722, 324, 1198, 800), outline=(79, 177, 222), width=2)
         draw.ellipse((772, 374, 1148, 750), outline=(81, 159, 199), width=2)
         draw.ellipse((827, 429, 1093, 695), fill=(2, 132, 199))
         draw.text((960, 562), "R", font=font(142, True), fill=WHITE, anchor="mm")
         draw.text((960, 812), "Relay", font=font(64, True), fill=WHITE, anchor="mm")
-        draw.text((960, 872), "CUSTOMER IMPLEMENTATION READINESS", font=font(18, True),
+        draw.text((960, 872), "CUSTOMER ONBOARDING · MADE CLEAR", font=font(20, True),
                   fill=(187, 217, 237), anchor="mm")
         draw.text((960, 950), "relayautomation.tech", font=font(19), fill=(218, 237, 249), anchor="mm")
         return image.convert("RGB")
@@ -246,10 +259,21 @@ def generate_voiceover():
         raise FileNotFoundError(f"Voiceover was not generated: {VOICEOVER}")
 
 
+def validate_voiceover_duration():
+    with wave.open(str(VOICEOVER), "rb") as audio:
+        duration = audio.getnframes() / audio.getframerate()
+    if duration > MAX_VOICEOVER_DURATION:
+        raise ValueError(
+            f"Homepage voiceover is {duration:.2f} seconds; "
+            f"it must be no longer than {MAX_VOICEOVER_DURATION} seconds."
+        )
+
+
 def main():
     if not MUSIC.is_file():
         raise FileNotFoundError(f"Music bed was not found: {MUSIC}")
     generate_voiceover()
+    validate_voiceover_duration()
     POSTER.parent.mkdir(parents=True, exist_ok=True)
     draw_scene(0, 1.0).save(POSTER, format="PNG", optimize=True)
 

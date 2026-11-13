@@ -31,13 +31,15 @@ try {
   <prosody rate="-3%">
     The contract is signed. <break time="450ms"/> Now every handoff matters.
     <break time="600ms"/>
-    Relay brings setup requests, team ownership, and next steps into one clear implementation flow.
+    Relay connects requests, owners, and next actions.
     <break time="500ms"/>
-    Customers know what to share. Your team knows what to do next.
+    Reuse a checked workflow through launch.
     <break time="500ms"/>
-    Spot missing information and stalled work, then start from a process your team can reuse.
+    Give customers clear next steps. Collect setup details.
     <break time="500ms"/>
-    Relay. <break time="250ms"/> Make every next step clear.
+    Find gaps. Follow up. Keep launches moving.
+    <break time="500ms"/>
+    Make every next step clear.
   </prosody>
 </speak>
 '@
