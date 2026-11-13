@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="75" y1="80" x2="934" y2="570" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5F8FF"/>
+      <stop offset="1" stop-color="#EAF2FF"/>
+    </linearGradient>
+    <linearGradient id="path" x1="188" y1="320" x2="816" y2="320" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B9CF8"/>
+      <stop offset="1" stop-color="#168FC9"/>
+    </linearGradient>
+    <filter id="shadow" x="155" y="143" width="720" height="342" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+  <rect width="1000" height="600" rx="28" fill="url(#bg)"/>
+  <circle cx="154" cy="103" r="110" fill="#E2E9FF"/>
+  <circle cx="874" cy="515" r="150" fill="#DCEFFF"/>
+  <g filter="url(#shadow)" opacity=".13"><rect x="182" y="188" width="638" height="242" rx="32" fill="#243E87"/></g>
+  <path d="M236 304h524" stroke="#CBD6F4" stroke-width="9" stroke-linecap="round"/>
+  <path d="M236 304h524" stroke="url(#path)" stroke-width="4" stroke-linecap="round" stroke-dasharray="4 14"/>
+  <g>
+    <circle cx="260" cy="304" r="50" fill="#fff" stroke="#C9D3F8" stroke-width="2"/>
+    <circle cx="260" cy="286" r="13" fill="#AEB8F5"/>
+    <path d="M235 328c3-17 13-25 25-25s22 8 25 25" fill="#AEB8F5"/>
+    <circle cx="500" cy="304" r="50" fill="#fff" stroke="#BCDDF4" stroke-width="2"/>
+    <circle cx="500" cy="286" r="13" fill="#59B5E4"/>
+    <path d="M475 328c3-17 13-25 25-25s22 8 25 25" fill="#59B5E4"/>
+    <circle cx="740" cy="304" r="50" fill="#fff" stroke="#B5E7D7" stroke-width="2"/>
+    <circle cx="740" cy="286" r="13" fill="#42A983"/>
+    <path d="M715 328c3-17 13-25 25-25s22 8 25 25" fill="#42A983"/>
+  </g>
+  <g fill="#173B59" font-family="Arial,sans-serif" text-anchor="middle">
+    <text x="260" y="390" font-size="16" font-weight="700">IMPLEMENTATION</text>
+    <text x="500" y="390" font-size="16" font-weight="700">SPECIALIST</text>
+    <text x="740" y="390" font-size="16" font-weight="700">CUSTOMER</text>
+  </g>
+  <g>
+    <rect x="166" y="143" width="200" height="67" rx="20" fill="#fff"/>
+    <circle cx="199" cy="176" r="15" fill="#E8EAFE"/>
+    <path d="m192 176 5 5 10-11" stroke="#6475D7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M225 168h112M225 182h73" stroke="#C1CBE8" stroke-width="5" stroke-linecap="round"/>
+    <rect x="420" y="425" width="205" height="67" rx="20" fill="#fff"/>
+    <circle cx="454" cy="458" r="15" fill="#E8F6FF"/>
+    <path d="M454 448v11l8 5" stroke="#168FC9" stroke-width="3" stroke-linecap="round"/>
+    <path d="M481 450h118M481 464h74" stroke="#BDD7E9" stroke-width="5" stroke-linecap="round"/>
+    <rect x="704" y="143" width="160" height="67" rx="20" fill="#fff"/>
+    <circle cx="737" cy="176" r="15" fill="#E0F5ED"/>
+    <path d="m730 176 5 5 10-11" stroke="#16865F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M762 168h79M762 182h53" stroke="#BEDDCE" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <path d="M170 536h210" stroke="#D3DFF0" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="148" cy="536" r="5" fill="#A9B7ED"/>
+  <circle cx="400" cy="536" r="5" fill="#92C9E7"/>
+</svg>

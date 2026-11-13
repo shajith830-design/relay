@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="140" y1="45" x2="860" y2="570" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F2F9FF"/>
+      <stop offset="1" stop-color="#E9F3FF"/>
+    </linearGradient>
+    <linearGradient id="line" x1="198" y1="318" x2="805" y2="318" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#0284C7"/>
+    </linearGradient>
+    <filter id="shadow" x="118" y="126" width="764" height="357" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="17"/>
+    </filter>
+  </defs>
+  <rect width="1000" height="600" rx="28" fill="url(#bg)"/>
+  <circle cx="850" cy="92" r="118" fill="#D9EEFF" fill-opacity=".72"/>
+  <circle cx="154" cy="508" r="146" fill="#DCEEFF" fill-opacity=".7"/>
+  <path d="M202 305C287 305 298 232 374 232s91 146 170 146 91-120 171-120 68 47 104 47" stroke="#C1DFF8" stroke-width="12" stroke-linecap="round"/>
+  <path d="M202 305C287 305 298 232 374 232s91 146 170 146 91-120 171-120 68 47 104 47" stroke="url(#line)" stroke-width="5" stroke-linecap="round" stroke-dasharray="2 15"/>
+  <g filter="url(#shadow)" opacity=".15">
+    <rect x="162" y="192" width="676" height="238" rx="34" fill="#0B4773"/>
+  </g>
+  <g>
+    <circle cx="216" cy="305" r="56" fill="#fff" stroke="#B9DDF7" stroke-width="2"/>
+    <circle cx="216" cy="305" r="37" fill="#E8F6FF"/>
+    <path d="M201 305h30m-15-15v30" stroke="#0284C7" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="543" cy="378" r="56" fill="#fff" stroke="#B9DDF7" stroke-width="2"/>
+    <circle cx="543" cy="378" r="37" fill="#E8F6FF"/>
+    <path d="M543 357v23l16 10" stroke="#0284C7" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="818" cy="305" r="56" fill="#fff" stroke="#A8D9F4" stroke-width="2"/>
+    <circle cx="818" cy="305" r="37" fill="#DDF5EC"/>
+    <path d="m800 306 12 12 25-27" stroke="#16865F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g fill="#173B59" font-family="Arial,sans-serif">
+    <text x="216" y="401" font-size="17" font-weight="700" text-anchor="middle">DETAILS</text>
+    <text x="543" y="474" font-size="17" font-weight="700" text-anchor="middle">OWNER</text>
+    <text x="818" y="401" font-size="17" font-weight="700" text-anchor="middle">READY</text>
+  </g>
+  <circle cx="374" cy="232" r="10" fill="#fff" stroke="#38BDF8" stroke-width="5"/>
+  <circle cx="714" cy="258" r="10" fill="#fff" stroke="#0284C7" stroke-width="5"/>
+  <path d="M365 118h158" stroke="#B8DBF6" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="338" cy="118" r="5" fill="#7DC8F2"/>
+  <circle cx="550" cy="118" r="5" fill="#7DC8F2"/>
+  <circle cx="583" cy="118" r="5" fill="#C5E5FA"/>
+</svg>

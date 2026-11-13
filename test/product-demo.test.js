@@ -90,17 +90,31 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/pricing\.html<\/loc>/);
   assert.doesNotMatch(sitemapXml, /dashboard\.html|customer\.html|relay-owner-console\.html/);
   assert.match(homePage, /product\.html\?demo=workspace/);
-  assert.match(homePage, /Try Sample Workspace \(No Login Required\)/);
+  assert.match(homePage, /Try the Sample Workspace/);
+  assert.doesNotMatch(homePage, /No Login Required/i);
   assert.match(homePage, /<video controls playsinline/);
-  assert.match(homePage, /relay-60-second-overview\.mp4/);
-  assert.match(homePage, /relay-preview-(?:overview|portfolio|customer-portal|process-map)\.png/);
+  assert.match(homePage, /relay-home-overview\.mp4/);
+  assert.match(homePage, /relay-home-video-poster\.png/);
+  assert.match(homePage, /Open the video directly/);
+  assert.match(homePage, /relay-home-(?:readiness|ownership|customer|process)\.svg/);
+  assert.doesNotMatch(homePage, /relay-preview-|sample workspace overview|real screens from Relay/i);
+  for (const obsolete of [
+    "relay-60-second-overview.mp4",
+    "relay-preview-overview.png",
+    "relay-preview-portfolio.png",
+    "relay-preview-customer-portal.png",
+    "relay-preview-process-map.png"
+  ]) {
+    assert.equal(existsSync(path.join(publicDir, "assets", obsolete)), false);
+  }
   assert.match(homePage, /HubSpot/);
   assert.match(homePage, /Slack/);
   assert.match(homePage, /Built by the founder/);
   assert.match(homePage, /three months of Relay access/i);
-  assert.ok(existsSync(path.join(publicDir, "assets", "relay-60-second-overview.mp4")));
-  for (const screenshot of ["overview", "portfolio", "customer-portal", "process-map"]) {
-    assert.ok(existsSync(path.join(publicDir, "assets", `relay-preview-${screenshot}.png`)));
+  assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-overview.mp4")));
+  assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-video-poster.png")));
+  for (const illustration of ["readiness", "ownership", "customer", "process"]) {
+    assert.ok(existsSync(path.join(publicDir, "assets", `relay-home-${illustration}.svg`)));
   }
   assert.doesNotMatch(homePage, /Plans from ₹2,999 per month/);
   assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
