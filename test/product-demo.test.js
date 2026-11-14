@@ -109,6 +109,9 @@ test("marketing pages expose the sample demo and disclose current product bounda
   }
   assert.match(homePage, /HubSpot/);
   assert.match(homePage, /Slack/);
+  assert.match(homePage, /separate onboarding deal/i);
+  assert.match(homePage, /does not start a Relay checklist from a HubSpot Closed Won deal/i);
+  assert.match(homePage, /customers continue using Relay and do not need HubSpot/i);
   assert.match(homePage, /Built by the founder/);
   assert.match(homePage, /three months of Relay access/i);
   assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-overview.mp4")));
@@ -120,13 +123,13 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
   assert.match(demoPage, /fictional data/i);
   assert.match(demoPage, /does not connect to your Relay account or backend/i);
-  assert.match(solutionsPage, /Allow integrations for your workspace/i);
+  assert.match(solutionsPage, /HubSpot Closed Won deals do not automatically start Relay checklists/i);
   assert.doesNotMatch([aboutPage, solutionsPage, pricingPage].join("\n"), /Salesforce|Microsoft Teams|Jira|Linear|Asana/i);
   assert.match([homePage, solutionsPage].join("\n"), /portfolio health/i);
   assert.match([homePage, solutionsPage].join("\n"), /CSV/i);
   assert.match([homePage, solutionsPage].join("\n"), /daily reminders/i);
   assert.match(solutionsPage, /private portal/i);
-  assert.match(pricingPage, /Integration connections/i);
+  assert.match(pricingPage, /HubSpot receives a separate onboarding deal/i);
   assert.match(aboutPage, /does not currently publish customer case studies/i);
   assert.match(pricingPage, /₹2,999/);
   assert.match(pricingPage, /₹3,999/);
