@@ -17,6 +17,8 @@
     "zone_name": "relayautomation.tech"
   },
   "vars": {
+    "AUTH_EMAIL_FROM": "Relay Automation <contact@relayautomation.tech>",
+    "INQUIRY_NOTIFICATION_EMAIL": "shajith@relayautomation.tech",
     "PUBLIC_BASE_URL": "https://relayautomation.tech",
     "TRUST_PROXY_HOPS": "1"
   },

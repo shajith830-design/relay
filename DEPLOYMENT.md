@@ -12,7 +12,7 @@ An empty local `.env` does not affect the deployed Worker: it gets its database 
 2. Replace `REPLACE_WITH_CLOUDFLARE_HYPERDRIVE_ID` in `wrangler.jsonc` with the 32-character Hyperdrive configuration ID. The ID is a resource identifier, not the database password. `npm run deploy:cloudflare` stops before publishing if the ID is still a placeholder or the production route is missing.
 3. Ray uses built-in Relay-specific answers and does not require an AI binding, model, or external provider credentials. Its responses are curated rather than generative, so questions without a matching built-in answer receive a clear fallback.
 4. Configure Worker secrets in Cloudflare or with Wrangler. Set the required `INQUIRIES_API_TOKEN` and `OWNER_ADMIN_TOKEN` as separate high-entropy secrets. Add `RESEND_API_KEY` if password recovery/email notifications are enabled. Never store these values in `wrangler.jsonc`, `.env.example`, or Git.
-5. Configure the non-secret Worker variable `PUBLIC_BASE_URL=https://relayautomation.tech`. Add `AUTH_EMAIL_FROM` (a sender verified with your email provider) and `INQUIRY_NOTIFICATION_EMAIL` if email notifications are wanted.
+5. Configure the non-secret Worker variable `PUBLIC_BASE_URL=https://relayautomation.tech`. Add `AUTH_EMAIL_FROM` (a sender verified with Resend) and set `INQUIRY_NOTIFICATION_EMAIL` to the Gmail inbox that should receive contact and demo submissions.
 6. From a trusted machine with Node.js installed, authenticate Wrangler to the correct Cloudflare account and deploy:
 
    ```powershell
@@ -124,7 +124,7 @@ Migration `004_workspace_plans.sql` preserves existing subscriptions as Custom w
 
 Demo and contact forms submit to Relay's `/api/inquiries` endpoint and require the deployed Worker and its configured Hyperdrive database. Submissions are stored in PostgreSQL with separate name, company, work email, phone, inquiry type, message, and timestamp fields. Opening an HTML page directly as a `file://` URL will not submit inquiries; use the deployed HTTPS website or run Relay with its database configured.
 
-To receive each submitted contact or demo inquiry by email, configure `INQUIRY_NOTIFICATION_EMAIL`, `RESEND_API_KEY`, and `AUTH_EMAIL_FROM` in the deployment environment. Verify the sender address/domain with Resend. For local Node development, copy `.env.example` to `.env`, replace the example values with your real settings, and run `npm start`; the server loads `.env` automatically. Do not commit `.env` or paste credentials into source code. The inquiry is saved even if the notification provider is temporarily unavailable; check the `inquiry_email_notification_failed` server event if an email does not arrive.
+To receive each submitted contact or demo inquiry in Gmail, set `INQUIRY_NOTIFICATION_EMAIL` to your Gmail address and configure `RESEND_API_KEY` plus `AUTH_EMAIL_FROM` in the deployment environment. Email is sent through Resend; `AUTH_EMAIL_FROM` must be a sender address/domain verified with Resend, while the receiving inbox can be Gmail. For local Node development, copy `.env.example` to `.env`, replace the example values with your real settings, and run `npm start`; the server loads `.env` automatically. Do not commit `.env` or paste credentials into source code. The inquiry is saved even if the notification provider is temporarily unavailable; check the `inquiry_email_notification_failed` server event if an email does not arrive.
 
 ## Schema initialization and deployment
 

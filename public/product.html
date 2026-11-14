@@ -95,6 +95,7 @@
         <button class="nav-item" data-view="templates"><span>▤</span> Templates</button>
         <button class="nav-item" data-view="implementations"><span>◷</span> Implementations</button>
         <button class="nav-item" data-view="requirements"><span>✓</span> Customer information</button>
+        <button class="nav-item" data-view="integrations"><span>⇄</span> Integrations</button>
         <button class="nav-item" data-view="settings"><span>⚙</span> Settings</button>
       </nav>
       <div class="sidebar-bottom">
@@ -262,6 +263,15 @@
           </div>
         </div>
       </section>
+      <section class="view" id="view-integrations">
+        <div class="section-intro"><h2>Connect your workspace tools</h2><p>Authorize HubSpot and Slack so Relay can share implementation updates with your team. Connections are managed by workspace owners.</p></div>
+        <div class="panel">
+          <div class="panel-heading"><div><h2>Available integrations</h2><p>Connect an account to enable workspace updates and synchronization.</p></div></div>
+          <p id="integrations-demo-note" class="empty-state" hidden>Sample preview: connection controls do not contact an external service.</p>
+          <div id="integration-list" class="list-stack"></div>
+          <p id="integration-status" class="appearance-status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
       <section class="view" id="view-settings">
         <div class="section-intro"><h2>Make Relay feel like yours</h2><p>Choose a comfortable display mode and accent color. Your choices are saved to your account and follow you across devices.</p></div>
         <div class="panel appearance-panel">
@@ -286,12 +296,6 @@
                 </div>
                 <button class="button secondary" type="submit">Save notification settings</button>
               </form>
-            </div>
-            <div class="panel">
-              <div class="panel-heading"><div><h2>Integrations</h2><p>Workspace owners can authorize supported integrations after setup.</p></div></div>
-              <p id="integrations-demo-note" class="empty-state" hidden>Sample preview: connection controls do not contact an external service.</p>
-              <div id="integration-list" class="list-stack"></div>
-              <p id="integration-status" class="appearance-status" role="status" aria-live="polite"></p>
             </div>
             <div class="field">
               <label for="theme-accent">Accent color</label>

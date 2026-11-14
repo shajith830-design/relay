@@ -47,6 +47,7 @@ const titles = {
   templates: ["Reuse what works", "Templates"],
   implementations: ["Run customer work", "Implementations"],
   requirements: ["Get customer-ready", "Customer information"],
+  integrations: ["Connect your tools", "Integrations"],
   settings: ["Personalize your workspace", "Settings"]
 };
 
@@ -542,6 +543,7 @@ async function loadWorkspace() {
       connect_failed: "The integration could not be connected. Check its OAuth app settings and try again."
     };
     document.getElementById("integration-status").textContent = messages[integrationResult] || "Integration connection completed.";
+    setView("integrations");
     window.history.replaceState(null, "", window.location.pathname);
   }
   return true;
@@ -772,15 +774,15 @@ function renderNotificationSettings() {
   const owner = state.workspace.role === "owner";
   for (const control of form.elements) control.disabled = !owner;
   document.getElementById("notifications-demo-note").hidden = !isWorkspaceDemo;
-  document.getElementById("integration-status").textContent = state.workspace.role === "owner"
-    ? "" : "Only a workspace owner can connect or disconnect integrations.";
-  document.getElementById("integrations-demo-note").hidden = !isWorkspaceDemo;
 }
 
 function renderIntegrations() {
   const connected = new Set((state.data.integrations || []).map((item) => item.provider));
+  document.getElementById("integration-status").textContent = state.workspace.role === "owner"
+    ? "" : "Only a workspace owner can connect or disconnect integrations.";
+  document.getElementById("integrations-demo-note").hidden = !isWorkspaceDemo;
   document.getElementById("integration-list").innerHTML = ["hubspot", "slack"].map((provider) => {
-    const name = provider === "hubspot" ? "CRM connection" : "Team messaging connection";
+    const name = provider === "hubspot" ? "HubSpot" : "Slack";
     const isConnected = connected.has(provider);
     const stateLabel = isWorkspaceDemo
       ? isConnected ? "Preview connected · no external service linked" : "Not connected"
