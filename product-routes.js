@@ -885,13 +885,8 @@ function installProductRoutes(app, db, isProduction) {
   app.get("/api/product/help-chat", requireSession, async (req, res) => {
     const messages = await (database.prepare(`
       SELECT id, role, content, created_at
-      FROM (
-        SELECT id, role, content, created_at
-        FROM product_help_messages
-        WHERE user_id = $1
-        ORDER BY id DESC
-        LIMIT 50
-      )
+      FROM product_help_messages
+      WHERE user_id = $1
       ORDER BY id
     `).all(req.product.userId));
     return res.json({ messages });
@@ -909,10 +904,6 @@ function installProductRoutes(app, db, isProduction) {
     const message = requiredText(req.body.message, 1200);
     if (!message) return sendError(res, 400, "Enter a Relay question up to 1,200 characters.");
 
-    const rateLimitResult = rateLimit(`help-chat-user:${userId}`, 12, 10 * 60 * 1000,
-      "You’ve sent several help questions. Please wait a few minutes and try again.");
-    if (rateLimitResult.limited) return sendError(res, 429, rateLimitResult.message);
-
     const answer = relayHelpReply(message);
     if (!answer || answer.length > 4000) return sendError(res, 500, "Ray could not prepare a reply. Please contact Relay support.");
 
@@ -922,12 +913,6 @@ function installProductRoutes(app, db, isProduction) {
       );
       await (insert.run(userId, "user", message));
       const assistantMessage = await (insert.run(userId, "assistant", answer.trim()));
-      await (database.prepare(`
-        DELETE FROM product_help_messages
-        WHERE user_id = $1 AND id NOT IN (
-          SELECT id FROM product_help_messages WHERE user_id = $2 ORDER BY id DESC LIMIT 50
-        )
-      `).run(userId, userId));
       return await (database.prepare(
         "SELECT id, role, content, created_at FROM product_help_messages WHERE id = $1 AND user_id = $2"
       ).get(assistantMessage.lastInsertRowid, userId));
@@ -1099,15 +1084,24 @@ function installProductRoutes(app, db, isProduction) {
       const { provider } = req.params;
       if (!["hubspot", "slack"].includes(provider)) return sendError(res, 404, "Integration not found.");
       if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can connect integrations.");
-      const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`]?.trim();
-      const clientSecret = process.env[`${provider.toUpperCase()}_CLIENT_SECRET`]?.trim();
+      const providerKey = provider.toUpperCase();
+      const clientId = process.env[`${providerKey}_CLIENT_ID`]?.trim();
+      const clientSecret = process.env[`${providerKey}_CLIENT_SECRET`]?.trim();
       const baseUrl = process.env.PUBLIC_BASE_URL?.trim();
-      if (!clientId || !clientSecret || !baseUrl) return sendError(res, 503, `${provider === "hubspot" ? "HubSpot" : "Slack"} connection is not configured by Relay yet.`);
+      const missingConfiguration = [
+        !clientId && `${providerKey}_CLIENT_ID`,
+        !clientSecret && `${providerKey}_CLIENT_SECRET`,
+        !baseUrl && "PUBLIC_BASE_URL"
+      ].filter(Boolean);
+      if (missingConfiguration.length) {
+        return sendError(res, 503,
+          `${provider === "hubspot" ? "HubSpot" : "Slack"} OAuth setup is incomplete. Configure ${missingConfiguration.join(", ")} in the Relay deployment.`);
+      }
       try {
         integrationKey();
       } catch (error) {
         console.error(JSON.stringify({ event: "integration_encryption_not_configured", provider, message: error.message }));
-        return sendError(res, 503, "Integration storage is not configured by Relay yet.");
+        return sendError(res, 503, "Integration token storage is not configured. Set INTEGRATION_ENCRYPTION_KEY in the Relay deployment.");
       }
       let callbackUrl;
       try {

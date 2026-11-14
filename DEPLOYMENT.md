@@ -10,7 +10,7 @@ An empty local `.env` does not affect the deployed Worker: it gets its database 
 
 1. For a $0 pilot, create a Supabase Free PostgreSQL project, then create a Cloudflare Hyperdrive configuration using the database's **direct connection** details. Cloudflare Hyperdrive should manage connection pooling; do not put Supabase's transaction pooler in front of it. Supabase Free includes 500 MB and can pause a project after one week of inactivity; Hyperdrive's Free allocation is 100,000 database statements per day.
 2. Replace `REPLACE_WITH_CLOUDFLARE_HYPERDRIVE_ID` in `wrangler.jsonc` with the 32-character Hyperdrive configuration ID. The ID is a resource identifier, not the database password. `npm run deploy:cloudflare` stops before publishing if the ID is still a placeholder or the production route is missing.
-3. Ray uses built-in Relay-specific answers and does not require an AI binding, model, or external provider credentials. Its responses are curated rather than generative, so questions without a matching built-in answer receive a clear fallback.
+3. Ray uses built-in Relay-specific answers and does not require an AI binding, model, or external provider credentials. Ray has no plan-based message quota or conversation-history cap. Its responses are curated rather than generative, so questions without a matching built-in answer receive a clear fallback.
 4. Configure Worker secrets in Cloudflare or with Wrangler. Set the required `INQUIRIES_API_TOKEN` and `OWNER_ADMIN_TOKEN` as separate high-entropy secrets. Add `RESEND_API_KEY` if password recovery/email notifications are enabled. Never store these values in `wrangler.jsonc`, `.env.example`, or Git.
 5. Configure the non-secret Worker variable `PUBLIC_BASE_URL=https://relayautomation.tech`. Add `AUTH_EMAIL_FROM` (a sender verified with Resend) and set `INQUIRY_NOTIFICATION_EMAIL` to the Gmail inbox that should receive contact and demo submissions.
 6. From a trusted machine with Node.js installed, authenticate Wrangler to the correct Cloudflare account and deploy:
@@ -53,7 +53,7 @@ Generate the encryption key locally; do not commit it:
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 ```
 
-Set the HubSpot and Slack app redirect/callback URL to `https://relayautomation.tech/api/product/integrations/callback/hubspot` or `https://relayautomation.tech/api/product/integrations/callback/slack`, respectively (replace the hostname for non-production environments). Workspace owners connect tools from **Product → Settings**. HubSpot receives Relay implementation deals with progress, overdue, and blocked-task summaries; Slack receives implementation/task updates and reminders. Relay does not import CRM records. OAuth tokens are encrypted at rest; do not change the encryption key after connections have been stored unless you plan to reconnect each integration.
+Set the HubSpot and Slack app redirect/callback URL to `https://relayautomation.tech/api/product/integrations/callback/hubspot` or `https://relayautomation.tech/api/product/integrations/callback/slack`, respectively (replace the hostname for non-production environments). Workspace owners connect tools from the **Integrations** sidebar page. HubSpot receives Relay implementation deals with progress, overdue, and blocked-task summaries; Slack receives implementation/task updates and reminders. Relay does not import CRM records. OAuth tokens are encrypted at rest; do not change the encryption key after connections have been stored unless you plan to reconnect each integration.
 
 The **Portfolio** view shows task load, overdue work, implementation health, and a directional finish-date estimate based on completed-task pace. **Export CSV** downloads the current workspace portfolio. Treat the estimate as planning guidance, not a delivery commitment.
 
@@ -91,7 +91,7 @@ This is a low-cost pilot setup, not an uptime guarantee. Workers Free allows 100
 | `INQUIRY_NOTIFICATION_EMAIL` | Inbox for contact and demo inquiry notifications. |
 | `PUBLIC_BASE_URL` | Public HTTPS origin used in password recovery links. |
 | `TRUST_PROXY_HOPS` | Number of trusted reverse proxies in front of Relay. Configure only when appropriate for the host. |
-| Ray responses | Built-in Relay answer library; no external AI service or provider configuration is used. |
+| Ray responses | Built-in Relay answer library; no external AI service or provider configuration is used. Ray has no per-plan message quota or history cap, but only answers topics covered by its curated knowledge. |
 
 Use unique production credentials and rotate them if exposed. Never put secrets in frontend configuration.
 

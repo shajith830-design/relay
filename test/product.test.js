@@ -311,6 +311,16 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   const ownHelpHistory = await request("/api/product/help-chat", { cookie: ownerCookie });
   assert.equal(ownHelpHistory.data.messages.length, 4);
   assert.deepEqual(ownHelpHistory.data.messages.map((entry) => entry.role), ["user", "assistant", "user", "assistant"]);
+  for (let index = 0; index < 26; index += 1) {
+    const continuedQuestion = await request("/api/product/help-chat", {
+      method: "POST",
+      cookie: ownerCookie,
+      body: { message: `How do I make a template? ${index}` }
+    });
+    assert.equal(continuedQuestion.response.status, 200, JSON.stringify(continuedQuestion.data));
+  }
+  const extendedHelpHistory = await request("/api/product/help-chat", { cookie: ownerCookie });
+  assert.equal(extendedHelpHistory.data.messages.length, 56);
   const invalidHelpInput = await request("/api/product/help-chat", {
     method: "POST",
     cookie: ownerCookie,
@@ -325,7 +335,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   });
   assert.equal(crossOriginHelp.response.status, 403);
   const unchangedHelpHistory = await request("/api/product/help-chat", { cookie: ownerCookie });
-  assert.equal(unchangedHelpHistory.data.messages.length, 4);
+  assert.equal(unchangedHelpHistory.data.messages.length, 56);
   const unknownResetRequest = await request("/api/product/auth/password-reset/request", {
     method: "POST",
     body: { email: "unknown@relaytest.example" }
@@ -1085,7 +1095,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   });
   assert.equal(clearOwnHelpHistory.response.status, 200);
   assert.deepEqual((await request("/api/product/help-chat", { cookie: otherCookie })).data, { messages: [] });
-  assert.equal((await request("/api/product/help-chat", { cookie: ownerCookie })).data.messages.length, 4);
+  assert.equal((await request("/api/product/help-chat", { cookie: ownerCookie })).data.messages.length, 56);
   const crossWorkspaceAssignment = await request(`/api/product/processes/${processId}/steps/${firstProcessStepId}`, {
     method: "PATCH",
     cookie: otherCookie,
