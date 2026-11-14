@@ -1165,7 +1165,7 @@ function installProductRoutes(app, db, isProduction) {
           code
         });
         const tokenEndpoint = provider === "hubspot"
-          ? "https://api.hubapi.com/oauth/v1/token"
+          ? "https://api.hubapi.com/oauth/v3/token"
           : "https://slack.com/api/oauth.v2.access";
         const response = await fetch(tokenEndpoint, {
           method: "POST",
@@ -1368,7 +1368,7 @@ function installProductRoutes(app, db, isProduction) {
               let accessToken = decryptIntegrationValue(hubspot.access_token_cipher);
               if (hubspot.token_expires_at && Date.parse(hubspot.token_expires_at) <= Date.now()) {
                 if (!hubspot.refresh_token_cipher) throw new Error("HubSpot authorization expired. Reconnect HubSpot.");
-                const refreshResponse = await fetch("https://api.hubapi.com/oauth/v1/token", {
+                const refreshResponse = await fetch("https://api.hubapi.com/oauth/v3/token", {
                   method: "POST",
                   headers: { "Content-Type": "application/x-www-form-urlencoded" },
                   body: new URLSearchParams({
