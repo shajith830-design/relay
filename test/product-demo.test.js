@@ -151,6 +151,9 @@ test("workspace views are siblings so each navigation target can render independ
     if (viewId) {
       assert.equal(sections.some(Boolean), false, `${viewId} must not be nested inside another workspace view`);
     }
+    if (tag.includes('id="team-panel"')) {
+      assert.equal(sections.at(-1), "view-settings", "the workspace team panel must only appear in Settings");
+    }
     sections.push(viewId || null);
   }
 });

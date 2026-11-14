@@ -326,26 +326,26 @@
             <p class="account-deletion-status" id="account-deletion-status" role="status" aria-live="polite"></p>
           </form>
         </div>
-      </section>
-      <section class="panel" id="team-panel">
-        <div class="panel-heading"><div><h2>Workspace team</h2><p>Invite a teammate and assign implementation work to a real account.</p></div></div>
-        <div class="two-column">
-          <div>
-            <h3 class="subheading">Members</h3>
-            <div id="team-member-list" class="list-stack"></div>
-            <h3 class="subheading">Pending invitations</h3>
-            <div id="team-invite-list" class="list-stack"></div>
+        <section class="panel" id="team-panel">
+          <div class="panel-heading"><div><h2>Workspace team</h2><p>Invite a teammate and assign implementation work to a real account.</p></div></div>
+          <div class="two-column">
+            <div>
+              <h3 class="subheading">Members</h3>
+              <div id="team-member-list" class="list-stack"></div>
+              <h3 class="subheading">Pending invitations</h3>
+              <div id="team-invite-list" class="list-stack"></div>
+            </div>
+            <div>
+              <form id="team-invite-form" class="inline-form vertical">
+                <div class="field"><label for="invite-email">Teammate email</label><input id="invite-email" type="email" maxlength="254" required></div>
+                <button class="button primary" type="submit">Create invitation link</button>
+              </form>
+              <p id="team-cap-notice" class="status warning" role="status" aria-live="polite" hidden></p>
+              <p class="muted">Relay creates a one-time invitation link. Share it securely with the invited person; it expires after seven days.</p>
+              <div id="invite-result" class="share-box" hidden></div>
+            </div>
           </div>
-          <div>
-            <form id="team-invite-form" class="inline-form vertical">
-              <div class="field"><label for="invite-email">Teammate email</label><input id="invite-email" type="email" maxlength="254" required></div>
-              <button class="button primary" type="submit">Create invitation link</button>
-            </form>
-            <p id="team-cap-notice" class="status warning" role="status" aria-live="polite" hidden></p>
-            <p class="muted">Relay creates a one-time invitation link. Share it securely with the invited person; it expires after seven days.</p>
-            <div id="invite-result" class="share-box" hidden></div>
-          </div>
-        </div>
+        </section>
       </section>
       <footer class="app-footer">Relay helps teams run clear, dependable customer implementations.</footer>
     </main>
