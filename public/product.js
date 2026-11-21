@@ -1736,8 +1736,11 @@ document.getElementById("process-meta-form").addEventListener("submit", async (e
 document.getElementById("step-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.selectedProcessId) return showError(new Error("Choose a process before adding a step."));
+  const form = event.currentTarget;
+  const stepTitle = document.getElementById("step-title").value.trim();
+  const savedStepId = state.editingStepId;
   try {
-    await api(`/api/product/processes/${state.selectedProcessId}/steps${state.editingStepId ? `/${state.editingStepId}` : ""}`, {
+    const result = await api(`/api/product/processes/${state.selectedProcessId}/steps${state.editingStepId ? `/${state.editingStepId}` : ""}`, {
       method: state.editingStepId ? "PATCH" : "POST",
       body: {
         title: document.getElementById("step-title").value,
@@ -1750,8 +1753,9 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
         dependsOn: [...document.querySelectorAll("#step-dependencies input:checked")].map((input) => Number(input.value))
       }
     });
+    const displayedStepId = savedStepId || result.step.id;
     state.editingStepId = null;
-    event.target.reset();
+    form.reset();
     document.getElementById("step-stage").value = "Implementation";
     document.getElementById("step-due-offset").value = "0";
     document.getElementById("step-customer-visible").checked = false;
@@ -1759,6 +1763,11 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
     document.getElementById("cancel-step-edit").hidden = true;
     await loadProcess(state.selectedProcessId);
     await loadWorkspace();
+    document.querySelector(`#process-step-list [data-edit-step="${displayedStepId}"]`)
+      ?.closest(".step-card")
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const status = formStatus(form);
+    status.textContent = `Saved "${stepTitle}" to this process. You can add another step below.`;
     showToast("Process step saved.");
   } catch (error) {
     showError(error);
