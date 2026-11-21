@@ -975,7 +975,14 @@ function installProductRoutes(app, db, isProduction) {
         (SELECT string_agg(DISTINCT s.title, ', ') FROM product_implementation_steps s
           JOIN product_implementation_step_dependencies d ON d.implementation_step_id = s.id
           JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id
-          WHERE s.implementation_id = i.id AND s.status != 'done' AND parent.status != 'done') AS waiting_step_names
+          WHERE s.implementation_id = i.id AND s.status != 'done' AND parent.status != 'done') AS waiting_step_names,
+        GREATEST(
+          COALESCE((SELECT MAX(c.updated_at) FROM product_customer_inputs c
+            WHERE c.implementation_id = i.id AND BTRIM(c.value) != ''), i.created_at),
+          COALESCE((SELECT MAX(e.created_at) FROM product_workspace_events e
+            WHERE e.implementation_id = i.id
+              AND e.event_type IN ('customer.information_submitted', 'customer.tasks_completed')), i.created_at)
+        ) AS last_customer_activity_at
       FROM product_implementations i
       JOIN product_templates t ON t.id = i.template_id
       WHERE i.workspace_id = $1
@@ -994,6 +1001,11 @@ function installProductRoutes(app, db, isProduction) {
         implementation.missing_input_names = [implementation.missing_input_names, implementation.invalid_input_names]
           .filter(Boolean).join(", ");
       }
+      implementation.quiet_customer_days = Math.floor(
+        (Date.now() - Date.parse(implementation.last_customer_activity_at)) / 86400000
+      );
+      implementation.quiet_customer = implementation.missing_inputs > 0
+        && implementation.quiet_customer_days >= 3;
       if (implementation.completed_steps > 0 && implementation.open_steps > 0 && implementation.last_completed_at) {
         const elapsedDays = Math.max(1,
           (Date.parse(implementation.last_completed_at) - Date.parse(implementation.created_at)) / 86400000);
@@ -1264,6 +1276,52 @@ function installProductRoutes(app, db, isProduction) {
         }));
       }
 
+      const customerEscalations = await database.prepare(`
+        SELECT i.id AS implementation_id, i.workspace_id, i.customer_name, i.escalation_email,
+          i.escalation_delay_days,
+          GREATEST(
+            COALESCE((SELECT MAX(c.updated_at) FROM product_customer_inputs c
+              WHERE c.implementation_id = i.id AND BTRIM(c.value) != ''), i.created_at),
+            COALESCE((SELECT MAX(e.created_at) FROM product_workspace_events e
+              WHERE e.implementation_id = i.id
+                AND e.event_type IN ('customer.information_submitted', 'customer.tasks_completed')), i.created_at)
+          ) AS last_customer_activity_at,
+          (SELECT string_agg(r.name, ', ') FROM product_requirements r
+            LEFT JOIN product_customer_inputs c ON c.requirement_id = r.id AND c.implementation_id = i.id
+            WHERE r.workspace_id = i.workspace_id AND (r.template_id IS NULL OR r.template_id = i.template_id)
+              AND r.required = TRUE AND BTRIM(COALESCE(c.value, '')) = '') AS missing_information
+        FROM product_implementations i
+        JOIN product_workspace_notification_settings n ON n.workspace_id = i.workspace_id
+        JOIN product_workspace_subscriptions subscription ON subscription.workspace_id = i.workspace_id
+        WHERE n.email_enabled = TRUE AND subscription.expires_at > CURRENT_TIMESTAMP
+          AND BTRIM(i.escalation_email) != ''
+          AND EXISTS (
+            SELECT 1 FROM product_requirements r
+            LEFT JOIN product_customer_inputs c ON c.requirement_id = r.id AND c.implementation_id = i.id
+            WHERE r.workspace_id = i.workspace_id AND (r.template_id IS NULL OR r.template_id = i.template_id)
+              AND r.required = TRUE AND BTRIM(COALESCE(c.value, '')) = ''
+          )
+      `).all();
+      for (const escalation of customerEscalations) {
+        if (Date.now() - Date.parse(escalation.last_customer_activity_at)
+          < escalation.escalation_delay_days * 86400000) continue;
+        const activityKey = Date.parse(escalation.last_customer_activity_at);
+        const recipientKey = hashToken(escalation.escalation_email).slice(0, 12);
+        const eventKey = `customer-escalation:${escalation.implementation_id}:${activityKey}:${escalation.escalation_delay_days}:${recipientKey}`;
+        await database.prepare(`
+          INSERT INTO product_workspace_events
+            (event_key, workspace_id, implementation_id, event_type, payload)
+          VALUES ($1, $2, $3, 'customer.escalation', $4::jsonb)
+          ON CONFLICT (event_key) DO NOTHING
+        `).run(eventKey, escalation.workspace_id, escalation.implementation_id, JSON.stringify({
+          recipientEmail: escalation.escalation_email,
+          escalationDelayDays: escalation.escalation_delay_days,
+          customerName: escalation.customer_name,
+          missingInformation: escalation.missing_information || "",
+          lastCustomerActivityAt: new Date(activityKey).toISOString()
+        }));
+      }
+
       const events = await database.prepare(`
         UPDATE product_workspace_events
         SET status = 'processing', available_at = CURRENT_TIMESTAMP + INTERVAL '10 minutes'
@@ -1292,8 +1350,44 @@ function installProductRoutes(app, db, isProduction) {
             WHERE i.id = $1 AND i.workspace_id = $2
             GROUP BY i.id
           `).get(event.implementation_id, event.workspace_id) : null;
+          if (event.event_type === "customer.escalation") {
+            const currentActivity = await database.prepare(`
+              SELECT GREATEST(
+                COALESCE((SELECT MAX(c.updated_at) FROM product_customer_inputs c
+                  WHERE c.implementation_id = i.id AND BTRIM(c.value) != ''), i.created_at),
+                COALESCE((SELECT MAX(e.created_at) FROM product_workspace_events e
+                  WHERE e.implementation_id = i.id
+                    AND e.event_type IN ('customer.information_submitted', 'customer.tasks_completed')), i.created_at)
+              ) AS last_customer_activity_at,
+              EXISTS (
+                SELECT 1 FROM product_requirements r
+                LEFT JOIN product_customer_inputs c ON c.requirement_id = r.id AND c.implementation_id = i.id
+                WHERE r.workspace_id = i.workspace_id AND (r.template_id IS NULL OR r.template_id = i.template_id)
+                  AND r.required = TRUE AND BTRIM(COALESCE(c.value, '')) = ''
+              ) AS missing_information,
+              i.escalation_email, i.escalation_delay_days
+              FROM product_implementations i
+              WHERE i.id = $1 AND i.workspace_id = $2
+            `).get(event.implementation_id, event.workspace_id);
+            if (!currentActivity?.missing_information
+              || currentActivity.escalation_email !== event.payload.recipientEmail
+              || Date.parse(currentActivity.last_customer_activity_at) > Date.parse(event.payload.lastCustomerActivityAt)
+              || Date.now() - Date.parse(currentActivity.last_customer_activity_at)
+                < currentActivity.escalation_delay_days * 86400000
+              || currentActivity.escalation_delay_days !== event.payload.escalationDelayDays) {
+              await database.prepare(`
+                UPDATE product_workspace_events
+                SET status = 'sent', email_sent_at = CURRENT_TIMESTAMP, processed_at = CURRENT_TIMESTAMP
+                WHERE id = $1
+              `).run(event.id);
+              processed += 1;
+              continue;
+            }
+          }
           const message = event.event_type === "task.reminder"
             ? `Reminder: ${event.payload.taskTitle} for ${event.payload.customerName} ${event.payload.isOverdue ? "is overdue (was due)" : "is due"} ${event.payload.dueAt}.`
+            : event.event_type === "customer.escalation"
+              ? `Relay is following up because required setup information for ${event.payload.customerName} has not been received. The original customer contact has been quiet for at least ${event.payload.escalationDelayDays} days. Still needed: ${event.payload.missingInformation || "required setup information"}.`
             : event.event_type === "implementation.created"
               ? `Implementation started for ${implementation?.customer_name || "a customer"}.`
               : event.event_type === "customer.information_submitted"
@@ -1309,7 +1403,9 @@ function installProductRoutes(app, db, isProduction) {
               const apiKey = process.env.RESEND_API_KEY?.trim();
               const from = process.env.AUTH_EMAIL_FROM?.trim();
               if (!apiKey || !from) throw new Error("Email notifications are enabled but Resend is not configured.");
-              const recipientRows = event.event_type === "task.reminder" && event.payload.assignedUserId
+              const recipientRows = event.event_type === "customer.escalation"
+                ? [{ email: event.payload.recipientEmail }]
+                : event.event_type === "task.reminder" && event.payload.assignedUserId
                 ? await database.prepare(`
                   SELECT email FROM product_users WHERE id = $1
                 `).all(event.payload.assignedUserId)
@@ -1327,8 +1423,12 @@ function installProductRoutes(app, db, isProduction) {
                   body: JSON.stringify({
                     from,
                     to: recipientRows.map((row) => row.email),
-                    subject: `Relay update: ${event.payload.taskTitle || implementation?.customer_name || "customer implementation"}`,
-                    text: `${message}\n\nOpen your Relay workspace to review the next steps.`
+                    subject: event.event_type === "customer.escalation"
+                      ? `Relay follow-up needed: ${event.payload.customerName}`
+                      : `Relay update: ${event.payload.taskTitle || implementation?.customer_name || "customer implementation"}`,
+                    text: event.event_type === "customer.escalation"
+                      ? `${message}\n\nPlease contact the implementation team if you can help move this forward.`
+                      : `${message}\n\nOpen your Relay workspace to review the next steps.`
                   }),
                   signal: AbortSignal.timeout(10000)
                 });
@@ -2036,7 +2136,9 @@ function installProductRoutes(app, db, isProduction) {
     const implementationId = validId(req.params.implementationId);
     if (!implementationId) return sendError(res, 400, "Invalid implementation.");
     const implementation = await (database.prepare(`
-      SELECT i.id, i.customer_name, i.created_at, i.template_id, t.name AS template_name,
+      SELECT i.id, i.customer_name, i.created_at, i.template_id, i.escalation_email,
+        i.escalation_delay_days,
+        t.name AS template_name,
         i.portal_token_hash IS NOT NULL AS has_customer_link
       FROM product_implementations i
       JOIN product_templates t ON t.id = i.template_id
@@ -2058,6 +2160,26 @@ function installProductRoutes(app, db, isProduction) {
     `).all(implementationId));
     implementation.requirements = await (implementationRequirements(implementationId, req.product.workspaceId, implementation.template_id));
     return res.json({ implementation });
+  });
+
+  app.patch("/api/product/implementations/:implementationId/customer-escalation", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    if (!implementationId) return sendError(res, 400, "Invalid implementation.");
+    const escalationEmail = typeof req.body.escalationEmail === "string"
+      ? req.body.escalationEmail.trim().toLowerCase()
+      : null;
+    const escalationDelayDays = req.body.escalationDelayDays;
+    if (escalationEmail === null || escalationEmail.length > 254
+      || (escalationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(escalationEmail))
+      || !Number.isInteger(escalationDelayDays) || escalationDelayDays < 3 || escalationDelayDays > 30) {
+      return sendError(res, 400, "Enter a valid backup contact email and an escalation delay from 3 to 30 days.");
+    }
+    const result = await database.prepare(`
+      UPDATE product_implementations SET escalation_email = $1, escalation_delay_days = $2
+      WHERE id = $3 AND workspace_id = $4
+    `).run(escalationEmail, escalationDelayDays, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Implementation not found.");
+    return res.json({ escalationEmail, escalationDelayDays });
   });
 
   app.patch("/api/product/implementations/:implementationId/steps/:stepId", sameOrigin, requireSession, async (req, res) => {

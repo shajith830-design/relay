@@ -103,6 +103,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .field { display: grid; gap: 7px; margin-bottom: 15px; }
 .field label, .check-field { color: var(--ink-subtle); font-size: 13px; font-weight: 700; }
 .field input, .field textarea, .field select { width: 100%; min-height: 44px; border: 1px solid var(--input-border); border-radius: 8px; padding: 10px 12px; background: var(--surface); color: var(--ink); }
+.password-input-wrap { position: relative; }
+.password-input-wrap input { padding-right: 46px; }
+.password-visibility-toggle { position: absolute; top: 50%; right: 7px; display: grid; width: 34px; height: 34px; place-items: center; transform: translateY(-50%); border: 0; border-radius: 6px; padding: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.password-visibility-toggle:hover { background: var(--surface-muted); color: var(--ink); }
+.password-visibility-toggle svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .field textarea { min-height: 82px; resize: vertical; }
 .field small, .optional { color: var(--muted); font-size: 11px; font-weight: 400; }
 .button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; padding: 0 15px; font-size: 13px; font-weight: 700; cursor: pointer; text-decoration: none; transition: background-color .15s, border-color .15s, color .15s; }
@@ -239,7 +244,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .info-row p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .info-row .badge { margin-top: 7px; }
 .app-footer { margin-top: 25px; padding: 15px 0 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
-.toast { position: fixed; right: 20px; bottom: 20px; z-index: 20; max-width: min(400px, calc(100% - 40px)); border-radius: 9px; padding: 12px 16px; background: var(--ink); color: #fff; font-size: 12px; line-height: 1.5; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.toast { position: fixed; right: 20px; bottom: 82px; z-index: 20; max-width: min(400px, calc(100% - 40px)); border-radius: 9px; padding: 12px 16px; background: var(--ink); color: #fff; font-size: 12px; line-height: 1.5; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .toast.show { opacity: 1; }
 .customer-card { width: min(100%, 600px); min-width: 0; }
 .customer-card .field { margin-top: 17px; }
@@ -370,6 +375,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .help-launcher { width: 48px; min-height: 48px; justify-content: center; gap: 0; padding: 0; font-size: 0; }
   .help-launcher .ray-logo { width: 32px; height: 32px; }
   .help-panel { width: 100%; height: min(590px, calc(100dvh - 97px)); min-height: min(360px, calc(100dvh - 97px)); }
+  .toast { right: 12px; bottom: 72px; max-width: calc(100% - 24px); }
 }
 @media (max-width: 420px) {
   .topbar { align-items: flex-start; }

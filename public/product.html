@@ -30,7 +30,13 @@
         </div>
         <div class="field">
           <label for="auth-password">Password</label>
-          <input id="auth-password" name="password" type="password" minlength="12" maxlength="128" autocomplete="current-password" required>
+          <div class="password-input-wrap">
+            <input id="auth-password" name="password" type="password" minlength="12" maxlength="128" autocomplete="current-password" required>
+            <button class="password-visibility-toggle" type="button" data-password-toggle="auth-password" aria-label="Show password" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true" hidden><path d="m3 3 18 18M10.6 5.2A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a15.7 15.7 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7c1.3 0 2.5-.3 3.6-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+            </button>
+          </div>
           <small id="password-hint">Use at least 12 characters.</small>
         </div>
         <button class="button primary full" id="auth-submit" type="submit">Sign in</button>
@@ -57,11 +63,23 @@
         <form id="password-reset-complete-form">
           <div class="field">
             <label for="reset-password">New password</label>
-            <input id="reset-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+            <div class="password-input-wrap">
+              <input id="reset-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+              <button class="password-visibility-toggle" type="button" data-password-toggle="reset-password" aria-label="Show password" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true" hidden><path d="m3 3 18 18M10.6 5.2A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a15.7 15.7 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7c1.3 0 2.5-.3 3.6-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+              </button>
+            </div>
           </div>
           <div class="field">
             <label for="reset-password-confirm">Confirm new password</label>
-            <input id="reset-password-confirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+            <div class="password-input-wrap">
+              <input id="reset-password-confirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+              <button class="password-visibility-toggle" type="button" data-password-toggle="reset-password-confirm" aria-label="Show password" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true" hidden><path d="m3 3 18 18M10.6 5.2A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a15.7 15.7 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7c1.3 0 2.5-.3 3.6-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+              </button>
+            </div>
           </div>
           <button class="button primary full" type="submit">Update password</button>
           <p class="status" id="password-reset-complete-status" role="status" aria-live="polite"></p>
@@ -227,7 +245,7 @@
             <div class="field"><label for="implementation-search">Find a customer</label><input id="implementation-search" type="search" placeholder="Search customer or template" autocomplete="off"></div>
             <div class="field"><label for="implementation-status-filter">Status</label><select id="implementation-status-filter"><option value="all">All statuses</option><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="needs_information">Needs information</option><option value="complete">Complete</option></select></div>
             <div class="field"><label for="implementation-owner-filter">Owner</label><select id="implementation-owner-filter"><option value="all">All owners</option><option value="unassigned">Has unassigned tasks</option></select></div>
-            <div class="field"><label for="implementation-attention-filter">Needs attention</label><select id="implementation-attention-filter"><option value="all">All implementations</option><option value="yes">Any attention needed</option><option value="blocked" data-growth-only="blockers">Blocked</option><option value="overdue">Overdue</option><option value="waiting" data-growth-only="dependencies">Waiting on prerequisites</option><option value="missing">Missing information</option><option value="unassigned">Unassigned tasks</option></select></div>
+            <div class="field"><label for="implementation-attention-filter">Needs attention</label><select id="implementation-attention-filter"><option value="all">All implementations</option><option value="yes">Any attention needed</option><option value="blocked" data-growth-only="blockers">Blocked</option><option value="overdue">Overdue</option><option value="quiet">Waiting on customer 3+ days</option><option value="waiting" data-growth-only="dependencies">Waiting on prerequisites</option><option value="missing">Missing information</option><option value="unassigned">Unassigned tasks</option></select></div>
             <button class="button secondary" id="clear-implementation-filters" type="button">Clear filters</button>
           </div>
           <p id="implementation-filter-summary" class="filter-summary" role="status" aria-live="polite"></p>
@@ -286,7 +304,7 @@
               <small>Dark mode uses a darker workspace and panels.</small>
             </div>
             <div class="panel">
-              <div class="panel-heading"><div><h2>Notifications and reminders</h2><p>Send implementation updates and due-date reminders to workspace members by email.</p></div></div>
+              <div class="panel-heading"><div><h2>Notifications and reminders</h2><p>Send implementation updates and due-date reminders to workspace members, and quiet-customer escalations to backup contacts.</p></div></div>
               <p id="notifications-demo-note" class="empty-state" hidden>Sample preview: settings are saved locally; no email is sent.</p>
               <form id="notification-settings-form" class="inline-form vertical">
                 <label class="check-field"><input id="notifications-email-enabled" type="checkbox"> Enable email notifications</label>

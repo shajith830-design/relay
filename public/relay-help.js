@@ -6,14 +6,23 @@ function relayHelpReply(message) {
   if (/^(?:h+i+|hello+|hey+|hiya|howdy)(?:\s+ray)?[!.?,\s]*$/.test(question)) {
     return "Hi! I’m Ray, your Relay guide. What are you working on today—setting up a process, starting a customer implementation, or collecting customer information?";
   }
-  if (/^(how are you|how's it going|how is it going|how are things)[!.?,\s]*$/.test(question)) {
-    return "I’m here and ready to help with Relay. What would you like to get done?";
+  if (/^(?:good morning|morning|good afternoon|afternoon|good evening|evening|hey there|hi there|hello there|what(?:'|’)s up|whats up|what(?:'|’)s new|whats new|yo|sup|are you there|you there)(?:[,\s]+ray)?[!.?,\s]*$/.test(question)) {
+    return "Hi! I’m here and ready to help with Relay. What are you working on?";
   }
-  if (/^(thanks|thank you|thanks ray|thank you ray|thx)[!.?,\s]*$/.test(question)) {
+  if (/^(how are you|how are you doing|how's it going|how is it going|how are things|how have you been|how's your day|how is your day|how's your day going|how is your day going)[!.?,\s]*$/.test(question)) {
+    return "I’m doing well and ready to help with Relay. What would you like to get done?";
+  }
+  if (/^(?:thanks?(?:\s+(?:so much|a lot|ray|for (?:your|the) help))?|thank you(?:\s+(?:so much|ray|for (?:your|the) help))?|thx)[!.?,\s]*$/.test(question)) {
     return "You’re welcome! If you get stuck with a Relay workflow, just ask.";
   }
-  if (/^(bye|goodbye|see you|talk later)[!.?,\s]*$/.test(question)) {
+  if (/^(bye|goodbye|see you|see ya|talk later)[!.?,\s]*$/.test(question)) {
     return "Goodbye! I’ll be here if you need help with Relay.";
+  }
+  if (/^can i ask (?:you )?(?:a question|something)[?.!,\s]*$/.test(question)) {
+    return "Of course—ask away. I can help with Relay workflows and how to use its features.";
+  }
+  if (/^(?:ok|okay|got it|makes sense|cool|great|nice|sounds good|perfect)[!.?,\s]*$/.test(question)) {
+    return "Glad that helped. Ask me whenever you’re ready for the next step.";
   }
   if (/password.{0,35}(reset|recover|forgot)|(?:reset|recover|forgot).{0,35}password/.test(question)) {
     return "On the sign-in screen, choose Forgot your password? and follow the one-time recovery link sent to your account email. If password recovery is not enabled for your Relay deployment, contact Relay support.";
@@ -35,6 +44,54 @@ function relayHelpReply(message) {
   }
   if (/(?:relay.{0,35}(?:price|pricing|cost|subscription)|(?:price|pricing|cost|subscription).{0,35}relay|₹|rupee)/.test(question)) {
     return "Relay offers Starter at ₹2,999 per month (3 team members, 5 active implementations, 3 templates) and Growth at ₹3,999 per month (10 members, 20 active implementations, unlimited templates, plus prerequisites, blocker tracking, and template history/restore). Prices are before applicable taxes. Custom limits and pricing are agreed in advance. See the Pricing page for details.";
+  }
+  if (/(import|migrat|move|bring|transfer).{0,45}(spreadsheet|excel|csv|customer|task|process|workflow|data)|(spreadsheet|excel|csv).{0,45}(import|migrat|move|bring|transfer)/.test(question)) {
+    return "Relay does not currently import onboarding processes, customers, or tasks from spreadsheets. Rebuild your workflow in Process map, check it, then save it as a template. Relay can export portfolio summaries to CSV, but that export is not an import format.";
+  }
+  if (/\b(trial|try relay|evaluate relay)\b|\b(before|without)\s+inviting\b/.test(question)) {
+    return "You can explore Relay’s public Sample Workspace before inviting your team; it contains fictional records and saves changes only in your browser. It is not a production workspace or a free-trial account. For a guided evaluation, book a demo or contact Relay.";
+  }
+  if (/(?:first.{0,35}(?:customer|client).{0,35}(?:launch|onboard|implementation|setup)|(?:best|how).{0,25}(?:start|set up).{0,25}(?:first|customer))/.test(question)) {
+    return "For a first launch, map your repeatable steps in Process map, run the readiness check, and save the checked workflow as a template. Then start an implementation from that template, assign owners and due dates, add only needed customer-information requests, and share its private link.";
+  }
+  if (/(?:change|edit|update|reschedule|reassign).{0,45}(?:task|step|due date|owner)|(?:task|step).{0,45}(?:change|edit|update|reschedule|reassign)/.test(question)) {
+    return "Open Implementations, select the customer, and edit the task to update its status, assignee, or due date. Growth and Custom also support blocker details and next actions. Task titles and instructions come from the copied workflow; changing the process or template is for future implementations and does not rewrite existing ones.";
+  }
+  if (/(?:who|which teammate|who's|who is).{0,35}(?:own|responsib|assigned).{0,35}(?:next|task|action)|(?:next|task|action).{0,35}(?:owner|assigned|responsib)/.test(question)) {
+    return "Open Implementations and select the customer to see each task’s assignee, status, and due date. The assignee is responsible for that task; if it is unassigned, open the task and assign a teammate. I can’t see your workspace’s live assignments.";
+  }
+  if (/(?:overdue|past due).{0,45}(?:all|across|every|customers|portfolio)|(?:all|across|every|portfolio).{0,45}(?:overdue|past due)/.test(question)) {
+    return "Open Implementations and set Needs attention to Overdue to find overdue tasks across customers. Overview also summarizes work needing attention, and the portfolio CSV export includes overdue-task counts. I can’t see your live workspace data.";
+  }
+  if (/(?:change|edit|update|promote|demote).{0,35}(?:member|teammate|user).{0,25}role|(?:change|edit|update|promote|demote).{0,35}role|(?:remove|delete).{0,35}(?:member|teammate|user)/.test(question)) {
+    return "Relay currently offers Owner and Member roles, but the workspace UI does not let an owner change an existing member’s role or remove that member. Owners can revoke pending invitations. For an existing member change, contact Relay support; members can leave by deleting their own account.";
+  }
+  if (/(?:what happens|when|if).{0,35}(?:teammate|member|owner).{0,35}(?:leav|delet|remov)|(?:teammate|member|owner).{0,35}(?:leav|delet|remov).{0,35}(?:work|task|workspace)/.test(question)) {
+    return "If a member deletes their account, they leave shared workspaces and their assigned tasks become unassigned; the shared workspace and its records remain for other members. An owner must transfer ownership to a remaining member before deleting their account.";
+  }
+  if (/(?:what can|what does|what are).{0,40}\b(?:owner|member)\b.{0,30}\b(?:do|manage|permissions?)\b|what permissions?.{0,30}\b(?:owner|member)\b|(?:difference|differ).{0,25}\b(?:owner|member)\b|\b(?:owner|member)\b.{0,25}\b(?:difference|permissions?)\b/.test(question)) {
+    return "Owners can invite teammates, revoke pending invitations, change workspace notification settings, and connect or disconnect integrations. Members can work in the workspace but cannot invite others or manage those owner-only settings. Relay currently has Owner and Member roles.";
+  }
+  if (/\b(?:reach|hit|exceed|maximum|max|limit|full|capacity|seat)\b.{0,40}\b(?:plan|workspace|member|seat|implementation|template|limit)\b|\b(?:plan|workspace|member|seat|implementation|template)\b.{0,40}\b(?:limit|full|maximum|max|capacity)\b|how many.{0,30}\b(?:members?|seats|implementations?|templates)\b|\b(?:add|create)\b.{0,25}\b(?:more|another|extra)\b.{0,15}\b(?:members?|teammates?|seats|implementations?|templates)\b/.test(question)) {
+    return "Starter includes up to 3 members, 5 active implementations, and 3 templates; Growth includes up to 10 members, 20 active implementations, and unlimited templates. Custom limits are agreed in advance. If you reach a limit, review the Pricing page or contact Relay about changing plans; completing an implementation or removing an unused template may also free capacity.";
+  }
+  if (/(?:change|upgrade|downgrade|cancel|renew).{0,35}(?:plan|subscription|billing|workspace)|(?:plan|subscription|billing).{0,35}(?:change|upgrade|downgrade|cancel|renew)/.test(question)) {
+    return "Plan changes and cancellation are handled by contacting Relay; there is no self-service billing or cancellation control in the workspace. Check the Pricing page for plan details. Your confirmed billing, renewal, cancellation terms, and any taxes should be provided before payment.";
+  }
+  if (/(?:custom|bespoke).{0,30}(?:plan|price|pricing|limit)|(?:plan|price|pricing|limit).{0,30}(?:custom|bespoke)/.test(question)) {
+    return "Relay offers a Custom plan with team-member, active-implementation, and template limits agreed in advance, plus Growth features. Contact Relay through the Contact page to discuss your requirements; pricing and terms are confirmed in writing before purchase.";
+  }
+  if (/(invoice|receipt|billing document|tax invoice|bill me|billing details)/.test(question)) {
+    return "The workspace does not provide self-service invoices or billing documents. Contact Relay to confirm available invoicing and billing arrangements before purchase; applicable taxes and the total should also be confirmed before payment.";
+  }
+  if (/(?:where|how).{0,35}(?:submit|send|enter).{0,40}(?:information|answer|details)|(?:where|how).{0,35}(?:information|answer|details).{0,35}(?:submit|send|enter)/.test(question)) {
+    return "Open the private customer-information link shared by your implementation team. Enter the requested details in the form and choose Send information. If you do not have the link, ask the team that invited you.";
+  }
+  if (/(?:upload|attach|attachment|file|document).{0,40}(?:customer|client|portal|information|answer)|(?:customer|client|portal|information|answer).{0,40}(?:upload|attach|attachment|file|document)/.test(question)) {
+    return "Relay’s customer portal supports typed information fields and selected customer-visible tasks, but it does not support file uploads or attachments. If your private link is still active, you can reopen it to update saved answers and submit again. Ask your implementation team how to send any needed files, and never send passwords or other secrets through the portal.";
+  }
+  if (/(?:change|edit|update|correct).{0,35}(?:answer|response|information|details|field)|(?:answer|response|information|details).{0,35}(?:change|edit|update|correct).{0,35}(?:later|already sent|submitted)?/.test(question)) {
+    return "If your private customer link is still available, reopen it to see your saved answers, make changes, and submit again. If the link no longer works, contact the implementation team that sent it and ask for help.";
   }
   if (/(?:\bprocess map\b|\bprocess maps\b|\bprocess\b.{0,20}\bmap\b)/.test(question)
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {
@@ -82,9 +139,45 @@ function relayHelpReply(message) {
   if (/(live|current|my |our )?.{0,30}(customer|implementation|task|workspace).{0,30}(status|progress|data|details)|what is blocked|what is overdue/.test(question)) {
     return "I can’t see your workspace data. Open Overview for a summary, or open Implementations and select a customer to review task owners, due dates, blockers, prerequisites, and customer responses.";
   }
-  if (/(account|workspace).{0,35}(delete|deletion|remove)|(?:delete|deletion|remove).{0,35}(account|workspace)/.test(question)
-    && /(customer information|customer form|customer link|submission|requirements)/.test(question)) {
-    return "For account deletion, open Settings and review the workspace impact; an owner must transfer ownership before deleting. For customer onboarding, define requests in Customer information, then create and share a private link from the implementation.";
+  if (/\b(?:delete|remove|erase|clear|discard|trash)\b/.test(question)) {
+    if (/\b(?:help|ray)\b.{0,25}\b(?:chat|conversation|history|messages?)\b|\b(?:chat|conversation|history|messages?)\b.{0,25}\b(?:help|ray)\b/.test(question)) {
+      return "Open Ray and choose Clear my help history. This removes your saved Ray conversations from your account.";
+    }
+    if (/\b(?:account|workspace)\b/.test(question)) {
+      return "For account deletion, open Settings → Delete your Relay account, review the workspace impact, enter your password, and type DELETE. If you’re the only workspace member, that workspace and its customer data are deleted too. For a shared workspace you own, transfer ownership first; the workspace remains for its members. Relay has no separate workspace-delete control.";
+    }
+    if (/\b(?:invitation|invite)\b/.test(question)) {
+      return "A workspace owner can open Settings → Workspace team, find the pending invitation, and choose Revoke. Accepted invitations are now members; the workspace does not currently have a control for an owner to remove an existing member.";
+    }
+    if (/\b(?:customer|portal|private)\s+(?:information\s+)?link\b|\b(?:old|expired)\s+link\b/.test(question)) {
+      return "Open the customer’s implementation, then choose Rotate customer link. This invalidates the old link and creates a replacement; share the new link only with the intended customer. It does not delete the implementation or its saved answers.";
+    }
+    if (/\bcustomer\s+(?:information|info|data)\b/.test(question)
+      && !/\b(?:request|form|field|answer|response|submission)\b/.test(question)) {
+      return "Do you mean removing a Customer information request or deleting one saved customer answer? Deleting a request removes all of its saved responses; Relay has no control to delete just one answer. Tell me which one you mean and I’ll guide you.";
+    }
+    if (/\b(?:customer|client)\s+(?:information|info|data)\s+(?:request|form|field)\b|\b(?:information|info)\s+request\b|\b(?:customer form|requirement|request field)\b/.test(question)) {
+      return "Open Customer information, find the request, and choose Delete. This permanently deletes the request and its saved customer responses, so check that you no longer need those answers before confirming.";
+    }
+    if (/\b(?:process|workflow)\s+(?:map\s+)?(?:step|task)\b|\b(?:step|task)\b.{0,30}\b(?:process map|workflow)\b/.test(question)) {
+      return "In Process map, open the process and choose Delete beside the step. This also removes prerequisite links that use that step. It changes the reusable process; saved templates and existing customer implementations keep their copied steps.";
+    }
+    if (/\b(?:template|saved template)\b/.test(question)) {
+      return "Open Templates and choose Delete template. Relay only allows deleting a template that is not used by an existing customer implementation; deleting a template never deletes customer implementations.";
+    }
+    if (/\b(?:process map|workflow|process)\b/.test(question)) {
+      return "In Process map, find the map and choose Delete process. If saved templates use it, delete those templates first. A template used by an existing customer implementation cannot be deleted, and deleting a process map does not delete customer work.";
+    }
+    if (/\b(?:implementation|customer|client|customer record|onboarding)\b/.test(question)) {
+      return "Relay currently has no workspace control to delete an individual customer implementation or its copied tasks. If it’s a duplicate or test record that must be removed, contact Relay support. Deleting its template will not delete the implementation.";
+    }
+    if (/\b(?:answer|response|submission|customer data)\b/.test(question)) {
+      return "Relay has no control to delete one saved customer answer by itself. A customer can update an answer through their active private link. Deleting the related Customer information request removes that request’s saved responses, so use that only if all of those responses should be removed.";
+    }
+    if (/\b(?:step|task)\b/.test(question)) {
+      return "Do you mean a step in a reusable Process map or a task in an existing customer implementation? Process-map steps can be deleted from Process map; Relay does not currently let you delete an individual task from an existing implementation.";
+    }
+    return "What would you like to delete—a process map, process step, template, customer-information request, customer implementation, customer link, invitation, or your account? Relay can delete some of these, while others need a different action or Relay support.";
   }
   if (/(where|how).{0,40}(see|check|find|know).{0,40}(progress|status|next step|what.*next)/.test(question)) {
     return "Open Overview for a summary of implementations and items needing attention. To see the next step for one customer, open Implementations, select that customer, and review task status, owners, due dates, blockers, prerequisites, and missing information.";
@@ -92,7 +185,10 @@ function relayHelpReply(message) {
   if (/(what should|what do|what would).{0,35}(i|we).{0,20}(ask|collect|request|get).{0,35}(customer|client)/.test(question)) {
     return "Ask only for information needed to complete the implementation. In Customer information, add a clear request, explain why it is needed, choose a response type, and mark it required only if the work depends on it. Never request passwords or payment details.";
   }
-  if (/(customer|client).{0,35}(cannot|can't|unable to|doesn't|does not).{0,25}(open|use|submit|access).{0,35}(link|form|information)?|(?:link|form).{0,35}(expired|invalid|not working)/.test(question)) {
+  if (/\bmy\b(?!\s+(?:customer|client)).{0,20}\b(?:link|form)\b.{0,35}(?:expired|invalid|not working|doesn.?t work|does not work|won.?t open|will not open)/.test(question)) {
+    return "Contact the implementation team that sent your link and ask them to check it or create a replacement. A replacement invalidates the old link, so use only the newest link they provide.";
+  }
+  if (/(customer|client).{0,35}(cannot|can't|unable to|doesn't|does not).{0,25}(open|use|submit|access).{0,35}(link|form|information)?|(?:link|form).{0,35}(expired|invalid|not working|doesn.?t work|does not work|won.?t open|will not open)/.test(question)) {
     return "Open the customer’s implementation and create a replacement customer link. This invalidates the old link, so send the new one only to the intended customer. If it still fails, contact Relay support.";
   }
   if (/(how|when).{0,30}(know|mark|consider|set).{0,30}(onboard|implementation|customer).{0,30}(complete|ready)|(?:complete|ready).{0,30}(onboard|implementation|customer)/.test(question)) {
@@ -114,9 +210,6 @@ function relayHelpReply(message) {
   if (/(appearance|theme|dark mode|accent|color)/.test(question)) {
     return "Open Settings to choose light or dark mode and an accent color. Relay saves those appearance preferences to your account.";
   }
-  if (/(delete|deletion|remove).{0,30}(account|workspace)|(?:account|workspace).{0,30}(delete|deletion|remove)/.test(question)) {
-    return "Open Settings and review the effect on each workspace before deleting your account. If you own a shared workspace, choose another member as its new owner first.";
-  }
   if (/(change|update|refresh|edit|restore).{0,40}template.{0,50}(existing|current|already|affect|implementation|plan)|template.{0,50}(existing implementation|existing plan|already started|future implementation)|(?:existing|current|already-created|already created).{0,40}(implementation|plan|customer work)/.test(question)) {
     return "Refreshing a template changes the version used by future implementations. Growth and Custom plans keep revision history and allow restoring an earlier version. Existing implementations keep their copied task plans and are not changed by template updates.";
   }
@@ -129,10 +222,10 @@ function relayHelpReply(message) {
   if (/(process|map|step|readiness|check)/.test(question)) {
     return "Open Process map, create a process, and add ordered steps with instructions, responsible roles, and any prerequisites. Run the setup check before saving it as a reusable template.";
   }
-  if (/(what can you do|what can you help|who are you|what is relay|what does relay|how do i|how can i|help|start)/.test(question)) {
-    return "I’m Ray, Relay’s built-in product guide. I can help with process maps, templates, customer implementation tasks, customer-information requests, and workspace settings. Which one are you working on?";
+  if (/(what can you do|what can you help|who are you|what is relay|what does relay|can you help me|help me get started|^help$)/.test(question)) {
+    return "I’m Ray, Relay’s built-in product guide. I can help with process maps, templates, customer implementation tasks, customer-information requests, workspace settings, and safe deletion or cleanup steps. What are you trying to do?";
   }
-  return "I can help with Relay workflows, templates, customer implementations, requested information, and workspace settings. I don’t have a matching built-in answer yet—what are you trying to do in Relay?";
+  return "I don’t have a matching built-in answer yet, and I don’t want to guess. Tell me what you’re trying to do and which Relay section or button you’re looking at. I can guide you through process maps, templates, customer work, customer information, team settings, plans, and supported deletion steps; I can’t see private workspace data or perform changes for you. For account-specific or billing help, contact Relay support.";
 }
 
 if (typeof module !== "undefined" && module.exports) {

@@ -72,7 +72,7 @@
     ],
     implementations: [{
       id: 9040, template_id: 9020, customer_name: "Acme Example Co.", template_name: "Standard onboarding",
-      created_at: new Date().toISOString(), has_customer_link: true,
+      created_at: dateOffset(-5), has_customer_link: true, escalation_email: "", escalation_delay_days: 5,
       steps: [
         {
           id: 9041, title: "Confirm project goals", description: "Agree on success measures and the project owner.",
@@ -149,6 +149,9 @@
     const steps = implementation.steps;
     const open = steps.filter((step) => step.status !== "done");
     const missing = implementation.requirements.filter((item) => item.required && !item.value.trim());
+    const quietCustomerDays = Math.max(0, Math.floor(
+      (Date.now() - Date.parse(implementation.created_at)) / 86400000
+    ));
     const blocked = open.filter((step) => step.is_blocked);
     const overdue = open.filter((step) => step.due_at && step.due_at < dateOffset(0));
     const waiting = open.filter((step) => step.waiting_on);
@@ -164,6 +167,8 @@
       unowned_step_names: unowned.map((step) => step.title).join(", "),
       missing_inputs: missing.length,
       missing_input_names: missing.map((item) => item.name).join(", "),
+      quiet_customer_days: quietCustomerDays,
+      quiet_customer: missing.length > 0 && quietCustomerDays >= 3,
       invalid_inputs: 0,
       invalid_input_names: "",
       blocked_steps: blocked.length,
@@ -620,6 +625,19 @@
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)$/)) && method === "GET") {
       return Promise.resolve(responseForImplementation(findImplementation(match[1])));
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/customer-escalation$/)) && method === "PATCH") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      const email = String(body.escalationEmail || "").trim().toLowerCase();
+      const delay = Number(body.escalationDelayDays);
+      if (email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        || !Number.isInteger(delay) || delay < 3 || delay > 30) {
+        return Promise.reject(new Error("Enter a valid backup contact email and an escalation delay from 3 to 30 days."));
+      }
+      implementation.escalation_email = email;
+      implementation.escalation_delay_days = delay;
+      return Promise.resolve({ escalationEmail: email, escalationDelayDays: delay });
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/customer-link$/)) && method === "POST") {
       const implementation = findImplementation(match[1]);

@@ -698,9 +698,25 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   const implementationId = start.data.implementation.id;
   const customerToken = start.data.customerPortalToken;
   const createdImplementation = await request(`/api/product/implementations/${implementationId}`, { cookie: ownerCookie });
+  assert.equal(createdImplementation.data.implementation.escalation_email, "");
+  assert.equal(createdImplementation.data.implementation.escalation_delay_days, 5);
   assert.equal(createdImplementation.data.implementation.steps[0].assignee_user_id, ownerId);
   assert.equal(createdImplementation.data.implementation.steps[1].assignee_user_id, teammateId);
   assert.equal(createdImplementation.data.implementation.steps[1].assignee_email, "teammate@relaytest.example");
+  const savedEscalation = await request(`/api/product/implementations/${implementationId}/customer-escalation`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { escalationEmail: "backup@acme.example", escalationDelayDays: 7 }
+  });
+  assert.equal(savedEscalation.response.status, 200);
+  assert.equal(savedEscalation.data.escalationEmail, "backup@acme.example");
+  assert.equal(savedEscalation.data.escalationDelayDays, 7);
+  const invalidEscalation = await request(`/api/product/implementations/${implementationId}/customer-escalation`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { escalationEmail: "not-an-email", escalationDelayDays: 7 }
+  });
+  assert.equal(invalidEscalation.response.status, 400);
 
   const initialCustomerForm = await request(`/api/product/customer/${customerToken}`);
   assert.equal(initialCustomerForm.response.status, 200);

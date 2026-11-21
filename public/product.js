@@ -652,6 +652,9 @@ function blockerSummary(implementation) {
   if (implementation.missing_inputs > 0) {
     reasons.push(`Missing or invalid information: ${implementation.missing_input_names}`);
   }
+  if (implementation.quiet_customer) {
+    reasons.push(`Waiting on the customer for ${implementation.quiet_customer_days} days`);
+  }
   if (implementation.unowned_steps > 0) {
     reasons.push(`Open tasks without an owner: ${implementation.unowned_step_names}`);
   }
@@ -673,6 +676,7 @@ function implementationNeedsAttention(implementation, filter = "yes") {
   const attention = {
     blocked: implementation.blocked_steps > 0,
     overdue: implementation.overdue_steps > 0,
+    quiet: implementation.quiet_customer,
     waiting: implementation.waiting_steps > 0,
     missing: implementation.missing_inputs > 0,
     unassigned: implementation.unowned_steps > 0
@@ -700,6 +704,7 @@ function renderAttentionBadges(implementation) {
   const issues = [
     ["blocked", "Blocked", features.blockers ? implementation.blocked_steps : 0, implementation.blocked_step_names],
     ["overdue", "Overdue", implementation.overdue_steps, implementation.overdue_step_names],
+    ["quiet", "Waiting on customer", implementation.quiet_customer ? implementation.quiet_customer_days : 0, implementation.quiet_customer ? `${implementation.quiet_customer_days} days without a customer update` : ""],
     ["waiting", "Waiting", features.dependencies ? implementation.waiting_steps : 0, implementation.waiting_step_names],
     ["missing", "Info missing", implementation.missing_inputs, implementation.missing_input_names],
     ["unassigned", "Unassigned", implementation.unowned_steps, implementation.unowned_step_names]
@@ -714,7 +719,7 @@ function renderOverview() {
   const activeCount = state.data.usage?.activeImplementations ?? implementations.length;
   const features = state.data.plan?.features || {};
   const needsAttention = implementations.filter((item) => item.missing_inputs > 0 || item.unowned_steps > 0
-    || item.overdue_steps > 0 || (features.blockers && item.blocked_steps > 0)
+    || item.overdue_steps > 0 || item.quiet_customer || (features.blockers && item.blocked_steps > 0)
     || (features.dependencies && item.waiting_steps > 0)).length;
   document.getElementById("overview-metrics").innerHTML = [
     ["Active implementations", activeCount, "Customer journeys in progress"],
@@ -1153,6 +1158,19 @@ async function openImplementation(implementationId) {
   } else {
     linkBox.innerHTML = `<strong>Customer information link</strong><br>Create a private link for this customer to submit the information you requested.<br><button class="text-button" type="button" data-create-customer-link>Create customer link</button>`;
   }
+  linkBox.insertAdjacentHTML("beforeend", `
+    <form class="inline-form vertical customer-escalation-form">
+      <div class="field">
+        <label for="customer-escalation-email">Backup customer contact</label>
+        <input id="customer-escalation-email" type="email" maxlength="254" value="${escapeHtml(implementation.escalation_email || "")}" placeholder="backup@example.com">
+      </div>
+      <div class="field">
+        <label for="customer-escalation-delay">Escalate after (days)</label>
+        <input id="customer-escalation-delay" type="number" min="3" max="30" step="1" value="${escapeHtml(implementation.escalation_delay_days ?? 5)}" required>
+      </div>
+      <small>Relay flags silence after 3 days. If required information is still missing after this delay, it emails the backup contact. Email notifications and a configured sender are required.</small>
+      <button class="button secondary" type="submit">Save backup contact</button>
+    </form>`);
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
   return true;
 }
@@ -1167,6 +1185,22 @@ async function refreshWorkspace() {
 
 authTabs.login.addEventListener("click", () => setAuthMode("login"));
 authTabs.signup.addEventListener("click", () => setAuthMode("signup"));
+function setPasswordVisibility(button, isVisible) {
+  const input = document.getElementById(button.dataset.passwordToggle);
+  input.type = isVisible ? "text" : "password";
+  button.setAttribute("aria-label", isVisible ? "Hide password" : "Show password");
+  button.setAttribute("aria-pressed", String(isVisible));
+  button.querySelectorAll("svg").forEach((icon, index) => {
+    icon.hidden = index !== Number(isVisible);
+  });
+}
+
+document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const input = document.getElementById(button.dataset.passwordToggle);
+    setPasswordVisibility(button, input.type === "password");
+  });
+});
 document.getElementById("forgot-password").addEventListener("click", () => {
   document.getElementById("reset-email").value = document.getElementById("auth-email").value;
   showPasswordResetPanel("password-reset-request");
@@ -1194,8 +1228,9 @@ document.getElementById("password-reset-request-form").addEventListener("submit"
 
 document.getElementById("password-reset-complete-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const form = event.currentTarget;
   const status = document.getElementById("password-reset-complete-status");
-  const button = event.currentTarget.querySelector('button[type="submit"]');
+  const button = form.querySelector('button[type="submit"]');
   const password = document.getElementById("reset-password").value;
   if (password !== document.getElementById("reset-password-confirm").value) {
     status.textContent = "The passwords do not match.";
@@ -1213,7 +1248,9 @@ document.getElementById("password-reset-complete-form").addEventListener("submit
     });
     state.resetToken = "";
     window.history.replaceState(null, "", window.location.pathname);
-    event.currentTarget.reset();
+    document.getElementById("reset-password").value = "";
+    document.getElementById("reset-password-confirm").value = "";
+    form.querySelectorAll("[data-password-toggle]").forEach((toggle) => setPasswordVisibility(toggle, false));
     setAuthMode("login");
     authStatus.textContent = result.message;
   } catch (error) {
@@ -2059,6 +2096,27 @@ document.getElementById("requirement-list").addEventListener("click", async (eve
     showToast("Customer information request deleted.");
   } catch (error) {
     showError(error);
+  }
+});
+
+document.getElementById("customer-link-box").addEventListener("submit", async (event) => {
+  const form = event.target.closest(".customer-escalation-form");
+  if (!form) return;
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  setFormBusy(form);
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/customer-escalation`, {
+      method: "PATCH",
+      body: {
+        escalationEmail: form.querySelector("#customer-escalation-email").value,
+        escalationDelayDays: Number(form.querySelector("#customer-escalation-delay").value)
+      }
+    });
+    await refreshWorkspace();
+    showToast("Backup customer contact saved.");
+  } catch (error) {
+    failForm(form, error);
   }
 });
 

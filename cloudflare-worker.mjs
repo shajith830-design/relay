@@ -6,6 +6,7 @@ import removeHelpConsentsMigration from "./migrations/003_remove_help_consents.s
 import workspacePlansMigration from "./migrations/004_workspace_plans.sql";
 import inquiryContactFieldsMigration from "./migrations/005_inquiry_contact_fields.sql";
 import customerPortalMigration from "./migrations/006_customer_portal_notifications_integrations.sql";
+import customerEscalationMigration from "./migrations/007_customer_contact_escalation.sql";
 
 const backendPaths = [
   "/api",
@@ -49,7 +50,8 @@ async function getBackendHandler(env) {
     "003_remove_help_consents.sql": removeHelpConsentsMigration,
     "004_workspace_plans.sql": workspacePlansMigration,
     "005_inquiry_contact_fields.sql": inquiryContactFieldsMigration,
-    "006_customer_portal_notifications_integrations.sql": customerPortalMigration
+    "006_customer_portal_notifications_integrations.sql": customerPortalMigration,
+    "007_customer_contact_escalation.sql": customerEscalationMigration
   };
 
   handlerPromise ??= (async () => {

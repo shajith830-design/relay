@@ -38,11 +38,37 @@ test("sample workspace previews portfolio health, notification settings, and int
   const { adapter } = makeDemoAdapter();
   const workspace = await adapter.request("/api/product/workspace");
   const implementation = workspace.implementations.find((item) => item.id === 9040);
-
   assert.equal(implementation.blocked_steps, 1);
   assert.equal(implementation.overdue_steps, 1);
+  assert.equal(implementation.quiet_customer, true);
+  assert.equal(implementation.quiet_customer_days >= 3, true);
+  assert.equal(implementation.escalation_email, "");
+  assert.equal(implementation.escalation_delay_days, 5);
   assert.match(implementation.projected_completion, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(workspace.notificationSettings.email_enabled, false);
+
+  const savedEscalation = await adapter.request("/api/product/implementations/9040/customer-escalation", {
+    method: "PATCH",
+    body: { escalationEmail: "  backup@acme.example ", escalationDelayDays: 7 }
+  });
+  assert.equal(savedEscalation.escalationEmail, "backup@acme.example");
+  assert.equal(savedEscalation.escalationDelayDays, 7);
+  assert.equal(
+    (await adapter.request("/api/product/implementations/9040")).implementation.escalation_email,
+    "backup@acme.example"
+  );
+  assert.equal(
+    (await adapter.request("/api/product/implementations/9040")).implementation.escalation_delay_days,
+    7
+  );
+  await assert.rejects(adapter.request("/api/product/implementations/9040/customer-escalation", {
+    method: "PATCH",
+    body: { escalationEmail: "not-an-email", escalationDelayDays: 7 }
+  }), /valid backup contact email/);
+  await assert.rejects(adapter.request("/api/product/implementations/9040/customer-escalation", {
+    method: "PATCH",
+    body: { escalationEmail: "", escalationDelayDays: 2 }
+  }), /delay from 3 to 30 days/);
 
   const savedSettings = await adapter.request("/api/product/notifications", {
     method: "PATCH",
@@ -175,6 +201,28 @@ test("workspace views are siblings so each navigation target can render independ
     }
     sections.push(viewId || null);
   }
+});
+
+test("password reset can reveal passwords and resets the form after submission", () => {
+  const publicDir = path.join(__dirname, "..", "public");
+  const productHtml = readFileSync(path.join(publicDir, "product.html"), "utf8");
+  const productScript = readFileSync(path.join(publicDir, "product.js"), "utf8");
+  const resetSubmit = productScript.match(
+    /document\.getElementById\("password-reset-complete-form"\)\.addEventListener\("submit", async \(event\) => \{[\s\S]*?\n\}\);/
+  )?.[0];
+
+  assert.match(productHtml, /data-password-toggle="reset-password"/);
+  assert.match(productHtml, /data-password-toggle="reset-password-confirm"/);
+  assert.ok(resetSubmit);
+  assert.match(resetSubmit, /const form = event\.currentTarget;/);
+  assert.match(resetSubmit, /document\.getElementById\("reset-password"\)\.value = "";/);
+  assert.match(resetSubmit, /document\.getElementById\("reset-password-confirm"\)\.value = "";/);
+  assert.doesNotMatch(resetSubmit, /\.reset\(/);
+  assert.doesNotMatch(resetSubmit, /event\.currentTarget\.reset\(\)/);
+  assert.match(productScript, /button\.setAttribute\("aria-pressed", String\(isVisible\)\)/);
+  const productCss = readFileSync(path.join(publicDir, "product.css"), "utf8");
+  assert.match(productCss, /\.toast \{[^}]*bottom: 82px;/);
+  assert.match(productCss, /\.toast \{ right: 12px; bottom: 72px;/);
 });
 
 test("local customer links work across tabs, validate submissions, and rotate", async () => {
