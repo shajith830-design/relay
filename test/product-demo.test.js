@@ -109,6 +109,7 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(homePage, /class="hero-project-photo"/);
   assert.match(homePage, /relay-home-hero\.svg/);
   assert.match(homePage, /Relay onboarding workspace showing launch readiness, next actions, and customer setup progress/);
+  assert.match(homePage, /class="hero-logo" src="assets\/Futuristic%20RA%20Tech%20Monogram%20Logo\.png"/);
   assert.match(homePage, /relay-home-(?:readiness|ownership|customer|process)\.svg/);
   assert.doesNotMatch(homePage, /relay-preview-|sample workspace overview|real screens from Relay/i);
   for (const obsolete of [
@@ -128,7 +129,9 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(homePage, /Built by the founder/);
   assert.match(homePage, /three months of Relay access/i);
   assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-overview.mp4")));
+  const heroImage = readFileSync(path.join(publicDir, "assets", "relay-home-hero.svg"), "utf8");
   assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-hero.svg")));
+  assert.doesNotMatch(heroImage, /LIVE WORKSPACE/i);
   for (const illustration of ["readiness", "ownership", "customer", "process"]) {
     assert.ok(existsSync(path.join(publicDir, "assets", `relay-home-${illustration}.svg`)));
   }
