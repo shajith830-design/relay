@@ -1843,7 +1843,7 @@ function installProductRoutes(app, db, isProduction) {
     if (!process) return sendError(res, 404, "Process not found.");
     const steps = await (processSteps(processId));
     const findings = [];
-    if (steps.length === 0) findings.push("Add at least one step before handing over this process.");
+    if (steps.length === 0) findings.push("Add at least one step before testing this process or saving it as a template. One step is enough to start.");
     steps.forEach((step, index) => {
       if (!step.description) findings.push(`Step ${index + 1} (“${step.title}”) needs a short instruction.`);
       if (!step.owner) findings.push(`Step ${index + 1} (“${step.title}”) needs an owner.`);

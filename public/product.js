@@ -829,16 +829,12 @@ function renderPlanSummary() {
 }
 
 function applyPlanGates() {
+  updateSaveTemplateButton();
   const features = state.data.plan?.features;
   if (!features) return;
   for (const element of document.querySelectorAll("[data-growth-only]")) {
     element.hidden = !features[element.dataset.growthOnly];
   }
-  const templateLimit = state.data.plan.templateLimit;
-  const templateFull = templateLimit !== null && templateLimit !== undefined && state.data.templates.length >= templateLimit;
-  const saveTemplate = document.getElementById("save-template");
-  saveTemplate.disabled = templateFull;
-  saveTemplate.title = templateFull ? "Template limit reached. Upgrade your plan or remove an unused template." : "";
   for (const button of document.querySelectorAll("[data-start-template]")) {
     button.disabled = state.data.plan.templateLimit !== null && state.data.plan.templateLimit !== undefined
       && state.data.templates.length >= state.data.plan.templateLimit;
@@ -853,6 +849,31 @@ function applyPlanGates() {
   capNotice.textContent = activeFull
     ? `Your plan allows ${activeLimit} active implementations. Complete an implementation or upgrade the plan to start another.`
     : "";
+}
+
+function updateSaveTemplateButton() {
+  const templateLimit = state.data.plan?.templateLimit;
+  const templateFull = templateLimit !== null && templateLimit !== undefined
+    && state.data.templates.length >= templateLimit;
+  const selectedProcess = state.data.processes.find((process) => process.id === state.selectedProcessId);
+  const processChecked = state.process?.checked === true && selectedProcess?.checked === true;
+  const saveTemplate = document.getElementById("save-template");
+  saveTemplate.disabled = templateFull || !processChecked;
+  saveTemplate.title = templateFull
+    ? "Template limit reached. Upgrade your plan or remove an unused template."
+    : processChecked ? "" : "Run a successful process check before saving a template.";
+}
+
+function hasUnsavedProcessDraft() {
+  return dirtyScopes.has(document.getElementById("process-meta-form"))
+    || dirtyScopes.has(document.getElementById("step-form"));
+}
+
+function showUnsavedProcessDraftNotice() {
+  const result = document.getElementById("process-test-result");
+  result.hidden = false;
+  result.classList.add("warning");
+  result.textContent = "Save or cancel your unsaved process details or step before testing or saving a template. Your draft is still here.";
 }
 
 function renderImplementationTable(implementations, compact = false) {
@@ -955,10 +976,7 @@ async function loadProcess(processId) {
   document.getElementById("process-actions").hidden = false;
   const result = document.getElementById("process-test-result");
   result.hidden = true;
-  document.getElementById("save-template").disabled = !process.checked;
-  document.getElementById("save-template").title = process.checked
-    ? ""
-    : "Run a successful process check before saving a template.";
+  updateSaveTemplateButton();
   const dependencies = document.getElementById("step-dependencies");
   const availableDependencies = process.steps.filter((step) => step.id !== state.editingStepId);
   dependencies.innerHTML = availableDependencies.map((step) =>
@@ -985,7 +1003,7 @@ async function loadProcess(processId) {
           <button class="text-button" type="button" data-delete-step="${step.id}">Delete</button>
         </div>
       </article>`).join("")
-    : `<div class="empty-state"><strong>This process map has no steps yet</strong><p>Add the first task your team completes for a new customer. Include clear instructions and a responsible role.</p><button class="button secondary" type="button" data-workflow-action="focus-step">Add the first step</button></div>`;
+    : `<div class="empty-state"><strong>This process map has no steps yet</strong><p>Add one task your team completes for a new customer, with clear instructions and a responsible role. One step is enough to start; you can add more later.</p><button class="button secondary" type="button" data-workflow-action="focus-step">Add the first step</button></div>`;
   const templateScope = document.getElementById("requirement-template");
   const selectedScope = templateScope.value;
   templateScope.innerHTML = '<option value="">Every implementation</option>' + state.data.templates
@@ -1836,6 +1854,7 @@ document.getElementById("delete-process").addEventListener("click", () => {
 
 document.getElementById("test-process").addEventListener("click", async () => {
   if (!state.selectedProcessId) return showError(new Error("Choose a process to test."));
+  if (hasUnsavedProcessDraft()) return showUnsavedProcessDraftNotice();
   try {
     const { check, findings, stepsChecked, handover } = await api(`/api/product/processes/${state.selectedProcessId}/test`, {
       method: "POST",
@@ -1851,11 +1870,10 @@ document.getElementById("test-process").addEventListener("click", async () => {
       ? `Workflow check passed: ${stepsChecked} steps have instructions, responsible roles, valid prerequisites, and an ordered schedule.<ol>${handover.map((step) => `<li><strong>${escapeHtml(step.title)}</strong> — ${escapeHtml(step.stage)} · ${escapeHtml(step.owner)} · due ${step.dueOffsetDays} days after start<br>${escapeHtml(step.description)}${step.dependsOn.length ? `<br>After: ${escapeHtml(step.dependsOn.join(", "))}` : ""}</li>`).join("")}</ol><button class="text-button" type="button" data-copy-handover>Copy handover guide</button>`
       : `<strong>Setup needs attention.</strong><ul>${findings.map((finding) => `<li>${escapeHtml(finding)}</li>`).join("")}</ul>`;
     state.process.checked = check.result === "ready";
-    document.getElementById("save-template").disabled = !state.process.checked;
-    document.getElementById("save-template").title = state.process.checked
-      ? ""
-      : "Fix the check findings and run the check again before saving a template.";
-    await loadWorkspace();
+    const processSummary = state.data.processes.find((process) => process.id === state.selectedProcessId);
+    if (processSummary) processSummary.checked = state.process.checked;
+    updateSaveTemplateButton();
+    renderOverview();
     showToast(check.result === "ready" ? "Setup check passed." : "Setup check found items to fix.", check.result !== "ready");
   } catch (error) {
     showError(error);
@@ -1864,6 +1882,7 @@ document.getElementById("test-process").addEventListener("click", async () => {
 
 document.getElementById("save-template").addEventListener("click", async () => {
   if (!state.selectedProcessId) return showError(new Error("Choose a process to save."));
+  if (hasUnsavedProcessDraft()) return showUnsavedProcessDraftNotice();
   const processName = document.getElementById("process-editor-title").textContent;
   try {
     await api("/api/product/templates", {

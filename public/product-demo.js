@@ -527,7 +527,7 @@
       const process = findProcess(match[1]);
       if (!process) return Promise.reject(new Error("Process not found."));
       const findings = [];
-      if (!process.steps.length) findings.push("Add at least one step before handing over this process.");
+      if (!process.steps.length) findings.push("Add at least one step before testing this process or saving it as a template. One step is enough to start.");
       process.steps.forEach((step, index) => {
         if (!step.description) findings.push(`Step ${index + 1} (“${step.title}”) needs a short instruction.`);
         if (!step.owner) findings.push(`Step ${index + 1} (“${step.title}”) needs an owner.`);

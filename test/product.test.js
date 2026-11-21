@@ -180,7 +180,7 @@ before(async () => {
   });
   await waitForServer();
   const initializedMigration = await testQuery("SELECT version FROM relay_schema_migrations");
-  assert.deepEqual(initializedMigration.rows.map((row) => row.version), [1, 2, 3, 4, 5]);
+  assert.deepEqual(initializedMigration.rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7]);
   const removedHelpConsentTable = await testQuery("SELECT to_regclass('product_help_consents') AS relation");
   assert.equal(removedHelpConsentTable.rows[0].relation, null);
 });
@@ -541,6 +541,15 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   const unstartedProcessState = await request("/api/product/workspace", { cookie: ownerCookie });
   assert.equal(unstartedProcessState.data.processes.find((process) => process.id === processId).steps_count, 0);
   assert.equal(unstartedProcessState.data.processes.find((process) => process.id === processId).checked, false);
+  const emptyProcessCheck = await request(`/api/product/processes/${processId}/test`, {
+    method: "POST",
+    cookie: ownerCookie,
+    body: {}
+  });
+  assert.equal(emptyProcessCheck.data.check.result, "needs_attention");
+  assert.deepEqual(emptyProcessCheck.data.findings, [
+    "Add at least one step before testing this process or saving it as a template. One step is enough to start."
+  ]);
   const addStep = await request(`/api/product/processes/${processId}/steps`, {
     method: "POST",
     cookie: ownerCookie,
