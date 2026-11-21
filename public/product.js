@@ -218,6 +218,9 @@ function scopeValues(scope) {
 function clearDirtyScope(scope) {
   dirtyScopes.delete(scope);
   dirtyScopeBaselines.delete(scope);
+  if (scope.id === "process-meta-form" || scope.id === "step-form") {
+    updateProcessActionButtons();
+  }
 }
 
 function confirmDiscardChanges() {
@@ -248,6 +251,7 @@ function confirmDiscardChanges() {
     dirtyScopeBaselines.delete(scope);
   }
   dirtyScopes.clear();
+  updateProcessActionButtons();
   return true;
 }
 
@@ -300,7 +304,14 @@ function updateDirtyScope(target) {
     dirtyScopes.set(scope, true);
     const status = formStatus(scope);
     status.setAttribute("role", "status");
-    status.textContent = "Unsaved changes.";
+    status.textContent = scope.id === "step-form"
+      ? "Unsaved changes. Save this step before testing the process."
+      : scope.id === "process-meta-form"
+        ? "Unsaved changes. Save process details before testing the process."
+        : "Unsaved changes.";
+  }
+  if (scope.id === "process-meta-form" || scope.id === "step-form") {
+    updateProcessActionButtons();
   }
 }
 
@@ -856,7 +867,8 @@ function updateSaveTemplateButton() {
   const templateFull = templateLimit !== null && templateLimit !== undefined
     && state.data.templates.length >= templateLimit;
   const selectedProcess = state.data.processes.find((process) => process.id === state.selectedProcessId);
-  const processChecked = state.process?.checked === true && selectedProcess?.checked === true;
+  const processChecked = state.process?.checked === true && selectedProcess?.checked === true
+    && !hasUnsavedProcessDraft();
   const saveTemplate = document.getElementById("save-template");
   saveTemplate.disabled = templateFull || !processChecked;
   saveTemplate.title = templateFull
@@ -873,7 +885,25 @@ function showUnsavedProcessDraftNotice() {
   const result = document.getElementById("process-test-result");
   result.hidden = false;
   result.classList.add("warning");
+  result.setAttribute("role", "status");
+  result.setAttribute("aria-live", "polite");
   result.textContent = "Save or cancel your unsaved process details or step before testing or saving a template. Your draft is still here.";
+}
+
+function updateProcessActionButtons() {
+  const hasDraft = hasUnsavedProcessDraft();
+  const testButton = document.getElementById("test-process");
+  const result = document.getElementById("process-test-result");
+  testButton.disabled = hasDraft;
+  testButton.title = hasDraft ? "Save or cancel your unsaved process changes before testing." : "";
+  if (hasDraft) {
+    showUnsavedProcessDraftNotice();
+  } else if (result.textContent === "Save or cancel your unsaved process details or step before testing or saving a template. Your draft is still here.") {
+    result.hidden = true;
+    result.classList.remove("warning");
+    result.textContent = "";
+  }
+  updateSaveTemplateButton();
 }
 
 function renderImplementationTable(implementations, compact = false) {
