@@ -77,6 +77,7 @@ test("marketing pages expose the sample demo and disclose current product bounda
   const demoPage = readFileSync(path.join(publicDir, "demo.html"), "utf8");
   const solutionsPage = readFileSync(path.join(publicDir, "features-services.html"), "utf8");
   const aboutPage = readFileSync(path.join(publicDir, "about.html"), "utf8");
+  const contactPage = readFileSync(path.join(publicDir, "contact.html"), "utf8");
   const pricingPage = readFileSync(path.join(publicDir, "pricing.html"), "utf8");
   const sitemapXml = readFileSync(path.join(publicDir, "sitemap.xml"), "utf8");
   const favicon = readFileSync(path.join(publicDir, "relayautomation-favicon.png"));
@@ -91,11 +92,23 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.doesNotMatch(sitemapXml, /dashboard\.html|customer\.html|relay-owner-console\.html/);
   assert.match(homePage, /product\.html\?demo=workspace/);
   assert.match(homePage, /Try the Sample Workspace/);
+  assert.match(homePage, /B2B SaaS customer onboarding/i);
+  assert.match(aboutPage, /B2B SaaS customer onboarding teams/i);
+  assert.match(solutionsPage, /B2B SaaS customer onboarding/i);
+  assert.match(demoPage, /B2B SaaS customer onboarding/i);
+  assert.match(contactPage, /B2B SaaS customer onboarding/i);
+  assert.doesNotMatch([homePage, aboutPage, solutionsPage, demoPage, contactPage, pricingPage].join("\n"), /lead recovery/i);
+  for (const generator of ["create_relay_marketing_video_2.py", "create_relay_campaign_2.py"]) {
+    const source = readFileSync(path.join(__dirname, "..", "scripts", generator), "utf8");
+    assert.match(source, /B2B SAAS CUSTOMER ONBOARDING/);
+    assert.doesNotMatch(source, /CUSTOMER OPS/i);
+  }
   assert.doesNotMatch(homePage, /No Login Required/i);
-  assert.match(homePage, /<video controls playsinline/);
-  assert.match(homePage, /relay-home-overview\.mp4/);
+  assert.doesNotMatch(homePage, /<video\b/i);
+  assert.doesNotMatch(homePage, /relay-home-overview\.mp4/);
+  assert.match(homePage, /class="hero-project-photo"/);
   assert.match(homePage, /relay-home-video-poster\.png/);
-  assert.match(homePage, /Open the video directly/);
+  assert.match(homePage, /Relay project workflow from signed customer agreement to go-live/);
   assert.match(homePage, /relay-home-(?:readiness|ownership|customer|process)\.svg/);
   assert.doesNotMatch(homePage, /relay-preview-|sample workspace overview|real screens from Relay/i);
   for (const obsolete of [

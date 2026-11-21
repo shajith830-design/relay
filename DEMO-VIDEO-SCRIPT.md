@@ -14,7 +14,7 @@
 
 ### 0:00–0:40 — Opening
 
-**On screen:** Start on the Relay homepage. Keep the hero in view. Fade in the title: “Relay — clearer customer implementations.”
+**On screen:** Start on the Relay homepage. Keep the hero in view. Fade in the title: “Relay — B2B SaaS customer onboarding.”
 
 **Narration:**
 “Welcome to Relay. In the next ten minutes, I’ll show how a SaaS team can map its customer onboarding process, turn that process into a reusable template, and track the work and information needed to move each implementation forward. We’ll also look at Ray, Relay’s built-in guide, and finish with how a client gets access after choosing a plan. This walkthrough uses Relay’s public sample workspace, so all customer and team records you’ll see are fictional.”
@@ -96,7 +96,7 @@
 **Narration:**
 “To recap: Relay helps teams map a repeatable customer implementation process, save it as a template, coordinate customer-specific tasks, request the information needed for setup, and see where follow-up may be required. Ray can guide users through supported Relay workflows. The public sample workspace is available to explore, while a paid client’s real workspace is provisioned separately after the plan is agreed. If you’d like to see how Relay fits your team’s onboarding process, use the Book a Demo or Contact link on relayautomation.tech. Thanks for watching.”
 
-**End card:** “Relay Automation” · “Customer implementation readiness” · `relayautomation.tech`
+**End card:** “Relay Automation” · “B2B SaaS customer onboarding” · `relayautomation.tech`
 
 ## Final quality check before publishing
 

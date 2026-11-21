@@ -108,8 +108,8 @@ def draw_brand(image, scene_time, accent):
     image.alpha_composite(LOGO_MARK, (64, 70))
     draw.text((205, 78), "Relay", font=font(42, True), fill=WHITE)
     draw.text((208, 126), "AUTOMATION", font=font(16, True), fill=MUTED)
-    rounded(draw, (790, 90, 1018, 144), 27, (24, 35, 55), (42, 51, 70))
-    draw.text((826, 105), "CUSTOMER OPS", font=font(17, True), fill=(226, 236, 252))
+    rounded(draw, (720, 90, 1018, 144), 27, (24, 35, 55), (42, 51, 70))
+    draw.text((869, 117), "B2B SAAS CUSTOMER ONBOARDING", font=font(13, True), fill=(226, 236, 252), anchor="mm")
 
 
 def draw_headline(image, lines, local_time, accent):
@@ -289,6 +289,8 @@ def draw_scene(scene_index, local_time, frame_index):
         draw.text((WIDTH // 2, 1550), "A clearer way to move customer work forward.", font=font(23), fill=MUTED, anchor="mm")
     elif scene_index == 1:
         draw_scattered_cards(image, local_time, accent)
+    elif scene_index == 2 and len(SCENES) == 3:
+        draw_close(image, local_time, accent)
     elif scene_index == 2:
         draw_portal(image, local_time, accent)
     elif scene_index == 3:

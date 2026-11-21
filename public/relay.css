@@ -468,10 +468,8 @@ h1::after {
 .home-page .hero-content { max-width: 1030px; text-align: center; }
 .home-page .hero-content > .eyebrow { margin-bottom: 14px; }
 .home-page .hero-content h1 { max-width: 950px; margin: 0 auto 26px; font-size: clamp(40px, 5.2vw, 64px); }
-.home-page .hero-video { max-width: 900px; margin: 0 auto 20px; }
-.hero-video video { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid #dbe3eb; border-radius: 16px; background: #0f172a; box-shadow: 0 24px 70px -38px rgb(15 23 42 / 42%); object-fit: cover; }
-.hero-video figcaption { margin-top: 9px; color: var(--muted); font-size: 12px; }
-.hero-video figcaption a { margin-left: 6px; color: #0369a1; font-weight: 700; text-underline-offset: 3px; }
+.home-page .hero-project-photo { max-width: 900px; margin: 0 auto 20px; }
+.hero-project-photo img { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid #dbe3eb; border-radius: 16px; background: #f8fafc; box-shadow: 0 24px 70px -38px rgb(15 23 42 / 42%); object-fit: cover; }
 .home-page .hero-description { max-width: 760px; margin: 0 auto; color: #52525b; font-size: 18px; }
 .home-page .hero-actions { justify-content: center; margin-top: 22px; }
 .home-page .hero-actions .button { min-height: 54px; padding-inline: 24px; }
