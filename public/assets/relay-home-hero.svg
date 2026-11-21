@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" fill="none">
+  <defs>
+    <linearGradient id="background" x1="120" y1="40" x2="1460" y2="860" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6FAFF"/>
+      <stop offset="1" stop-color="#E9F4FF"/>
+    </linearGradient>
+    <linearGradient id="progress" x1="454" y1="0" x2="934" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#0284C7"/>
+    </linearGradient>
+    <filter id="shadow" x="48" y="52" width="1504" height="820" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="16"/>
+      <feGaussianBlur stdDeviation="18"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix values="0 0 0 0 0.13 0 0 0 0 0.26 0 0 0 0 0.4 0 0 0 0.12 0"/>
+      <feBlend in2="BackgroundImageFix" result="effect1_dropShadow"/>
+      <feBlend in="SourceGraphic" in2="effect1_dropShadow" result="shape"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" rx="32" fill="url(#background)"/>
+  <circle cx="1420" cy="92" r="205" fill="#D9EEFF" fill-opacity=".52"/>
+  <circle cx="118" cy="812" r="190" fill="#DCEEFF" fill-opacity=".7"/>
+  <path d="M92 180H1508" stroke="#DCE6F0"/>
+  <g filter="url(#shadow)">
+    <rect x="90" y="78" width="1420" height="744" rx="28" fill="#fff"/>
+    <rect x="90.5" y="78.5" width="1419" height="743" rx="27.5" stroke="#D8E3EE"/>
+  </g>
+  <path d="M90 172H1510" stroke="#E8EEF5"/>
+  <rect x="126" y="104" width="48" height="48" rx="15" fill="#102B46"/>
+  <path d="M138 137V119h8.6c5.8 0 9 2.8 9 7.3 0 3-1.6 5.2-4.4 6.3l5.2 4.1h-7.5l-4.4-3.7h-.8v3.7H138Zm5.7-8.1h2.5c2.4 0 3.6-.9 3.6-2.6s-1.2-2.5-3.6-2.5h-2.5v5.1Z" fill="#fff"/>
+  <text x="188" y="129" fill="#102B46" font-family="Arial,sans-serif" font-size="21" font-weight="700">Relay</text>
+  <text x="188" y="148" fill="#647B92" font-family="Arial,sans-serif" font-size="10" font-weight="700" letter-spacing="1.5">CUSTOMER ONBOARDING</text>
+  <rect x="1292" y="105" width="124" height="40" rx="20" fill="#F1F6FA"/>
+  <circle cx="1312" cy="125" r="4" fill="#22A477"/>
+  <text x="1324" y="130" fill="#526A80" font-family="Arial,sans-serif" font-size="13" font-weight="700">LIVE WORKSPACE</text>
+  <circle cx="1453" cy="125" r="20" fill="#E4F1FF"/>
+  <text x="1453" y="130" fill="#1769AA" font-family="Arial,sans-serif" font-size="12" font-weight="700" text-anchor="middle">AC</text>
+  <path d="M355 172V822" stroke="#E8EEF5"/>
+  <rect x="112" y="203" width="220" height="47" rx="12" fill="#EAF5FF"/>
+  <rect x="129" y="219" width="14" height="14" rx="4" fill="#0284C7"/>
+  <path d="M133 226h6m-3-3v6" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+  <text x="157" y="232" fill="#145A8D" font-family="Arial,sans-serif" font-size="15" font-weight="700">Overview</text>
+  <g fill="#8092A4" font-family="Arial,sans-serif" font-size="15" font-weight="600">
+    <rect x="130" y="279" width="14" height="14" rx="4" stroke="#98A9B9" stroke-width="1.6"/>
+    <text x="157" y="292">Customers</text>
+    <path d="M130 340h15m-15 5h10" stroke="#98A9B9" stroke-width="1.6" stroke-linecap="round"/>
+    <text x="157" y="351">Workflows</text>
+    <circle cx="137" cy="401" r="7" stroke="#98A9B9" stroke-width="1.6"/>
+    <path d="M137 397v5l3 2" stroke="#98A9B9" stroke-width="1.5" stroke-linecap="round"/>
+    <text x="157" y="406">Tasks</text>
+    <path d="M130 452h15v12h-15z" stroke="#98A9B9" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="m133 460 3-3 3 2 3-4" stroke="#98A9B9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="157" y="463">Reports</text>
+  </g>
+  <path d="M112 502H332" stroke="#E8EEF5"/>
+  <rect x="130" y="529" width="184" height="104" rx="14" fill="#F7FAFD"/>
+  <circle cx="153" cy="555" r="10" fill="#E0F5EC"/>
+  <path d="m148 555 3 3 6-7" stroke="#16865F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="171" y="559" fill="#40576B" font-family="Arial,sans-serif" font-size="12" font-weight="700">YOUR NEXT STEP</text>
+  <text x="145" y="587" fill="#183752" font-family="Arial,sans-serif" font-size="13" font-weight="700">Review security</text>
+  <text x="145" y="609" fill="#8192A2" font-family="Arial,sans-serif" font-size="11">Due tomorrow</text>
+  <text x="130" y="779" fill="#91A0AE" font-family="Arial,sans-serif" font-size="11">ACME CLOUD · CUSTOMER</text>
+  <text x="400" y="220" fill="#74889A" font-family="Arial,sans-serif" font-size="13" font-weight="700" letter-spacing="1.2">CUSTOMER WORKSPACE</text>
+  <text x="400" y="260" fill="#102B46" font-family="Arial,sans-serif" font-size="30" font-weight="700">Acme Cloud onboarding</text>
+  <text x="400" y="284" fill="#718396" font-family="Arial,sans-serif" font-size="14">A clear view of what is done and what happens next.</text>
+  <rect x="1320" y="222" width="152" height="42" rx="12" fill="#fff" stroke="#D8E3EE"/>
+  <path d="M1340 243h13m-4-4 4 4-4 4" stroke="#47647E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1363" y="247" fill="#47647E" font-family="Arial,sans-serif" font-size="13" font-weight="700">Share update</text>
+  <rect x="400" y="310" width="630" height="208" rx="18" fill="#fff" stroke="#DCE6EF"/>
+  <text x="428" y="348" fill="#183752" font-family="Arial,sans-serif" font-size="17" font-weight="700">Launch readiness</text>
+  <text x="970" y="350" fill="#0284C7" font-family="Arial,sans-serif" font-size="20" font-weight="700" text-anchor="end">68%</text>
+  <rect x="428" y="369" width="574" height="9" rx="4.5" fill="#EAF1F7"/>
+  <rect x="428" y="369" width="391" height="9" rx="4.5" fill="url(#progress)"/>
+  <circle cx="428" cy="373.5" r="7" fill="#0284C7"/>
+  <circle cx="619" cy="373.5" r="7" fill="#0284C7"/>
+  <circle cx="811" cy="373.5" r="7" fill="#0284C7"/>
+  <circle cx="1002" cy="373.5" r="7" fill="#EAF1F7"/>
+  <g font-family="Arial,sans-serif" font-size="12" font-weight="700">
+    <text x="428" y="405" fill="#526A80">KICKOFF</text>
+    <text x="619" y="405" fill="#526A80" text-anchor="middle">SETUP</text>
+    <text x="811" y="405" fill="#526A80" text-anchor="middle">REVIEW</text>
+    <text x="1002" y="405" fill="#8A9AAA" text-anchor="end">GO-LIVE</text>
+  </g>
+  <path d="M428 426H1002" stroke="#EDF2F6"/>
+  <circle cx="440" cy="466" r="14" fill="#E6F6EF"/>
+  <path d="m434 466 4 4 8-9" stroke="#16865F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="466" y="463" fill="#183752" font-family="Arial,sans-serif" font-size="13" font-weight="700">2 of 3 setup milestones complete</text>
+  <text x="466" y="484" fill="#718396" font-family="Arial,sans-serif" font-size="12">The team has a shared view of remaining work.</text>
+  <rect x="1052" y="310" width="420" height="208" rx="18" fill="#fff" stroke="#DCE6EF"/>
+  <text x="1080" y="348" fill="#183752" font-family="Arial,sans-serif" font-size="17" font-weight="700">Next milestone</text>
+  <rect x="1335" y="329" width="108" height="27" rx="13.5" fill="#E6F6EF"/>
+  <circle cx="1351" cy="342.5" r="4" fill="#16865F"/>
+  <text x="1362" y="347" fill="#16865F" font-family="Arial,sans-serif" font-size="11" font-weight="700">ON TRACK</text>
+  <rect x="1080" y="375" width="52" height="52" rx="15" fill="#EFF7FF"/>
+  <path d="M1095 390h22v22h-22zM1095 397h22m-15-11v8m8-8v8" stroke="#2785C4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1148" y="396" fill="#183752" font-family="Arial,sans-serif" font-size="14" font-weight="700">Customer go-live</text>
+  <text x="1148" y="419" fill="#718396" font-family="Arial,sans-serif" font-size="12">Friday, November 28</text>
+  <path d="M1080 449H1444" stroke="#EDF2F6"/>
+  <text x="1080" y="479" fill="#718396" font-family="Arial,sans-serif" font-size="12">Owner</text>
+  <circle cx="1152" cy="475" r="12" fill="#E8EEFF"/>
+  <text x="1152" y="479" fill="#5967A4" font-family="Arial,sans-serif" font-size="9" font-weight="700" text-anchor="middle">JD</text>
+  <text x="1172" y="479" fill="#40576B" font-family="Arial,sans-serif" font-size="12" font-weight="700">Jordan Davis</text>
+  <rect x="400" y="540" width="630" height="246" rx="18" fill="#fff" stroke="#DCE6EF"/>
+  <text x="428" y="579" fill="#183752" font-family="Arial,sans-serif" font-size="17" font-weight="700">Next actions</text>
+  <text x="1002" y="579" fill="#0284C7" font-family="Arial,sans-serif" font-size="12" font-weight="700" text-anchor="end">VIEW ALL</text>
+  <path d="M428 600H1002M428 661H1002M428 722H1002" stroke="#EDF2F6"/>
+  <circle cx="445" cy="630" r="12" fill="#FFF2DF"/>
+  <path d="M445 623v7l5 3" stroke="#D58A25" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="469" y="627" fill="#243F57" font-family="Arial,sans-serif" font-size="13" font-weight="700">Review security questionnaire</text>
+  <text x="469" y="646" fill="#8493A2" font-family="Arial,sans-serif" font-size="11">Customer setup · Due tomorrow</text>
+  <rect x="893" y="616" width="84" height="27" rx="13.5" fill="#FFF6E8"/>
+  <text x="935" y="633" fill="#AC721F" font-family="Arial,sans-serif" font-size="10" font-weight="700" text-anchor="middle">IN REVIEW</text>
+  <circle cx="445" cy="691" r="12" fill="#E8F4FF"/>
+  <path d="m440 691 3 3 7-7" stroke="#2785C4" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="469" y="688" fill="#243F57" font-family="Arial,sans-serif" font-size="13" font-weight="700">Import customer records</text>
+  <text x="469" y="707" fill="#8493A2" font-family="Arial,sans-serif" font-size="11">Data migration · Due Nov 25</text>
+  <rect x="893" y="677" width="84" height="27" rx="13.5" fill="#EEF5FB"/>
+  <text x="935" y="694" fill="#567189" font-family="Arial,sans-serif" font-size="10" font-weight="700" text-anchor="middle">UP NEXT</text>
+  <circle cx="445" cy="752" r="12" fill="#E8F6EF"/>
+  <path d="m440 752 3 3 7-7" stroke="#16865F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="469" y="749" fill="#243F57" font-family="Arial,sans-serif" font-size="13" font-weight="700">Schedule team training</text>
+  <text x="469" y="768" fill="#8493A2" font-family="Arial,sans-serif" font-size="11">Enablement · Due Nov 27</text>
+  <rect x="1052" y="540" width="420" height="246" rx="18" fill="#fff" stroke="#DCE6EF"/>
+  <text x="1080" y="579" fill="#183752" font-family="Arial,sans-serif" font-size="17" font-weight="700">Customer setup</text>
+  <text x="1080" y="600" fill="#8292A1" font-family="Arial,sans-serif" font-size="12">Information and access</text>
+  <path d="M1080 619H1444M1080 674H1444M1080 729H1444" stroke="#EDF2F6"/>
+  <circle cx="1095" cy="646" r="11" fill="#E6F6EF"/>
+  <path d="m1091 646 3 3 6-7" stroke="#16865F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1117" y="651" fill="#40576B" font-family="Arial,sans-serif" font-size="12" font-weight="600">Workspace details</text>
+  <text x="1427" y="651" fill="#16865F" font-family="Arial,sans-serif" font-size="10" font-weight="700" text-anchor="end">RECEIVED</text>
+  <circle cx="1095" cy="701" r="11" fill="#E6F6EF"/>
+  <path d="m1091 701 3 3 6-7" stroke="#16865F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1117" y="706" fill="#40576B" font-family="Arial,sans-serif" font-size="12" font-weight="600">Technical contacts</text>
+  <text x="1427" y="706" fill="#16865F" font-family="Arial,sans-serif" font-size="10" font-weight="700" text-anchor="end">RECEIVED</text>
+  <circle cx="1095" cy="756" r="11" fill="#FFF4E4"/>
+  <path d="M1095 750v7m0 4h.01" stroke="#D58A25" stroke-width="1.8" stroke-linecap="round"/>
+  <text x="1117" y="761" fill="#40576B" font-family="Arial,sans-serif" font-size="12" font-weight="600">Security answers</text>
+  <text x="1427" y="761" fill="#B47A29" font-family="Arial,sans-serif" font-size="10" font-weight="700" text-anchor="end">NEEDS REVIEW</text>
+</svg>
