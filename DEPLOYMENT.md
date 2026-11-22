@@ -98,7 +98,7 @@ Use unique production credentials and rotate them if exposed. Never put secrets 
 
 ## JustOneCX
 
-The public JustOneCX key is embedded in `public/relay-justonecx.js`; it is designed for browser use. The SDK is included on the marketing pages and signed-in workspace, but not on the token-based customer portal, private admin pages, or local sample previews. It disables its chat widget in the workspace so it does not overlap with Ray.
+The public JustOneCX key is embedded in `public/relay-justonecx.js`; it is designed for browser use. The SDK is included on the marketing pages and signed-in workspace, but not on the token-based customer portal, private admin pages, token-bearing invite/reset links, or local sample previews. Its chat widget is disabled across Relay pages until its support settings and response-time message have been verified.
 
 1. In JustOneCX, add `https://relayautomation.tech` under **Settings → Developers → Domains & CORS**. Add the exact origin you use for local development if needed.
 2. The SDK connection does not create or publish tours, announcements, surveys, or help content. Configure and publish the experiences you want in JustOneCX. Website analytics for existing workspaces may need to be enabled under **Analytics → Website → Settings**.

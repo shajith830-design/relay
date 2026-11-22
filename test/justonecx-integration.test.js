@@ -57,6 +57,9 @@ test("JustOneCX is excluded from sample previews and configured for Relay produc
   assert.equal(workspace.scripts[0].dataset.disableChat, "true");
   assert.match(readFileSync(path.join(root, "public", "product.html"), "utf8"), /id="app-shell"[^>]*data-jcx-private/);
 
+  const marketing = loadBootstrap("/index.html");
+  assert.equal(marketing.scripts[0].dataset.disableChat, "true");
+
   const calls = [];
   workspace.window.JustOneCX = {
     async identify(...args) { calls.push(["identify", ...args]); },

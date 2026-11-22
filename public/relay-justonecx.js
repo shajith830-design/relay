@@ -7,7 +7,7 @@
 
   const publicKey = "pk_DG_Xs99WSKoO2bjcRhQ5IfsHgEXMUehm";
   const apiUrl = "https://api.justonecx.com";
-  const disableChat = /^\/(?:product)(?:\.html)?$/.test(window.location.pathname);
+  const disableChat = true;
   const script = document.createElement("script");
   script.src = "https://app.justonecx.com/sdk/justonecx-sdk.global.js";
   script.async = true;
