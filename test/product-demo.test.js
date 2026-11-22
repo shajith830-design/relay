@@ -152,7 +152,9 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(homePage, /one HubSpot pipeline, its Closed Won stage, and a Relay template/i);
   assert.match(homePage, /does not modify the original sales deal or import unrelated CRM records/i);
   assert.match(homePage, /customers use Relay’s secure portal and do not need HubSpot/i);
-  assert.match(homePage, /Built by the founder/);
+  assert.match(homePage, /<p class="eyebrow">Founder<\/p>/);
+  assert.match(homePage, /Mohamed Shajith/);
+  assert.match(homePage, /<a href="https:\/\/www\.linkedin\.com\/in\/mohamed-shajith-relay\/"[^>]*>LinkedIn<\/a>/);
   assert.match(homePage, /three months of Relay access/i);
   assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-overview.mp4")));
   const heroImage = readFileSync(path.join(publicDir, "assets", "relay-home-hero.svg"), "utf8");

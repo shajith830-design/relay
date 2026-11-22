@@ -85,16 +85,46 @@ function relayHelpReply(message) {
     return "Relay offers a Custom plan with team-member, active-implementation, and template limits agreed in advance, plus Growth features. Contact Relay through the Contact page to discuss your requirements; pricing and terms are confirmed in writing before purchase.";
   }
   if (/(invoice|receipt|billing document|tax invoice|bill me|billing details)/.test(question)) {
-    return "The workspace does not provide self-service invoices or billing documents. Contact Relay to confirm available invoicing and billing arrangements before purchase; applicable taxes and the total should also be confirmed before payment.";
+    return "Relay tracks budget, forecast, actual cost, margin notes, invoice status, and an invoice reference. It does not generate invoices, accept payments, connect to an accounting system, or reconcile revenue.";
   }
   if (/(?:where|how).{0,35}(?:submit|send|enter).{0,40}(?:information|answer|details)|(?:where|how).{0,35}(?:information|answer|details).{0,35}(?:submit|send|enter)/.test(question)) {
     return "Open the private customer-information link shared by your implementation team. Enter the requested details in the form and choose Send information. If you do not have the link, ask the team that invited you.";
   }
   if (/(?:upload|attach|attachment|file|document).{0,40}(?:customer|client|portal|information|answer)|(?:customer|client|portal|information|answer).{0,40}(?:upload|attach|attachment|file|document)/.test(question)) {
-    return "Relay’s customer portal supports typed information fields and selected customer-visible tasks, but it does not support file uploads or attachments. If your private link is still active, you can reopen it to update saved answers and submit again. Ask your implementation team how to send any needed files, and never send passwords or other secrets through the portal.";
+    return "Relay’s customer portal supports typed information fields, selected customer-visible tasks, messages, and PDF, PNG, or JPG uploads up to 5 MB each. An implementation can store up to 20 files and 25 MB total. Never upload passwords or other secrets.";
   }
   if (/(?:change|edit|update|correct).{0,35}(?:answer|response|information|details|field)|(?:answer|response|information|details).{0,35}(?:change|edit|update|correct).{0,35}(?:later|already sent|submitted)?/.test(question)) {
     return "If your private customer link is still available, reopen it to see your saved answers, make changes, and submit again. If the link no longer works, contact the implementation team that sent it and ask for help.";
+  }
+  if (/(team capacity|capacity plan|available capacity|weekly capacity|workload)/.test(question)) {
+    return "Open Settings → Team capacity to set a teammate’s available minutes for a week. Relay shows saved capacity plans beside the implementation tools. Capacity is planning data and should be kept current.";
+  }
+  if (/(time entr|billable|non-billable|hourly rate|logged time)/.test(question)) {
+    return "Open an implementation’s Delivery operations section and use Log time. Enter the work date, minutes, optional hourly rate, and whether the entry is billable or non-billable. Time entries can be deleted from the delivery summary.";
+  }
+  if (/(sow|statement of work|scope of work|stage gate|milestone|exclusion)/.test(question)) {
+    return "Open an implementation’s Delivery operations section to record SOW scope, milestones, exclusions, and the current stage gate: kickoff, configuration, testing, launch, hypercare, or complete.";
+  }
+  if (/(approval|approver|sign-off|sign off)/.test(question)) {
+    return "Open an implementation’s Delivery operations section and create an approval with a title, type, approver, and due date. The team can mark it approved or delete it. Approvals do not automatically notify the approver by email.";
+  }
+  if (/(timeline|calendar event|meeting|kickoff date|event)/.test(question)) {
+    return "Open an implementation’s Delivery operations section and add a timeline event with a title, start, optional end, type, and optional external link. Events can be deleted from the delivery summary.";
+  }
+  if (/(budget|forecast|actual cost|margin|invoice status|invoice reference)/.test(question)) {
+    return "Open an implementation’s Delivery operations section to record budget, forecast, actual cost, margin/risk notes, invoice status, and an invoice reference. Relay tracks this status but does not generate invoices, accept payments, or connect to accounting systems.";
+  }
+  if (/(launch readiness|success criteria|acceptance status|test plan|rollback|training status|go-live|support handoff|post-launch)/.test(question)) {
+    return "Open an implementation to save success criteria, test/acceptance plans, acceptance status, training status, go-live status, rollback plans, and post-launch support ownership. The customer portal can show the target launch date and published readiness details.";
+  }
+  if (/(stakeholder|procurement|security review|compliance|technical setup|adoption|early validation|blocker risk)/.test(question)) {
+    return "Use the implementation’s Launch readiness and stakeholder/risk sections to record stakeholders, procurement and security status, technical setup, change/adoption progress, early validation, and risks. Give each risk or blocker an owner, severity, due date, and next action.";
+  }
+  if (/(hubspot|closed won|crm handoff|sales deal)/.test(question)) {
+    return "A workspace owner can connect HubSpot, select one pipeline, its Closed Won stage, and a Relay template. Matching Closed Won deals start one Relay implementation; Relay deduplicates imports and does not modify the original sales deal. Live authorization and Closed Won polling require provider setup and testing.";
+  }
+  if (/(email reminder|reminder|email notification|overdue email|customer escalation)/.test(question)) {
+    return "Workspace owners can enable email notifications and choose reminder timing in Settings. Task reminders use due dates, and overdue tasks can be reminded daily. Customer escalation can email a backup customer contact after the configured quiet period. Resend and the scheduled event processor must be configured.";
   }
   if (/(?:\bprocess map\b|\bprocess maps\b|\bprocess\b.{0,20}\bmap\b)/.test(question)
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {

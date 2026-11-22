@@ -20,6 +20,15 @@ test("Ray responds naturally to common greetings", () => {
 
 test("Ray answers supported Relay workflows", () => {
   assert.match(relayHelpReply("How do I reset my password?"), /Forgot your password/);
+  assert.match(relayHelpReply("Can customers upload files?"), /PDF, PNG, or JPG.*5 MB/i);
+  assert.match(relayHelpReply("How do I log billable time?"), /Log time.*billable/i);
+  assert.match(relayHelpReply("How do I record an approval?"), /Delivery operations.*approval/i);
+  assert.match(relayHelpReply("How do I set team capacity?"), /Team capacity.*available minutes/i);
+  assert.match(relayHelpReply("What does the SOW field track?"), /SOW scope.*stage gate/i);
+  assert.match(relayHelpReply("How do I add a timeline event?"), /timeline event.*start/i);
+  assert.match(relayHelpReply("How do launch readiness and go-live status work?"), /success criteria.*go-live status/i);
+  assert.match(relayHelpReply("How does HubSpot Closed Won handoff work?"), /HubSpot.*pipeline.*Closed Won stage.*template/i);
+  assert.match(relayHelpReply("How do invoice status and margin tracking work?"), /budget.*forecast.*invoice status/i);
   assert.match(relayHelpReply("Does Relay connect to Slack?"), /HubSpot.*not connected today/i);
   assert.match(relayHelpReply("How do I add a process step?"), /Open Process map/);
   assert.match(relayHelpReply("How do I update a template without changing existing work?"), /Existing implementations.*not changed/i);
@@ -40,11 +49,11 @@ test("Ray answers additional client questions without promising unsupported feat
     ["What happens to work when a teammate leaves?", /assigned tasks become unassigned.*shared workspace.*remain/i],
     ["What happens if we reach our plan limits?", /Starter includes up to 3 members.*Growth includes up to 10 members.*Custom limits/i],
     ["How do I change or cancel my plan?", /contacting Relay.*no self-service billing or cancellation/i],
-    ["Can we get an invoice?", /does not provide self-service invoices.*Contact Relay/i],
+    ["Can we get an invoice?", /tracks budget.*invoice status.*does not generate invoices.*accept payments/i],
     ["Where do I submit the requested information?", /private customer-information link.*Send information/i],
     ["Can I change an answer I already sent?", /reopen it.*make changes, and submit again/i],
     ["Who should I contact if my link doesn’t work?", /Contact the implementation team.*create a replacement/i],
-    ["Can customers upload files or update information later?", /does not support file uploads or attachments.*update saved answers and submit again/i],
+    ["Can customers upload files or update information later?", /PDF, PNG, or JPG uploads up to 5 MB each.*20 files and 25 MB total/i],
     ["Can I add more team members?", /Starter includes up to 3 members.*Growth includes up to 10 members/i],
     ["How do I start a customer implementation?", /For a first launch.*start an implementation from that template/i],
     ["How many active implementations can we run?", /Starter includes up to 3 members.*5 active implementations.*Growth includes up to 10 members.*20 active implementations/i]
