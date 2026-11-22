@@ -175,7 +175,7 @@
             <h2>Build a process your team can reuse</h2>
             <p>Create a map, save each step, and check the workflow before turning it into a template. Your saved steps stay with the process.</p>
           </div>
-          <div class="process-intro-note"><strong>Simple, safe workflow</strong><span>Save one step at a time. A successful check unlocks template saving.</span></div>
+          <div class="process-intro-note"><strong>Simple, safe workflow</strong><span>Save one step at a time. A successful check unlocks template creation.</span></div>
         </div>
         <ol id="process-progress" class="process-progress" aria-label="Process setup progress"></ol>
         <div class="process-workspace">
@@ -200,26 +200,26 @@
                 <span id="process-step-count" class="process-step-count" hidden></span>
               </div>
               <form id="process-meta-form" class="process-details-form" hidden>
-                <details class="process-details">
-                  <summary><span>Process details</span><small>Edit the name or description</small></summary>
-                  <div class="process-details-content">
-                    <div class="process-details-fields">
-                      <div class="field"><label for="process-edit-name">Process name</label><input id="process-edit-name" maxlength="100" required></div>
-                      <div class="field"><label for="process-edit-description">Description</label><input id="process-edit-description" maxlength="500"></div>
-                    </div>
-                    <div class="process-details-actions">
-                      <button class="button secondary" type="submit">Save details</button>
-                      <button class="text-button danger-text" id="delete-process" type="button">Delete process map</button>
-                    </div>
+                <div class="process-section-heading process-details-heading">
+                  <div><h3>Process details</h3><p>Save the map name and purpose here. Save each step separately below.</p></div>
+                </div>
+                <div class="process-details-content">
+                  <div class="process-details-fields">
+                    <div class="field"><label for="process-edit-name">Process name</label><input id="process-edit-name" maxlength="100" required></div>
+                    <div class="field"><label for="process-edit-description">Description</label><input id="process-edit-description" maxlength="500"></div>
                   </div>
-                </details>
+                  <div class="process-details-actions">
+                    <button class="button secondary" type="submit">Save process</button>
+                    <button class="text-button danger-text" id="delete-process" type="button">Delete process map</button>
+                  </div>
+                </div>
               </form>
               <div class="process-section-heading">
-                <div><h3>Ordered steps</h3><p>Each step becomes a task when you start customer work.</p></div>
+                <div><h3>Process steps</h3><p>Save each step to keep it in this process. Steps stay in this order.</p></div>
               </div>
               <div id="process-step-list" class="step-list empty-state" tabindex="-1"><strong>No process selected</strong><p>Choose an existing process map or create your first one to start outlining the work.</p><button class="button secondary" type="button" data-workflow-action="create-process">Create a process map</button></div>
               <form id="step-form" class="subform process-step-form" hidden>
-                <div class="process-form-heading"><div><h3 id="step-form-heading">Add a step</h3><p>Use a clear action, instructions, and a responsible role. Save before checking the process.</p></div></div>
+                <div class="process-form-heading"><div><h3 id="step-form-heading">Add a step</h3><p>Fill in the step, then choose Save step. It will appear in the process above.</p></div></div>
                 <div class="process-step-fields">
                   <div class="field"><label for="step-title">Step name</label><input id="step-title" maxlength="120" placeholder="e.g. Confirm project goals" required></div>
                   <div class="field"><label for="step-owner">Responsible role</label><input id="step-owner" maxlength="120" placeholder="e.g. Implementation lead" required></div>
@@ -238,15 +238,15 @@
                   </div>
                 </div>
                 <div class="process-step-form-actions">
-                  <button class="button primary" id="step-submit" type="submit">Add step</button>
+                  <button class="button primary" id="step-submit" type="submit">Save step</button>
                   <button class="text-button" id="cancel-step-edit" type="button" hidden>Cancel edit</button>
                 </div>
               </form>
               <div id="process-actions" class="process-action-bar" hidden>
-                <div><strong>Ready for the next step?</strong><p id="process-action-help">Save your steps, then check the workflow before saving a template.</p></div>
+                <div><strong>Create a reusable template</strong><p id="process-action-help">Save your steps, check the process, then create the template.</p></div>
                 <div class="process-action-buttons">
                   <button class="button secondary" id="test-process" type="button">Check process</button>
-                  <button class="button primary" id="save-template" type="button">Save as template</button>
+                  <button class="button primary" id="save-template" type="button">Create template</button>
                 </div>
               </div>
               <div class="result-box" id="process-test-result" hidden></div>

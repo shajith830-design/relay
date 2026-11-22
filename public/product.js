@@ -577,7 +577,7 @@ function getNextWorkflowAction() {
   if (!state.data.processes.some((process) => process.checked)) {
     return { action: "check-process", label: "Check a process" };
   }
-  if (!state.data.templates.length) return { action: "save-template", label: "Save a template" };
+  if (!state.data.templates.length) return { action: "save-template", label: "Create a template" };
   return { action: "start-implementation", label: "Start an implementation" };
 }
 
@@ -600,11 +600,11 @@ function renderGettingStarted() {
       actionLabel: "Check a process"
     },
     {
-      title: "Save a reusable template",
+      title: "Create a reusable template",
       description: "A template is a checked snapshot that becomes the starting point for customer work.",
       complete: state.data.templates.length > 0,
       action: "save-template",
-      actionLabel: "Save a template"
+      actionLabel: "Create a template"
     },
     {
       title: "Start an implementation",
@@ -749,7 +749,7 @@ function renderOverview() {
     const copy = {
       "map-process": ["Start with your team's process", "Map the steps your team follows so Relay can check the workflow and turn it into a reusable template."],
       "check-process": ["Check your process", "Run a workflow check before saving it as a template."],
-      "save-template": ["Save a reusable template", "A template gives each customer a consistent starting point."],
+      "save-template": ["Create a reusable template", "A template gives each customer a consistent starting point."],
       "start-implementation": ["Start your first implementation", "Choose a template and enter the customer company to create a customer-specific work plan."]
     }[next.action];
     emptyState.innerHTML = emptyStateMarkup(copy[0], copy[1], next.label, next.action);
@@ -871,30 +871,39 @@ function updateSaveTemplateButton() {
   const hasSteps = Boolean(state.process?.steps?.length);
   const processChecked = state.process?.checked === true && selectedProcess?.checked === true
     && !hasDraft;
+  const hasTemplate = processChecked && hasTemplateForProcess(state.selectedProcessId);
   const saveTemplate = document.getElementById("save-template");
   saveTemplate.disabled = templateFull || !processChecked;
+  saveTemplate.textContent = hasTemplate ? "Create another template" : "Create template";
   saveTemplate.title = templateFull
     ? "Template limit reached. Upgrade your plan or remove an unused template."
-    : processChecked ? "" : "Run a successful process check before saving a template.";
+    : processChecked ? "" : "Save the process and at least one step, then check it before creating a template.";
   const actionHelp = document.getElementById("process-action-help");
   if (!state.selectedProcessId) {
-    actionHelp.textContent = "Choose or create a process map to get started.";
+    actionHelp.textContent = "Create or select a process map to get started.";
   } else if (hasDraft) {
-    actionHelp.textContent = "Save or cancel your current edits before checking or saving a template.";
+    actionHelp.textContent = "Save the process details or step you are editing before checking or creating a template.";
   } else if (!hasSteps) {
-    actionHelp.textContent = "Add and save at least one step. One step is enough to start.";
+    actionHelp.textContent = "Save at least one step before checking the process. One step is enough to start.";
   } else if (templateFull) {
     actionHelp.textContent = "Your workspace has reached its template limit.";
+  } else if (hasTemplate) {
+    actionHelp.textContent = "This process already has a template. Create another snapshot only if you need a separate version.";
   } else if (processChecked) {
-    actionHelp.textContent = "Check passed. This process is ready to save as a reusable template.";
+    actionHelp.textContent = "Check passed. Select Create template to make this process reusable for customers.";
   } else {
-    actionHelp.textContent = "Check your saved steps. Relay will explain anything that needs attention.";
+    actionHelp.textContent = "Save each step, then select Check process. A successful check enables Create template.";
   }
 }
 
 function hasUnsavedProcessDraft() {
   return dirtyScopes.has(document.getElementById("process-meta-form"))
     || dirtyScopes.has(document.getElementById("step-form"));
+}
+
+function hasTemplateForProcess(processId) {
+  return processId !== null && processId !== undefined
+    && state.data.templates.some((template) => String(template.process_id) === String(processId));
 }
 
 function renderProcessProgress() {
@@ -906,11 +915,12 @@ function renderProcessProgress() {
   const stepCount = process?.steps?.length ?? selectedProcess?.steps_count ?? selectedProcess?.steps?.length ?? 0;
   const hasDraft = hasUnsavedProcessDraft();
   const checked = process?.checked === true && selectedProcess?.checked === true && !hasDraft;
-  const currentStep = !state.selectedProcessId ? 0 : stepCount === 0 ? 1 : checked ? -1 : 2;
+  const templateCreated = checked && hasTemplateForProcess(state.selectedProcessId);
+  const currentStep = !state.selectedProcessId ? 0 : stepCount === 0 ? 1 : templateCreated ? -1 : 2;
   const steps = [
-    { title: "Create a process", detail: "Name the workflow" },
-    { title: "Add steps", detail: "Save the work in order" },
-    { title: "Check the process", detail: "Fix findings, then save a template" }
+    { title: "Create a process map", detail: "Name the workflow" },
+    { title: "Save process steps", detail: "Save the work in order" },
+    { title: "Create a template", detail: templateCreated ? "Template created" : checked ? "Ready to create" : "Check the process first" }
   ];
 
   container.innerHTML = steps.map((step, index) => {
@@ -932,10 +942,12 @@ function renderProcessProgress() {
   const subtitle = document.getElementById("process-editor-subtitle");
   if (process) {
     subtitle.textContent = !stepCount
-      ? "Start with one clear task. Add and save a step before checking this process."
+      ? "Save the process details above, then save at least one step below."
       : checked
-        ? "The check passed. You can save this workflow as a reusable template."
-        : "Your saved steps are here. Check the process when you’re ready.";
+        ? templateCreated
+          ? "This process has been checked and saved as a template."
+          : "The check passed. Create a template when you are ready to reuse this process."
+        : "Save any changes, then check the process before creating a template.";
   } else {
     subtitle.textContent = "Choose a map or create your first one to begin.";
   }
@@ -1077,7 +1089,7 @@ async function loadProcess(processId) {
   state.selectedProcessId = process.id;
   renderProcesses();
   document.getElementById("process-editor-title").textContent = process.name;
-  document.getElementById("step-form-heading").textContent = state.editingStepId ? "Edit step" : "Add a step";
+  document.getElementById("step-form-heading").textContent = state.editingStepId ? "Edit a step" : "Add a step";
   document.getElementById("process-meta-form").hidden = false;
   document.getElementById("process-edit-name").value = process.name;
   document.getElementById("process-edit-description").value = process.description || "";
@@ -1163,7 +1175,7 @@ function renderImplementations() {
     const next = getNextWorkflowAction();
     prerequisite.innerHTML = emptyStateMarkup(
       "A template is needed first",
-      "Templates are checked process snapshots. Create a process map, add its steps, run the check, then save it as a template.",
+      "Templates are checked process snapshots. Create a process map, save its steps, run the check, then create a template.",
       next.label,
       next.action
     );
@@ -1871,7 +1883,7 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
     document.getElementById("step-due-offset").value = "0";
     document.getElementById("step-customer-visible").checked = false;
     document.getElementById("step-form-heading").textContent = "Add a step";
-    document.getElementById("step-submit").textContent = "Add step";
+    document.getElementById("step-submit").textContent = "Save step";
     document.getElementById("cancel-step-edit").hidden = true;
     await loadProcess(state.selectedProcessId);
     await loadWorkspace();
@@ -1895,7 +1907,7 @@ document.getElementById("cancel-step-edit").addEventListener("click", () => {
   document.getElementById("step-due-offset").value = "0";
   document.getElementById("step-customer-visible").checked = false;
   document.getElementById("step-form-heading").textContent = "Add a step";
-  document.getElementById("step-submit").textContent = "Add step";
+  document.getElementById("step-submit").textContent = "Save step";
   document.getElementById("cancel-step-edit").hidden = true;
   if (state.selectedProcessId) loadProcess(state.selectedProcessId).catch(showError);
 });
@@ -1914,7 +1926,7 @@ document.getElementById("process-step-list").addEventListener("click", async (ev
     document.getElementById("step-stage").value = step.stage;
     document.getElementById("step-due-offset").value = step.due_offset_days;
     document.getElementById("step-customer-visible").checked = step.customer_visible === true;
-    document.getElementById("step-form-heading").textContent = "Edit step";
+    document.getElementById("step-form-heading").textContent = "Edit a step";
     [...document.querySelectorAll("#step-dependencies input")].forEach((input) => {
       input.disabled = Number(input.value) === step.id;
       input.checked = step.dependsOn.includes(Number(input.value));
@@ -2015,7 +2027,7 @@ document.getElementById("save-template").addEventListener("click", async () => {
     });
     await loadWorkspace();
     setView("templates");
-    showToast("Reusable template saved.");
+    showToast("Template created.");
   } catch (error) {
     showError(error);
   }

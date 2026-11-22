@@ -203,7 +203,7 @@ test("workspace views are siblings so each navigation target can render independ
   }
 });
 
-test("process map builder exposes guided setup and keeps its existing editor hooks", () => {
+test("process map builder separates creation, saving, checking, and template creation", () => {
   const publicDir = path.join(__dirname, "..", "public");
   const productHtml = readFileSync(path.join(publicDir, "product.html"), "utf8");
   const productScript = readFileSync(path.join(publicDir, "product.js"), "utf8");
@@ -215,9 +215,17 @@ test("process map builder exposes guided setup and keeps its existing editor hoo
     assert.match(productHtml, new RegExp(`id="${id}"`), `${id} must be present in the process builder`);
   }
   assert.match(productHtml, /class="process-workspace"/);
+  assert.match(productHtml, /type="submit">Create process map/);
+  assert.match(productHtml, /type="submit">Save process/);
+  assert.match(productHtml, /id="step-submit" type="submit">Save step/);
+  assert.match(productHtml, /id="test-process" type="button">Check process/);
+  assert.match(productHtml, /id="save-template" type="button">Create template/);
+  assert.doesNotMatch(productHtml, /<details class="process-details">/);
   assert.match(productScript, /function renderProcessProgress\(\)/);
   assert.match(productScript, /steps_count \?\? process\.steps\?\.length/);
-  assert.match(productScript, /step-form-heading"\)\.textContent = "Edit step"/);
+  assert.match(productScript, /function hasTemplateForProcess\(processId\)/);
+  assert.match(productScript, /saveTemplate\.textContent = hasTemplate \? "Create another template" : "Create template"/);
+  assert.match(productScript, /step-form-heading"\)\.textContent = "Edit a step"/);
 });
 
 test("password reset can reveal passwords and resets the form after submission", () => {
