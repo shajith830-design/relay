@@ -314,6 +314,15 @@ test("process map builder separates creation, saving, checking, and template cre
   assert.match(productScript, /steps_count \?\? process\.steps\?\.length/);
   assert.match(productScript, /function hasTemplateForProcess\(processId\)/);
   assert.match(productScript, /saveTemplate\.textContent = hasTemplate \? "Create another template" : "Create template"/);
+  const stepSubmitStart = productScript.indexOf('document.getElementById("step-form").addEventListener("submit"');
+  const stepSubmitEnd = productScript.indexOf('document.getElementById("cancel-step-edit")', stepSubmitStart);
+  const stepSubmitHandler = productScript.slice(stepSubmitStart, stepSubmitEnd);
+  const successfulSavePosition = stepSubmitHandler.indexOf("clearDirtyScope(form);");
+  assert.ok(successfulSavePosition > stepSubmitHandler.indexOf("await api("), "a successful step save must clear its dirty state");
+  assert.ok(successfulSavePosition < stepSubmitHandler.indexOf("form.reset();"), "clear the dirty state before reloading the saved process");
+  const saveProcessDetailsPosition = stepSubmitHandler.indexOf('finishForm(processMetaForm, "Saved.");');
+  const saveStepPosition = stepSubmitHandler.indexOf("const result = await api(`/api/product/processes/");
+  assert.ok(saveProcessDetailsPosition > -1 && saveProcessDetailsPosition < saveStepPosition, "save pending process details before reloading the saved step");
   assert.match(productScript, /step-form-heading"\)\.textContent = "Edit a step"/);
 });
 
@@ -322,8 +331,23 @@ test("workspace navigation is grouped and the overview routes to one next action
   const productHtml = readFileSync(path.join(publicDir, "product.html"), "utf8");
   const productScript = readFileSync(path.join(publicDir, "product.js"), "utf8");
 
-  assert.match(productHtml, /class="nav-group-label">Customer work/);
-  assert.match(productHtml, /class="nav-group-label">Reusable setup/);
+  const navItems = [...productHtml.matchAll(/<button class="nav-item[^"]*" data-view="([^"]+)"/g)]
+    .map((match) => match[1]);
+  assert.deepEqual(navItems, [
+    "overview",
+    "processes",
+    "templates",
+    "implementations",
+    "requirements",
+    "portfolio",
+    "integrations",
+    "settings",
+    "guide"
+  ]);
+  assert.match(productHtml, /class="nav-group-label">Dashboard/);
+  assert.match(productHtml, /class="nav-group-label">Onboarding workflow/);
+  assert.match(productHtml, /class="nav-group-label">Workspace settings/);
+  assert.match(productHtml, /class="nav-group-label">Help/);
   assert.match(productHtml, /id="mobile-nav-toggle"/);
   assert.match(productHtml, /id="sidebar-backdrop"/);
   assert.match(productHtml, /id="overview-primary-action"[^>]*data-workflow-action=/);

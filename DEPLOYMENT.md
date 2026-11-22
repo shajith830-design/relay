@@ -88,12 +88,22 @@ This is a low-cost pilot setup, not an uptime guarantee. Workers Free allows 100
 | `NOTIFICATIONS_CRON_SECRET` | Secret bearer token for the scheduled notification/event processor. |
 | `INTEGRATION_ENCRYPTION_KEY` | Base64-encoded random 32-byte AES key for connected-provider credentials. |
 | `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET` | HubSpot OAuth app credentials. |
+| `JUSTONECX_SECRET_KEY` | Optional JustOneCX server-side HMAC secret for verified user and workspace identification. Never expose it to the browser. |
 | `INQUIRY_NOTIFICATION_EMAIL` | Inbox for contact and demo inquiry notifications. |
 | `PUBLIC_BASE_URL` | Public HTTPS origin used in password recovery links. |
 | `TRUST_PROXY_HOPS` | Number of trusted reverse proxies in front of Relay. Configure only when appropriate for the host. |
 | Ray responses | Built-in Relay answer library; no external AI service or provider configuration is used. Ray has no per-plan message quota or history cap, but only answers topics covered by its curated knowledge. |
 
 Use unique production credentials and rotate them if exposed. Never put secrets in frontend configuration.
+
+## JustOneCX
+
+The public JustOneCX key is embedded in `public/relay-justonecx.js`; it is designed for browser use. The SDK is included on the marketing pages and signed-in workspace, but not on the token-based customer portal, private admin pages, or local sample previews. It disables its chat widget in the workspace so it does not overlap with Ray.
+
+1. In JustOneCX, add `https://relayautomation.tech` under **Settings → Developers → Domains & CORS**. Add the exact origin you use for local development if needed.
+2. The SDK connection does not create or publish tours, announcements, surveys, or help content. Configure and publish the experiences you want in JustOneCX. Website analytics for existing workspaces may need to be enabled under **Analytics → Website → Settings**.
+3. For signed-in user and workspace segmentation, copy the JustOneCX Secret key from **Settings → Developers** and store it as `JUSTONECX_SECRET_KEY` in Cloudflare Worker secrets. For local Node development, put it in `.env`, never in source control. Relay signs the internal IDs on the server and returns only the signatures to the authenticated browser session.
+4. Deploy the server change and confirm verified sign-ins arrive in JustOneCX before enabling **Require identity verification** under **Settings → Developers → Identity verification**. Do not enable the requirement before the deployed app is sending valid signatures.
 
 ## Manual paid workspace access
 

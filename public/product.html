@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="product.css">
   <script src="product-demo.js" defer></script>
   <script src="relay-help.js" defer></script>
+  <script src="relay-justonecx.js" defer></script>
   <script src="product.js" defer></script>
 </head>
 <body class="product-page">
@@ -90,7 +91,7 @@
     <p class="auth-foot">Need Relay for your team? <a href="demo.html">Book a demo</a> or <a href="contact.html">contact us</a>. <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
   </main>
 
-  <div id="app-shell" class="app-shell" hidden>
+  <div id="app-shell" class="app-shell" data-jcx-private hidden>
     <div class="local-demo-banner" id="local-demo-banner" role="status" hidden>
       Sample workspace · fictional data only · changes stay in this browser · customer-link samples can be shared across tabs · no Relay account or backend is used
     </div>
@@ -109,24 +110,25 @@
       <div class="workspace-label"><img class="workspace-avatar" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span id="workspace-name-display"></span></div>
       <nav class="side-nav" aria-label="Workspace">
         <div class="nav-group">
-          <span class="nav-group-label">Workspace</span>
+          <span class="nav-group-label">Dashboard</span>
           <button class="nav-item active" data-view="overview"><span aria-hidden="true">◫</span> Overview</button>
         </div>
         <div class="nav-group">
-          <span class="nav-group-label">Customer work</span>
-          <button class="nav-item" data-view="implementations"><span aria-hidden="true">◷</span> Implementations</button>
-          <button class="nav-item" data-view="portfolio"><span aria-hidden="true">◧</span> Team workload</button>
-        </div>
-        <div class="nav-group">
-          <span class="nav-group-label">Reusable setup</span>
+          <span class="nav-group-label">Onboarding workflow</span>
           <button class="nav-item" data-view="processes"><span aria-hidden="true">≋</span> Process maps</button>
           <button class="nav-item" data-view="templates"><span aria-hidden="true">▤</span> Templates</button>
+          <button class="nav-item" data-view="implementations"><span aria-hidden="true">◷</span> Implementations</button>
           <button class="nav-item" data-view="requirements"><span aria-hidden="true">✓</span> Customer information</button>
+          <button class="nav-item" data-view="portfolio"><span aria-hidden="true">◧</span> Team workload</button>
         </div>
         <div class="nav-group">
           <span class="nav-group-label">Workspace settings</span>
           <button class="nav-item" data-view="integrations"><span aria-hidden="true">⇄</span> Integrations</button>
           <button class="nav-item" data-view="settings"><span aria-hidden="true">⚙</span> Settings</button>
+        </div>
+        <div class="nav-group">
+          <span class="nav-group-label">Help</span>
+          <button class="nav-item" data-view="guide"><span aria-hidden="true">?</span> How to use Relay</button>
         </div>
       </nav>
       <div class="sidebar-bottom">
@@ -170,6 +172,80 @@
           <div id="overview-implementations" class="table-wrap"></div>
           <div id="overview-empty" class="empty-state" hidden></div>
         </div>
+      </section>
+
+      <section class="view" id="view-guide" aria-labelledby="guide-title">
+        <div class="section-intro">
+          <p class="eyebrow">Practical user guide</p>
+          <h2 id="guide-title">From your first workflow to a customer launch</h2>
+          <p>Relay helps your team define a repeatable onboarding process, reuse it for each customer, and keep the work and handoffs visible. Follow the steps in order, or jump to the section you need.</p>
+        </div>
+        <div class="guide-step-grid">
+          <section class="panel guide-step" aria-labelledby="guide-process-title">
+            <p class="guide-step-label">Step 1</p>
+            <h3 id="guide-process-title">Map your team's process</h3>
+            <p>Open <strong>Process maps</strong> and create a map with a name and purpose. Add the work in the order your team performs it. For each step, provide a clear name, instructions, responsible role, assigned teammate, stage, and due-after-start timing. Save each step.</p>
+            <p>For example: kickoff, customer setup, validation, and launch. Add prerequisites when one task must wait for another. Use the process check to catch missing instructions or ownership before you reuse the process.</p>
+            <button class="button secondary" type="button" data-go="processes">Open Process maps</button>
+          </section>
+          <section class="panel guide-step" aria-labelledby="guide-template-title">
+            <p class="guide-step-label">Step 2</p>
+            <h3 id="guide-template-title">Save a reusable template</h3>
+            <p>After the process check passes, choose <strong>Create template</strong>. A template is a reusable snapshot of that checked process. Use a name your team can recognize, such as "Standard SaaS onboarding".</p>
+            <p>If your approach changes later, update and check the process, then save a new template when you want a new starting point. Existing customer implementations are not rewritten when a template changes.</p>
+            <button class="button secondary" type="button" data-go="templates">Open Templates</button>
+          </section>
+          <section class="panel guide-step" aria-labelledby="guide-launch-title">
+            <p class="guide-step-label">Step 3</p>
+            <h3 id="guide-launch-title">Start a customer's implementation</h3>
+            <p>Open <strong>Implementations</strong>, choose a saved template, enter the customer company and contact details, and optionally set a target launch date. Relay creates a customer-specific work plan from the template.</p>
+            <p>Open the customer record to review the plan, assign work, keep task status and dates current, and maintain the customer launch plan. Invite named contacts to the customer portal when they need access.</p>
+            <button class="button secondary" type="button" data-go="implementations">Open Implementations</button>
+          </section>
+          <section class="panel guide-step" aria-labelledby="guide-info-title">
+            <p class="guide-step-label">Step 4</p>
+            <h3 id="guide-info-title">Request customer information safely</h3>
+            <p>In <strong>Customer information</strong>, create a specific request, explain why it is needed, choose the expected answer type, and apply it to every implementation or a particular template. Customers can respond through their private implementation link.</p>
+            <p>Only request information needed for onboarding. Never ask customers to submit passwords, payment-card details, or other secrets. Use the implementation's customer files area for supported project files.</p>
+            <button class="button secondary" type="button" data-go="requirements">Open Customer information</button>
+          </section>
+          <section class="panel guide-step" aria-labelledby="guide-delivery-title">
+            <p class="guide-step-label">Step 5</p>
+            <h3 id="guide-delivery-title">Keep delivery details together</h3>
+            <p>Inside an implementation, use <strong>Delivery operations</strong> to record SOW scope, milestones, exclusions, and stage gate; budget, forecast, actual cost, and invoice status; time entries; approval requests; and timeline events.</p>
+            <p>Use <strong>Launch readiness and handoff</strong> to document success criteria, testing, training, go-live status, stakeholders, and risks. These are tracking tools: Relay does not generate invoices, collect payments, or automatically configure a customer's software.</p>
+            <button class="button secondary" type="button" data-go="implementations">Open customer work</button>
+          </section>
+          <section class="panel guide-step" aria-labelledby="guide-monitor-title">
+            <p class="guide-step-label">Step 6</p>
+            <h3 id="guide-monitor-title">Review progress and workload</h3>
+            <p>Use <strong>Overview</strong> for a quick view of customer work and follow-ups. Open <strong>Team workload</strong> to review assigned open tasks and implementation health. In Implementations, search and filter by status, owner, or attention needed; export the portfolio summary when you need a CSV.</p>
+            <p>Estimated finish dates are directional indicators based on completed work, not delivery commitments. Keep task ownership and status up to date for the most useful view.</p>
+            <button class="button secondary" type="button" data-go="portfolio">Open Team workload</button>
+          </section>
+          <section class="panel guide-step" aria-labelledby="guide-connect-title">
+            <p class="guide-step-label">Step 7</p>
+            <h3 id="guide-connect-title">Configure your workspace</h3>
+            <p>Workspace owners can invite teammates in <strong>Settings</strong> and manage available connections in <strong>Integrations</strong>. If HubSpot is configured for your workspace, an owner can connect it and select the Closed Won pipeline, stage, and Relay template for onboarding handoff.</p>
+            <p>Email reminders and customer invitations require the email service to be configured for your workspace. Check the connection status in Relay; sample-workspace changes do not contact HubSpot or send email.</p>
+            <button class="button secondary" type="button" data-go="settings">Open Settings</button>
+          </section>
+          <section class="panel guide-step" aria-labelledby="guide-help-title">
+            <p class="guide-step-label">Any time</p>
+            <h3 id="guide-help-title">Ask Ray when you need a pointer</h3>
+            <p>Open Ray from the button in the lower corner and ask a question such as "How do I start an implementation?" or "What is a process map for?" Ray provides built-in Relay product guidance; it does not inspect your workspace or make changes for you.</p>
+            <p>For account-specific issues, contact Relay support. Never paste passwords, access tokens, or customer secrets into Ray or a customer-information request.</p>
+          </section>
+        </div>
+        <section class="panel guide-note" aria-labelledby="guide-sample-title">
+          <div class="panel-heading">
+            <div>
+              <h2 id="guide-sample-title">Using the Sample Workspace?</h2>
+              <p>It contains fictional example data. Changes are saved only in this browser and are not connected to a Relay account, database, HubSpot, or email delivery. Use your signed-in workspace for real customer work.</p>
+            </div>
+            <a class="button secondary" href="product.html?demo=workspace">Open Sample Workspace</a>
+          </div>
+        </section>
       </section>
 
       <section class="view" id="view-portfolio">

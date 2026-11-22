@@ -33,6 +33,7 @@
         <li>Relay uses account and workspace information to provide sign-in and implementation workflows.</li>
         <li>Password recovery uses an email delivery provider to send a one-time recovery link. Recovery tokens are stored as hashes and expire after 30 minutes.</li>
         <li>Inquiry submissions are stored in the Relay database. When configured, inquiry details are also sent to the service operator’s messaging destination for follow-up.</li>
+        <li>Relay loads JustOneCX on public marketing pages and the signed-in workspace to provide published product experiences and analytics when enabled in its workspace. Its SDK stores a random visitor ID in browser local storage and may process page paths, titles, referrers, screen size, click labels and links, and activity time. Website analytics do not capture form input values, and the signed-in workspace is marked private from click analytics. When identity verification is configured, Relay sends internal user and workspace IDs with server-generated HMAC signatures, plus role and plan; it does not send account email or name through those identity calls. JustOneCX chat may process messages visitors choose to submit on public pages. The SDK is not loaded on token-bearing invite or password-reset links, the customer portal, or local demo previews.</li>
         <li>Ray uses a built-in library of Relay product answers to respond to questions. Chat messages are not sent to an external AI service. For signed-in users, conversation history (up to 50 messages) is stored per account in the Relay database until the user clears it. Ray cannot access workspace records or customer implementation data.</li>
         <li>Relay does not ask customers to submit passwords, payment card data, or other secrets through setup forms.</li>
       </ul></article>
@@ -49,5 +50,6 @@
   <footer class="foot"><div class="wrap foot-inner"><a class="brand" href="index.html"><img src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="brand-name"><span class="brand-relay">Relay</span><span class="brand-automation">Automation</span></span></a><div class="foot-links"><a href="index.html">Home</a><a href="pricing.html">Pricing</a><a href="terms.html">Terms</a><a href="contact.html">Contact</a></div><span class="small-print">© 2026 Relay Automation. B2B SaaS customer onboarding.</span></div></footer>
   <script src="relay-nav.js" defer></script>
   <script src="relay-motion.js" defer></script>
+  <script src="relay-justonecx.js" defer></script>
 </body>
 </html>

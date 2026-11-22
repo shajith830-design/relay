@@ -11,6 +11,7 @@ const {
 const { makePasswordHash, checkPassword } = require("./product-auth");
 const { getPlanDetails } = require("./product-plans");
 const { relayHelpReply } = require("./public/relay-help");
+const { createJustOneCXIdentity } = require("./justonecx-identity");
 
 const SESSION_COOKIE = "relay_session";
 const SESSION_DAYS = 14;
@@ -1157,16 +1158,20 @@ function installProductRoutes(app, db, isProduction) {
     return next();
   }
 
-  app.get("/api/product/me", requireSession, (req, res) => res.json({
-    user: { id: req.product.userId, email: req.product.email },
-    workspace: {
-      id: req.product.workspaceId,
-      name: req.product.workspaceName,
-      role: req.product.role,
-      subscriptionExpiresAt: req.product.subscriptionExpiresAt,
-      plan: req.product.planDetails
-    }
-  }));
+  app.get("/api/product/me", requireSession, (req, res) => {
+    const justonecx = createJustOneCXIdentity(req.product.userId, req.product.workspaceId);
+    res.json({
+      user: { id: req.product.userId, email: req.product.email },
+      workspace: {
+        id: req.product.workspaceId,
+        name: req.product.workspaceName,
+        role: req.product.role,
+        subscriptionExpiresAt: req.product.subscriptionExpiresAt,
+        plan: req.product.planDetails
+      },
+      ...(justonecx ? { justonecx } : {})
+    });
+  });
 
   app.get("/api/product/account-deletion/workspaces", requireSession, async (req, res) => {
     const workspaces = await (database.prepare(`

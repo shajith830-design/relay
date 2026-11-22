@@ -42,7 +42,8 @@ async function getBackendHandler(env) {
     "INTEGRATION_ENCRYPTION_KEY",
     "HUBSPOT_CLIENT_ID",
     "HUBSPOT_CLIENT_SECRET",
-    "NOTIFICATIONS_CRON_SECRET"
+    "NOTIFICATIONS_CRON_SECRET",
+    "JUSTONECX_SECRET_KEY"
   ]) {
     if (env[key]) process.env[key] = env[key];
   }

@@ -165,6 +165,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .section-intro { max-width: 770px; }
 .section-intro h2 { margin: 0 0 7px; font-size: 22px; letter-spacing: -.04em; }
 .section-intro p { margin: 0; font-size: 13px; line-height: 1.7; }
+.guide-step-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); }
+.guide-step { display: grid; align-content: start; gap: 10px; }
+.guide-step-label { margin: 0; color: var(--blue-dark); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.guide-step h3 { margin: 0; font-size: 16px; letter-spacing: -.02em; }
+.guide-step p:not(.guide-step-label) { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.guide-step .button { justify-self: start; margin-top: 3px; }
+.guide-note .panel-heading { align-items: center; margin-bottom: 0; }
+.guide-note .panel-heading h2 { margin: 0; font-size: 16px; }
 .two-column { display: grid; min-width: 0; align-items: start; gap: 16px; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); }
 .process-intro { display: grid; max-width: none; align-items: center; gap: 20px; grid-template-columns: minmax(0, 1.4fr) minmax(230px, .6fr); }
 .process-intro h2 { margin: 5px 0 7px; }

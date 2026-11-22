@@ -50,6 +50,7 @@ const titles = {
   templates: ["Reuse what works", "Templates"],
   implementations: ["Run customer work", "Implementations"],
   requirements: ["Get customer-ready", "Customer information"],
+  guide: ["Learn Relay", "How to use Relay"],
   integrations: ["Connect your tools", "Integrations"],
   settings: ["Personalize your workspace", "Settings"]
 };
@@ -95,7 +96,10 @@ async function api(url, options = {}) {
   }
   if (!response.ok) {
     const error = new Error(result.error || "The request could not be completed.");
-    if (result.code === "subscription_expired") showAuth(error.message);
+    if (result.code === "subscription_expired") {
+      resetJustOneCXIdentity();
+      showAuth(error.message);
+    }
     throw error;
   }
   if (activeSubmissionForm) {
@@ -103,6 +107,49 @@ async function api(url, options = {}) {
     activeSubmissionForm = null;
   }
   return result;
+}
+
+function resetJustOneCXIdentity() {
+  const integration = window.RelayJustOneCX;
+  if (!integration) return;
+  integration.reset().catch((error) => {
+    console.warn("[Relay] JustOneCX identity reset failed.", error);
+  });
+}
+
+async function syncJustOneCXIdentity(session) {
+  const integration = window.RelayJustOneCX;
+  const identity = session?.justonecx;
+  const plan = session?.workspace?.plan?.code;
+  if (!integration || !identity?.userHash || !identity?.accountHash || !plan) return;
+  if (state.user?.id !== session.user?.id || state.workspace?.id !== session.workspace?.id) return;
+
+  try {
+    await integration.identify({
+      userId: session.user.id,
+      userHash: identity.userHash,
+      userTraits: { role: session.workspace.role, plan },
+      accountId: session.workspace.id,
+      accountHash: identity.accountHash,
+      accountTraits: { plan }
+    });
+  } catch (error) {
+    console.warn("[Relay] JustOneCX identity synchronization failed.", error);
+  }
+}
+
+async function loadJustOneCXIdentity() {
+  const userId = state.user?.id;
+  const workspaceId = state.workspace?.id;
+  if (!userId || !workspaceId || !window.RelayJustOneCX) return;
+
+  try {
+    const session = await api("/api/product/me");
+    if (state.user?.id !== userId || state.workspace?.id !== workspaceId) return;
+    await syncJustOneCXIdentity(session);
+  } catch (error) {
+    console.warn("[Relay] JustOneCX identity could not be loaded.", error);
+  }
 }
 
 function showToast(message, error = false) {
@@ -376,6 +423,7 @@ function scheduleSubscriptionExpiry(expiresAt) {
       state.workspace = session.workspace;
       scheduleSubscriptionExpiry(session.workspace.subscriptionExpiresAt);
     } catch (error) {
+      resetJustOneCXIdentity();
       showAuth(error.message);
     }
   }, Math.min(remaining, 2147000000));
@@ -1615,6 +1663,7 @@ authForm.addEventListener("submit", async (event) => {
     await loadOnboarding();
     await loadWorkspace();
     await loadHelpHistory();
+    void loadJustOneCXIdentity();
   } catch (error) {
     authStatus.textContent = error.message;
   } finally {
@@ -1926,6 +1975,7 @@ document.getElementById("account-deletion-form").addEventListener("submit", asyn
       }
     });
     form.reset();
+    resetJustOneCXIdentity();
     showAuth("Your Relay account has been deleted.");
   } catch (error) {
     failForm(form, error);
@@ -1939,6 +1989,7 @@ document.getElementById("signout-button").addEventListener("click", async () => 
     await api("/api/product/auth/logout", { method: "POST", body: {} });
     state.helpMessages = [];
     renderHelpMessages();
+    resetJustOneCXIdentity();
     showAuth("You have signed out.");
   } catch (error) {
     showError(error);
@@ -2119,9 +2170,31 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
   event.preventDefault();
   if (!state.selectedProcessId) return showError(new Error("Choose a process before adding a step."));
   const form = event.currentTarget;
+  const processMetaForm = document.getElementById("process-meta-form");
+  const processDetailsWereDirty = dirtyScopes.has(processMetaForm);
   const stepTitle = document.getElementById("step-title").value.trim();
   const savedStepId = state.editingStepId;
   try {
+    if (processDetailsWereDirty) {
+      const stepSubmissionForm = activeSubmissionForm;
+      setFormBusy(processMetaForm, "Saving process...");
+      activeSubmissionForm = null;
+      try {
+        await api(`/api/product/processes/${state.selectedProcessId}`, {
+          method: "PATCH",
+          body: {
+            name: document.getElementById("process-edit-name").value,
+            description: document.getElementById("process-edit-description").value
+          }
+        });
+        finishForm(processMetaForm, "Saved.");
+      } catch (error) {
+        failForm(processMetaForm, error);
+        throw error;
+      } finally {
+        activeSubmissionForm = stepSubmissionForm;
+      }
+    }
     const result = await api(`/api/product/processes/${state.selectedProcessId}/steps${state.editingStepId ? `/${state.editingStepId}` : ""}`, {
       method: state.editingStepId ? "PATCH" : "POST",
       body: {
@@ -2135,6 +2208,7 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
         dependsOn: [...document.querySelectorAll("#step-dependencies input:checked")].map((input) => Number(input.value))
       }
     });
+    clearDirtyScope(form);
     const displayedStepId = savedStepId || result.step.id;
     state.editingStepId = null;
     form.reset();
@@ -2150,7 +2224,9 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
       ?.closest(".step-card")
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
     const status = formStatus(form);
-    status.textContent = `Saved "${stepTitle}" to this process. You can add another step below.`;
+    status.textContent = processDetailsWereDirty
+      ? `Saved the process details and "${stepTitle}". The step is listed above; the form is ready for another step.`
+      : `Saved "${stepTitle}" to this process. It is listed above; the form is ready for another step.`;
     showToast("Process step saved.");
   } catch (error) {
     showError(error);
@@ -2859,8 +2935,11 @@ async function initialize() {
     showProduct();
     await loadWorkspace();
     await loadHelpHistory();
+    void syncJustOneCXIdentity(session);
   } catch (error) {
-    if (error.message !== "Sign in to continue." && !error.message.startsWith("Your session expired.")) {
+    if (error.message.startsWith("Your session expired.")) {
+      resetJustOneCXIdentity();
+    } else if (error.message !== "Sign in to continue.") {
       authStatus.textContent = error.message;
     }
   }
