@@ -35,6 +35,9 @@ const state = {
   implementationFilters: { search: "", status: "all", owner: "all", attention: "all" }
 };
 const dirtyScopes = new Map();
+let hubspotPipelineCache = [];
+let hubspotConfigurationLoaded = false;
+let hubspotConfigurationLoading = false;
 const dirtyScopeBaselines = new WeakMap();
 const pendingFormButtons = new WeakMap();
 let activeSubmissionForm = null;
@@ -550,7 +553,6 @@ async function loadWorkspace() {
   if (integrationResult) {
     const messages = {
       hubspot_connected: "HubSpot connected. New and updated implementations will sync during event processing.",
-      slack_connected: "Slack connected. Workspace updates will be delivered during event processing.",
       connect_failed: "The integration could not be connected. Check its OAuth app settings and try again."
     };
     document.getElementById("integration-status").textContent = messages[integrationResult] || "Integration connection completed.";
@@ -622,7 +624,7 @@ function renderGettingStarted() {
     return `<li class="getting-started-step ${step.complete ? "complete" : waiting ? "waiting" : "current"}">
       <span class="getting-started-check" aria-hidden="true">${step.complete ? "✓" : index + 1}</span>
       <div class="getting-started-copy"><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.description)}</p>
-        ${index === nextIndex ? `<button class="text-button" type="button" data-workflow-action="${step.action}">${escapeHtml(step.actionLabel)} →</button>` : waiting ? '<small>Complete the previous step to continue.</small>' : ""}
+        ${index === nextIndex ? `<small>Next: ${escapeHtml(step.actionLabel)}. Use the main action above to continue.</small>` : waiting ? '<small>Complete the previous step to continue.</small>' : ""}
       </div>
       <span class="getting-started-state">${step.complete ? "Complete" : waiting ? "Next" : "Up next"}</span>
     </li>`;
@@ -633,14 +635,28 @@ function renderGettingStarted() {
     : `${steps.filter((step) => step.complete).length} of ${steps.length} steps complete.`;
 }
 
+function setMobileNavigationOpen(isOpen) {
+  const sidebar = document.getElementById("sidebar");
+  const toggle = document.getElementById("mobile-nav-toggle");
+  sidebar.classList.toggle("mobile-open", isOpen);
+  sidebar.inert = window.matchMedia("(max-width: 650px)").matches && !isOpen;
+  toggle.setAttribute("aria-expanded", String(isOpen));
+  toggle.setAttribute("aria-label", isOpen ? "Close navigation" : "Open navigation");
+  document.getElementById("sidebar-backdrop").hidden = !isOpen;
+  document.body.classList.toggle("sidebar-open", isOpen);
+}
+
 function setView(name) {
   if (!titles[name]) return;
   const activeView = document.querySelector(".view.active");
   if (activeView?.id !== `view-${name}` && !confirmDiscardChanges()) return false;
+  const mobileNavigationWasOpen = document.getElementById("mobile-nav-toggle").getAttribute("aria-expanded") === "true";
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === name));
+  setMobileNavigationOpen(false);
   document.getElementById("view-eyebrow").textContent = titles[name][0];
   document.getElementById("view-title").textContent = titles[name][1];
+  if (mobileNavigationWasOpen) document.getElementById("view-title").focus();
   document.getElementById("refresh-button").hidden = name === "settings";
   globalStatus.textContent = "";
   if (name === "settings") loadAccountDeletionChoices().catch(showError);
@@ -727,6 +743,10 @@ function renderAttentionBadges(implementation) {
 
 function renderOverview() {
   const { implementations, templates, processes } = state.data;
+  const next = getNextWorkflowAction();
+  const primaryAction = document.getElementById("overview-primary-action");
+  primaryAction.textContent = next.label;
+  primaryAction.dataset.workflowAction = next.action;
   const activeCount = state.data.usage?.activeImplementations ?? implementations.length;
   const features = state.data.plan?.features || {};
   const needsAttention = implementations.filter((item) => item.missing_inputs > 0 || item.unowned_steps > 0
@@ -745,14 +765,13 @@ function renderOverview() {
   const emptyState = document.getElementById("overview-empty");
   emptyState.hidden = implementations.length > 0;
   if (!implementations.length) {
-    const next = getNextWorkflowAction();
     const copy = {
       "map-process": ["Start with your team's process", "Map the steps your team follows so Relay can check the workflow and turn it into a reusable template."],
-      "check-process": ["Check your process", "Run a workflow check before saving it as a template."],
+      "check-process": ["Check your process", "Run a workflow check before creating a template."],
       "save-template": ["Create a reusable template", "A template gives each customer a consistent starting point."],
       "start-implementation": ["Start your first implementation", "Choose a template and enter the customer company to create a customer-specific work plan."]
     }[next.action];
-    emptyState.innerHTML = emptyStateMarkup(copy[0], copy[1], next.label, next.action);
+    emptyState.innerHTML = `<strong>${escapeHtml(copy[0])}</strong><p>${escapeHtml(copy[1])}</p>`;
   }
   renderGettingStarted();
   applyPlanGates();
@@ -793,12 +812,15 @@ function renderNotificationSettings() {
 }
 
 function renderIntegrations() {
-  const connected = new Set((state.data.integrations || []).map((item) => item.provider));
-  document.getElementById("integration-status").textContent = state.workspace.role === "owner"
-    ? "" : "Only a workspace owner can connect or disconnect integrations.";
+  const integrations = state.data.integrations || [];
+  const connected = new Set(integrations.map((item) => item.provider));
+  const hubspot = integrations.find((item) => item.provider === "hubspot");
+  document.getElementById("integration-status").textContent = hubspot?.hubspot_onboarding_last_error
+    ? `HubSpot handoff needs attention: ${hubspot.hubspot_onboarding_last_error}`
+    : state.workspace.role === "owner" ? "" : "Only a workspace owner can connect or disconnect integrations.";
   document.getElementById("integrations-demo-note").hidden = !isWorkspaceDemo;
-  document.getElementById("integration-list").innerHTML = ["hubspot", "slack"].map((provider) => {
-    const name = provider === "hubspot" ? "HubSpot" : "Slack";
+  document.getElementById("integration-list").innerHTML = ["hubspot"].map((provider) => {
+    const name = "HubSpot";
     const isConnected = connected.has(provider);
     const stateLabel = isWorkspaceDemo
       ? isConnected ? "Preview connected · no external service linked" : "Not connected"
@@ -808,6 +830,64 @@ function renderIntegrations() {
         ? `<button class="text-button" type="button" data-disconnect-integration="${provider}" ${state.workspace.role !== "owner" ? "disabled" : ""}>${isWorkspaceDemo ? "Clear preview" : "Disconnect"}</button>`
         : `<button class="button secondary" type="button" data-connect-integration="${provider}" ${state.workspace.role !== "owner" ? "disabled" : ""}>${isWorkspaceDemo ? "Preview connection" : `Connect ${name}`}</button>`}</div>`;
   }).join("");
+  const handoffPanel = document.getElementById("hubspot-handoff-panel");
+  handoffPanel.hidden = isWorkspaceDemo || !connected.has("hubspot");
+  for (const control of document.getElementById("hubspot-handoff-form").elements) {
+    control.disabled = state.workspace.role !== "owner";
+  }
+  if (!handoffPanel.hidden && !hubspotConfigurationLoaded && !hubspotConfigurationLoading) {
+    loadHubspotHandoffOptions().catch((error) => {
+      document.getElementById("hubspot-handoff-status").textContent = error.message;
+      hubspotConfigurationLoading = false;
+    });
+  }
+}
+
+function populateHubspotStages(selectedStageId = "") {
+  const pipelineId = document.getElementById("hubspot-pipeline").value;
+  const pipeline = hubspotPipelineCache.find((item) => item.id === pipelineId);
+  const stages = (pipeline?.stages || []).filter((stage) => stage.isClosedWon);
+  const stageSelect = document.getElementById("hubspot-stage");
+  stageSelect.innerHTML = '<option value="">Choose a Closed Won stage</option>'
+    + stages.map((stage) => `<option value="${escapeHtml(stage.id)}">${escapeHtml(stage.label)}</option>`).join("");
+  stageSelect.value = stages.some((stage) => stage.id === selectedStageId) ? selectedStageId : "";
+}
+
+async function loadHubspotHandoffOptions() {
+  hubspotConfigurationLoading = true;
+  const result = await api("/api/product/integrations/hubspot/pipelines");
+  hubspotPipelineCache = result.pipelines || [];
+  const config = result.configuration || {};
+  const pipelineSelect = document.getElementById("hubspot-pipeline");
+  pipelineSelect.innerHTML = '<option value="">Choose a HubSpot pipeline</option>'
+    + hubspotPipelineCache.map((pipeline) =>
+      `<option value="${escapeHtml(pipeline.id)}">${escapeHtml(pipeline.label)}</option>`
+    ).join("");
+  pipelineSelect.value = hubspotPipelineCache.some((pipeline) => pipeline.id === config.pipelineId)
+    ? config.pipelineId : "";
+  populateHubspotStages(config.stageId || "");
+  const templateSelect = document.getElementById("hubspot-template");
+  templateSelect.innerHTML = '<option value="">Choose a template</option>'
+    + state.data.templates.map((template) =>
+      `<option value="${template.id}">${escapeHtml(template.name)}</option>`
+    ).join("");
+  templateSelect.value = state.data.templates.some((template) => template.id === config.templateId)
+    ? String(config.templateId) : "";
+  hubspotConfigurationLoaded = true;
+  hubspotConfigurationLoading = false;
+  const handoffStatus = document.getElementById("hubspot-handoff-status");
+  const integration = state.data.integrations.find((item) => item.provider === "hubspot");
+  const configuredPipeline = hubspotPipelineCache.find((pipeline) => pipeline.id === config.pipelineId);
+  const configuredStageExists = configuredPipeline?.stages.some((stage) =>
+    stage.id === config.stageId && stage.isClosedWon);
+  handoffStatus.textContent = integration?.hubspot_onboarding_last_error
+    || (config.pipelineId && !configuredPipeline
+      ? "The saved HubSpot pipeline is no longer available. Choose a new pipeline and save the handoff."
+      : config.stageId && !configuredStageExists
+        ? "The saved Closed Won stage is no longer available. Choose a new stage and save the handoff."
+        : config.pipelineId && config.stageId && !config.templateId
+          ? "The saved Relay template is no longer available. Choose a new template and save the handoff."
+          : "");
 }
 
 function renderPlanSummary() {
@@ -1051,6 +1131,21 @@ function renderProcesses() {
   renderProcessProgress();
 }
 
+function renderAutomationAndCapacity() {
+  const memberSelect = document.getElementById("capacity-user");
+  if (memberSelect) {
+    memberSelect.innerHTML = '<option value="">Choose member</option>'
+      + (state.data.members || []).map((member) =>
+        `<option value="${member.id}">${escapeHtml(member.email)}</option>`).join("");
+  }
+  const capacity = state.data.capacityPlans || [];
+  const summary = [
+    ...capacity.slice(0, 10).map((plan) => `<article class="list-row"><div><strong>${escapeHtml(plan.user_email)}</strong><small>${escapeHtml(plan.week_start)} · ${Math.round(plan.available_minutes / 60)} hours available</small></div></article>`)
+  ];
+  const container = document.getElementById("automation-capacity-summary");
+  if (container) container.innerHTML = summary.length ? summary.join("") : '<p class="muted">No capacity plans yet.</p>';
+}
+
 function renderTeam() {
   document.getElementById("team-member-list").innerHTML = state.data.members.length
     ? state.data.members.map((member) => `<div class="list-row"><strong>${escapeHtml(member.email)}</strong><span class="badge">${escapeHtml(member.role)}</span></div>`).join("")
@@ -1230,6 +1325,7 @@ function renderWorkspace() {
   renderTeam();
   renderNotificationSettings();
   renderIntegrations();
+  renderAutomationAndCapacity();
   renderGettingStarted();
 }
 
@@ -1241,6 +1337,91 @@ async function openImplementation(implementationId) {
   panel.hidden = false;
   document.getElementById("implementation-detail-title").textContent = implementation.customer_name;
   document.getElementById("implementation-detail-subtitle").textContent = `Started from ${implementation.template_name}`;
+  document.getElementById("implementation-plan-owner").value = implementation.customer_owner_name || "";
+  document.getElementById("implementation-plan-email").value = implementation.customer_owner_email || "";
+  document.getElementById("implementation-plan-date").value = implementation.target_launch_date || "";
+  document.getElementById("implementation-plan-status").textContent = "";
+  document.getElementById("launch-success-criteria").value = implementation.success_criteria || "";
+  document.getElementById("launch-test-plan").value = implementation.test_plan || "";
+  document.getElementById("launch-rollback-plan").value = implementation.rollback_plan || "";
+  document.getElementById("launch-acceptance-status").value = implementation.acceptance_status || "not_started";
+  document.getElementById("launch-training-status").value = implementation.training_status || "not_started";
+  document.getElementById("launch-go-live-status").value = implementation.go_live_status || "not_ready";
+  document.getElementById("launch-support-name").value = implementation.support_owner_name || "";
+  document.getElementById("launch-support-email").value = implementation.support_owner_email || "";
+  document.getElementById("launch-readiness-status").textContent = "";
+  document.getElementById("gap-communication-channel").value = implementation.communication_channel || "";
+  document.getElementById("gap-communication-cadence").value = implementation.communication_cadence || "";
+  document.getElementById("gap-communication-owner-name").value = implementation.communication_owner_name || "";
+  document.getElementById("gap-communication-owner-email").value = implementation.communication_owner_email || "";
+  document.getElementById("gap-procurement-status").value = implementation.procurement_status || "not_started";
+  document.getElementById("gap-security-status").value = implementation.security_status || "not_started";
+  document.getElementById("gap-security-notes").value = implementation.security_notes || "";
+  document.getElementById("gap-integration-inventory").value = implementation.integration_inventory || "";
+  document.getElementById("gap-integration-status").value = implementation.integration_status || "not_started";
+  document.getElementById("gap-technical-status").value = implementation.technical_setup_status || "not_started";
+  document.getElementById("gap-technical-notes").value = implementation.technical_setup_notes || "";
+  document.getElementById("gap-change-status").value = implementation.change_management_status || "not_started";
+  document.getElementById("gap-adoption-notes").value = implementation.adoption_notes || "";
+  document.getElementById("gap-validation-status").value = implementation.early_validation_status || "not_started";
+  document.getElementById("gap-validation-notes").value = implementation.early_validation_notes || "";
+  document.getElementById("gap-support-plan").value = implementation.post_launch_support_plan || "";
+  document.getElementById("gap-duplicate-control").value = implementation.duplicate_request_control || "";
+  document.getElementById("gap-plan-status").textContent = "";
+  document.getElementById("sow-scope").value = implementation.sow_scope || "";
+  document.getElementById("sow-milestones").value = implementation.sow_milestones || "";
+  document.getElementById("sow-exclusions").value = implementation.sow_exclusions || "";
+  document.getElementById("sow-stage-gate").value = implementation.stage_gate_status || "kickoff";
+  const financial = implementation.financialPlan || {};
+  document.getElementById("finance-budget").value = financial.budget_amount || "";
+  document.getElementById("finance-forecast").value = financial.forecast_amount || "";
+  document.getElementById("finance-cost").value = financial.actual_cost || "";
+  document.getElementById("finance-invoice-status").value = financial.invoice_status || "not_started";
+  document.getElementById("finance-invoice-reference").value = financial.invoice_reference || "";
+  document.getElementById("finance-margin-note").value = financial.margin_note || "";
+  const deliveryItems = [];
+  deliveryItems.push(...(implementation.timeEntries || []).slice(0, 5).map((entry) =>
+    `<article class="list-row"><div><strong>${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m</strong><small>${escapeHtml(entry.work_date)} · ${entry.billable ? "Billable" : "Non-billable"} · ${escapeHtml(entry.user_email || "Team member")}</small></div><button class="text-button danger-text" type="button" data-delete-time-entry="${entry.id}">Delete</button></article>`));
+  deliveryItems.push(...(implementation.approvals || []).map((approval) =>
+    `<article class="list-row"><div><strong>${escapeHtml(approval.title)}</strong><small>${escapeHtml(approval.approval_type)} · ${escapeHtml(approval.status)}${approval.due_at ? ` · Due ${escapeHtml(approval.due_at)}` : ""}</small></div><div class="button-row">${approval.status !== "approved" ? `<button class="text-button" type="button" data-approval-status="${approval.id}">Approve</button>` : ""}<button class="text-button danger-text" type="button" data-delete-approval="${approval.id}">Delete</button></div></article>`));
+  deliveryItems.push(...(implementation.calendarEvents || []).slice(0, 5).map((event) =>
+    `<article class="list-row"><div><strong>${escapeHtml(event.title)}</strong><small>${escapeHtml(event.event_type)} · ${escapeHtml(event.start_at)}</small></div><button class="text-button danger-text" type="button" data-delete-calendar-event="${event.id}">Delete</button></article>`));
+  document.getElementById("delivery-operations-summary").innerHTML = deliveryItems.length
+    ? deliveryItems.join("") : '<p class="muted">No time, approval, or calendar records yet.</p>';
+  document.getElementById("launch-stakeholder-list").innerHTML = (implementation.launchStakeholders || []).length
+    ? implementation.launchStakeholders.map((stakeholder) => `
+      <article class="list-row">
+        <div><strong>${escapeHtml(stakeholder.display_name || stakeholder.email)}</strong>
+          <small>${escapeHtml(stakeholder.role || "Stakeholder")} · ${escapeHtml(stakeholder.email)}</small>
+          <small>${stakeholder.approval_status === "approved" ? "Approved" : stakeholder.approval_status === "blocked" ? "Blocked" : "Pending"}${stakeholder.next_action ? ` · ${escapeHtml(stakeholder.next_action)}` : ""}</small></div>
+        <button class="text-button danger-text" type="button" data-delete-launch-stakeholder="${stakeholder.id}">Remove</button>
+      </article>`).join("")
+    : '<p class="muted">No stakeholders or approvals recorded.</p>';
+  document.getElementById("launch-risk-list").innerHTML = (implementation.launchRisks || []).length
+    ? implementation.launchRisks.map((risk) => `
+      <article class="list-row">
+        <div><strong>${escapeHtml(risk.title)}</strong>
+          <small>${escapeHtml(risk.category)} · ${escapeHtml(risk.severity)} · ${escapeHtml(risk.status)}${risk.due_at ? ` · Due ${escapeHtml(risk.due_at)}` : ""}</small>
+          ${risk.owner_name || risk.owner_email ? `<small>Owner: ${escapeHtml(risk.owner_name || risk.owner_email)}</small>` : ""}
+          ${risk.next_action ? `<small>Next action: ${escapeHtml(risk.next_action)}</small>` : ""}</div>
+        <button class="text-button danger-text" type="button" data-delete-launch-risk="${risk.id}">Resolve/remove</button>
+      </article>`).join("")
+    : '<p class="muted">No launch risks recorded.</p>';
+  document.getElementById("customer-contact-status").textContent = "";
+  document.getElementById("customer-contact-list").innerHTML = (implementation.customerContacts || []).length
+    ? implementation.customerContacts.map((contact) => {
+      const expired = Date.parse(contact.expires_at) <= Date.now();
+      const active = !contact.revoked_at && !expired;
+      return `<article class="list-row">
+        <div><strong>${escapeHtml(contact.display_name || contact.email)}</strong><small>${escapeHtml(contact.email)}</small>
+          <small>${active ? `${contact.invitation_sent_at ? "Invitation sent" : "Invitation not sent"} · Link expires ${new Date(contact.expires_at).toLocaleDateString()}` : contact.revoked_at ? "Access revoked" : "Link expired"}</small></div>
+        <div class="button-row">
+          ${active && !contact.invitation_sent_at ? `<button class="text-button" type="button" data-resend-customer-contact="${contact.id}" data-contact-email="${escapeHtml(contact.email)}" data-contact-name="${escapeHtml(contact.display_name || "")}">Send invitation</button>` : ""}
+          ${active ? `<button class="text-button danger-text" type="button" data-revoke-customer-contact="${contact.id}">Revoke</button>` : ""}
+        </div>
+      </article>`;
+    }).join("")
+    : '<p class="muted">No named customer contacts invited yet.</p>';
   document.getElementById("implementation-step-list").innerHTML = implementation.steps.length
     ? implementation.steps.map((step, index) => `
       <article class="step-card">
@@ -1283,20 +1464,11 @@ async function openImplementation(implementationId) {
         ${requirement.value ? `<p>${escapeHtml(requirement.value)}</p>` : ""}
       </article>`).join("")
     : '<div class="empty-state"><strong>No customer information requested</strong><p>Add a specific request if this customer needs to provide setup details.</p><button class="button secondary" type="button" data-workflow-action="add-requirement">Create an information request</button></div>';
-  const token = state.customerTokens.get(implementation.id);
   const linkBox = document.getElementById("customer-link-box");
   linkBox.hidden = false;
-  if (token) {
-    const customerUrl = new URL("/customer.html", window.location.origin);
-    customerUrl.searchParams.set("token", token);
-    if (isWorkspaceDemo) customerUrl.searchParams.set("demo", "workspace");
-    const link = customerUrl.href;
-    linkBox.innerHTML = `<strong>Private customer information link</strong><br><a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link)}</a><br><button class="text-button" type="button" data-copy-link="${escapeHtml(link)}">Copy link</button> · <button class="text-button" type="button" data-create-customer-link>Rotate customer link</button><br>Anyone with this link can submit the requested setup information. Keep it private.`;
-  } else if (implementation.has_customer_link) {
-    linkBox.innerHTML = `<strong>Customer information link already created</strong><br>For security, Relay does not show the existing link again. Creating a replacement will invalidate the previous link.<br><button class="text-button" type="button" data-create-customer-link>Rotate customer link</button>`;
-  } else {
-    linkBox.innerHTML = `<strong>Customer information link</strong><br>Create a private link for this customer to submit the information you requested.<br><button class="text-button" type="button" data-create-customer-link>Create customer link</button>`;
-  }
+  linkBox.innerHTML = implementation.has_customer_link
+    ? "<strong>Previous shared-link access is still active.</strong><br>Invite a named contact above to revoke the shared link and use individually revocable portal access.<br>"
+    : "";
   linkBox.insertAdjacentHTML("beforeend", `
     <form class="inline-form vertical customer-escalation-form">
       <div class="field">
@@ -1310,6 +1482,23 @@ async function openImplementation(implementationId) {
       <small>Relay flags silence after 3 days. If required information is still missing after this delay, it emails the backup contact. Email notifications and a configured sender are required.</small>
       <button class="button secondary" type="submit">Save backup contact</button>
     </form>`);
+  document.getElementById("implementation-file-list").innerHTML = (implementation.customerFiles || []).length
+    ? implementation.customerFiles.map((file) => `
+      <article class="list-row">
+        <div>${file.demo ? `<strong>${escapeHtml(file.filename)}</strong>` : `<a href="/api/product/implementations/${implementation.id}/files/${file.id}">${escapeHtml(file.filename)}</a>`}
+          <small>${escapeHtml(file.uploaded_by_name || "Customer team")} · ${Math.ceil(file.size_bytes / 1024)} KB</small></div>
+        <button class="text-button danger-text" type="button" data-delete-customer-file="${file.id}">Delete</button>
+      </article>`).join("")
+    : '<p class="muted">No files shared yet.</p>';
+  document.getElementById("implementation-message-list").innerHTML = (implementation.customerMessages || []).length
+    ? implementation.customerMessages.map((message) => `
+      <article class="customer-message ${message.sender_role === "customer" ? "from-customer" : "from-team"}">
+        <strong>${escapeHtml(message.sender_name || message.sender_email || "Customer")}</strong>
+        <p>${escapeHtml(message.body)}</p><small>${escapeHtml(new Date(message.created_at).toLocaleString())}</small>
+      </article>`).join("")
+    : '<p class="muted">No customer messages yet.</p>';
+  document.getElementById("implementation-message-status").textContent = "";
+  document.getElementById("implementation-message").value = "";
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
   return true;
 }
@@ -1475,6 +1664,27 @@ document.getElementById("notification-settings-form").addEventListener("submit",
         reminderDaysBefore: Number(document.getElementById("notifications-reminder-days").value)
       }
     });
+
+    document.getElementById("capacity-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const status = document.getElementById("capacity-status");
+      try {
+        await api("/api/product/capacity-plans", {
+          method: "POST",
+          body: {
+            userId: document.getElementById("capacity-user").value,
+            weekStart: document.getElementById("capacity-week").value,
+            availableMinutes: Number(document.getElementById("capacity-minutes").value),
+            capacityNote: document.getElementById("capacity-note").value
+          }
+        });
+        await refreshWorkspace();
+        status.textContent = "Capacity plan saved.";
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    });
+
     state.data.notificationSettings = {
       email_enabled: settings.emailEnabled,
       reminder_days_before: settings.reminderDaysBefore
@@ -1508,10 +1718,38 @@ document.getElementById("integration-list").addEventListener("click", async (eve
     }
     if (!window.confirm(`Disconnect ${disconnect.dataset.disconnectIntegration}?`)) return;
     await api(`/api/product/integrations/${disconnect.dataset.disconnectIntegration}`, { method: "DELETE" });
+    if (disconnect.dataset.disconnectIntegration === "hubspot") {
+      hubspotPipelineCache = [];
+      hubspotConfigurationLoaded = false;
+    }
     await loadWorkspace();
     showToast("Integration disconnected.");
   } catch (error) {
     document.getElementById("integration-status").textContent = error.message;
+  }
+});
+document.getElementById("hubspot-pipeline").addEventListener("change", () => populateHubspotStages());
+document.getElementById("hubspot-handoff-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const status = document.getElementById("hubspot-handoff-status");
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    const result = await api("/api/product/integrations/hubspot/onboarding", {
+      method: "PUT",
+      body: {
+        pipelineId: document.getElementById("hubspot-pipeline").value,
+        stageId: document.getElementById("hubspot-stage").value,
+        templateId: document.getElementById("hubspot-template").value
+      }
+    });
+    status.textContent = result.message;
+    await refreshWorkspace();
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
 });
 
@@ -1526,6 +1764,27 @@ document.getElementById("invite-result").addEventListener("click", async (event)
   }
 });
 
+document.getElementById("mobile-nav-toggle").addEventListener("click", () => {
+  const isOpen = document.getElementById("mobile-nav-toggle").getAttribute("aria-expanded") === "true";
+  setMobileNavigationOpen(!isOpen);
+  if (!isOpen) document.querySelector("#sidebar .nav-item.active")?.focus();
+});
+document.getElementById("sidebar-backdrop").addEventListener("click", () => {
+  setMobileNavigationOpen(false);
+  document.getElementById("mobile-nav-toggle").focus();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.getElementById("mobile-nav-toggle").getAttribute("aria-expanded") === "true") {
+    setMobileNavigationOpen(false);
+    document.getElementById("mobile-nav-toggle").focus();
+  }
+});
+window.addEventListener("resize", () => {
+  const isMobile = window.matchMedia("(max-width: 650px)").matches;
+  const isOpen = document.getElementById("mobile-nav-toggle").getAttribute("aria-expanded") === "true";
+  setMobileNavigationOpen(isMobile && isOpen);
+});
+setMobileNavigationOpen(false);
 document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
 document.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.go)));
 document.getElementById("refresh-button").addEventListener("click", () => refreshWorkspace().catch(showError));
@@ -2133,19 +2392,26 @@ document.getElementById("template-list").addEventListener("click", async (event)
 document.getElementById("implementation-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    const { implementation, customerPortalToken } = await api("/api/product/implementations", {
+    const result = await api("/api/product/implementations", {
       method: "POST",
       body: {
         customerName: document.getElementById("implementation-customer").value,
-        templateId: document.getElementById("implementation-template").value
+        templateId: document.getElementById("implementation-template").value,
+        customerOwnerName: document.getElementById("implementation-contact-name").value,
+        customerOwnerEmail: document.getElementById("implementation-contact-email").value,
+        targetLaunchDate: document.getElementById("implementation-launch-date").value
       }
     });
-    state.customerTokens.set(implementation.id, customerPortalToken);
     event.target.reset();
     await loadWorkspace();
     setView("implementations");
-    await openImplementation(implementation.id);
-    showToast("Implementation started. Copy its private customer link.");
+    await openImplementation(result.implementation.id);
+    document.getElementById("customer-contact-status").textContent = result.customerInvitation?.sent
+      ? `Personal portal invitation sent to ${result.implementation.customer_owner_email}.`
+      : result.customerInvitation?.message
+        ? `${result.customerInvitation.message}${result.customerInvitation.link ? ` Copy this one-time link: ${result.customerInvitation.link}` : ""}`
+        : "Implementation started. Invite a customer contact to grant portal access.";
+    showToast("Implementation started with a customer launch plan.");
   } catch (error) {
     showError(error);
   }
@@ -2275,28 +2541,244 @@ document.getElementById("customer-link-box").addEventListener("submit", async (e
   }
 });
 
-document.getElementById("customer-link-box").addEventListener("click", async (event) => {
-  const copyButton = event.target.closest("[data-copy-link]");
-  if (copyButton) {
-    const link = copyButton.dataset.copyLink;
+
+document.getElementById("implementation-launch-plan").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("implementation-plan-status");
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/launch-plan`, { method: "PATCH", body: { customerOwnerName: document.getElementById("implementation-plan-owner").value, customerOwnerEmail: document.getElementById("implementation-plan-email").value, targetLaunchDate: document.getElementById("implementation-plan-date").value } });
+    await openImplementation(state.selectedImplementationId);
+    status.textContent = "Launch plan saved.";
+  } catch (error) { status.textContent = error.message; }
+});
+
+document.getElementById("implementation-launch-readiness").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("launch-readiness-status");
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/launch-readiness`, { method: "PATCH", body: { successCriteria: document.getElementById("launch-success-criteria").value, testPlan: document.getElementById("launch-test-plan").value, rollbackPlan: document.getElementById("launch-rollback-plan").value, acceptanceStatus: document.getElementById("launch-acceptance-status").value, trainingStatus: document.getElementById("launch-training-status").value, goLiveStatus: document.getElementById("launch-go-live-status").value, supportOwnerName: document.getElementById("launch-support-name").value, supportOwnerEmail: document.getElementById("launch-support-email").value } });
+    status.textContent = "Launch readiness saved.";
+  } catch (error) { status.textContent = error.message; }
+});
+
+document.getElementById("launch-stakeholder-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("launch-stakeholder-status-text");
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/launch-stakeholders`, { method: "POST", body: { displayName: document.getElementById("launch-stakeholder-name").value, email: document.getElementById("launch-stakeholder-email").value, role: document.getElementById("launch-stakeholder-role").value, approvalStatus: document.getElementById("launch-stakeholder-status").value, nextAction: document.getElementById("launch-stakeholder-action").value } });
+    event.currentTarget.reset();
+    await openImplementation(state.selectedImplementationId);
+    status.textContent = "Stakeholder saved.";
+  } catch (error) { status.textContent = error.message; }
+});
+
+document.getElementById("implementation-onboarding-gap-plan").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("gap-plan-status");
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/onboarding-gap-plan`, { method: "PATCH", body: { communicationChannel: document.getElementById("gap-communication-channel").value, communicationCadence: document.getElementById("gap-communication-cadence").value, communicationOwnerName: document.getElementById("gap-communication-owner-name").value, communicationOwnerEmail: document.getElementById("gap-communication-owner-email").value, procurementStatus: document.getElementById("gap-procurement-status").value, securityStatus: document.getElementById("gap-security-status").value, securityNotes: document.getElementById("gap-security-notes").value, integrationInventory: document.getElementById("gap-integration-inventory").value, integrationStatus: document.getElementById("gap-integration-status").value, technicalSetupStatus: document.getElementById("gap-technical-status").value, technicalSetupNotes: document.getElementById("gap-technical-notes").value, changeManagementStatus: document.getElementById("gap-change-status").value, adoptionNotes: document.getElementById("gap-adoption-notes").value, earlyValidationStatus: document.getElementById("gap-validation-status").value, earlyValidationNotes: document.getElementById("gap-validation-notes").value, postLaunchSupportPlan: document.getElementById("gap-support-plan").value, duplicateRequestControl: document.getElementById("gap-duplicate-control").value } });
+    status.textContent = "Communication and setup plan saved.";
+  } catch (error) { status.textContent = error.message; }
+});
+
+document.getElementById("implementation-sow-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("sow-status");
+  try { await api(`/api/product/implementations/${state.selectedImplementationId}/sow`, { method: "PATCH", body: { sowScope: document.getElementById("sow-scope").value, sowMilestones: document.getElementById("sow-milestones").value, sowExclusions: document.getElementById("sow-exclusions").value, stageGateStatus: document.getElementById("sow-stage-gate").value } }); status.textContent = "SOW and stage gate saved."; } catch (error) { status.textContent = error.message; }
+});
+
+document.getElementById("implementation-financial-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("finance-status");
+  try { await api(`/api/product/implementations/${state.selectedImplementationId}/financial-plan`, { method: "PATCH", body: { budgetAmount: document.getElementById("finance-budget").value, forecastAmount: document.getElementById("finance-forecast").value, actualCost: document.getElementById("finance-cost").value, invoiceStatus: document.getElementById("finance-invoice-status").value, invoiceReference: document.getElementById("finance-invoice-reference").value, marginNote: document.getElementById("finance-margin-note").value } }); status.textContent = "Financial plan saved."; } catch (error) { status.textContent = error.message; }
+});
+
+document.getElementById("time-entry-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("time-status");
+  try { await api(`/api/product/implementations/${state.selectedImplementationId}/time-entries`, { method: "POST", body: { workDate: document.getElementById("time-work-date").value, minutes: Number(document.getElementById("time-minutes").value), hourlyRate: document.getElementById("time-rate").value, billable: document.getElementById("time-billable").checked, note: document.getElementById("time-note").value } }); event.currentTarget.reset(); await openImplementation(state.selectedImplementationId); status.textContent = "Time entry logged."; } catch (error) { status.textContent = error.message; }
+});
+
+document.getElementById("approval-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("approval-status");
+  try { await api(`/api/product/implementations/${state.selectedImplementationId}/approvals`, { method: "POST", body: { title: document.getElementById("approval-title").value, approvalType: document.getElementById("approval-type").value, approverName: document.getElementById("approval-name").value, approverEmail: document.getElementById("approval-email").value, dueAt: document.getElementById("approval-due").value } }); event.currentTarget.reset(); await openImplementation(state.selectedImplementationId); status.textContent = "Approval requested."; } catch (error) { status.textContent = error.message; }
+});
+
+document.getElementById("calendar-event-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("calendar-event-status");
+  try { await api(`/api/product/implementations/${state.selectedImplementationId}/calendar-events`, { method: "POST", body: { title: document.getElementById("calendar-event-title").value, startAt: document.getElementById("calendar-event-start").value, endAt: document.getElementById("calendar-event-end").value, eventType: document.getElementById("calendar-event-type").value, externalUrl: document.getElementById("calendar-event-url").value } }); event.currentTarget.reset(); await openImplementation(state.selectedImplementationId); status.textContent = "Timeline event added."; } catch (error) { status.textContent = error.message; }
+});
+
+document.getElementById("launch-risk-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("launch-risk-status-text");
+  try { await api(`/api/product/implementations/${state.selectedImplementationId}/launch-risks`, { method: "POST", body: { title: document.getElementById("launch-risk-title").value, category: document.getElementById("launch-risk-category").value, severity: document.getElementById("launch-risk-severity").value, ownerName: document.getElementById("launch-risk-owner-name").value, ownerEmail: document.getElementById("launch-risk-owner-email").value, dueAt: document.getElementById("launch-risk-due").value, status: document.getElementById("launch-risk-status").value, nextAction: document.getElementById("launch-risk-action").value } }); event.currentTarget.reset(); await openImplementation(state.selectedImplementationId); status.textContent = "Risk saved."; } catch (error) { status.textContent = error.message; }
+});
+
+document.getElementById("delivery-operations-summary").addEventListener("click", async (event) => {
+  const approveButton = event.target.closest("[data-approval-status]");
+  const deleteTimeButton = event.target.closest("[data-delete-time-entry]");
+  const deleteApprovalButton = event.target.closest("[data-delete-approval]");
+  const deleteCalendarButton = event.target.closest("[data-delete-calendar-event]");
+  if (!state.selectedImplementationId) return;
+  try {
+    if (approveButton) {
+      await api(`/api/product/implementations/${state.selectedImplementationId}/approvals/${approveButton.dataset.approvalStatus}`, { method: "PATCH", body: { status: "approved" } });
+      await openImplementation(state.selectedImplementationId);
+      showToast("Approval marked approved.");
+    } else if (deleteTimeButton) {
+      await api(`/api/product/implementations/${state.selectedImplementationId}/time-entries/${deleteTimeButton.dataset.deleteTimeEntry}`, { method: "DELETE" });
+      await openImplementation(state.selectedImplementationId);
+      showToast("Time entry deleted.");
+    } else if (deleteApprovalButton) {
+      await api(`/api/product/implementations/${state.selectedImplementationId}/approvals/${deleteApprovalButton.dataset.deleteApproval}`, { method: "DELETE" });
+      await openImplementation(state.selectedImplementationId);
+      showToast("Approval deleted.");
+    } else if (deleteCalendarButton) {
+      await api(`/api/product/implementations/${state.selectedImplementationId}/calendar-events/${deleteCalendarButton.dataset.deleteCalendarEvent}`, { method: "DELETE" });
+      await openImplementation(state.selectedImplementationId);
+      showToast("Timeline event deleted.");
+    }
+  } catch (error) {
+    showError(error);
+  }
+});
+
+document.getElementById("customer-contact-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("customer-contact-status");
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    const result = await api(`/api/product/implementations/${state.selectedImplementationId}/customer-contacts`, {
+      method: "POST",
+      body: {
+        displayName: document.getElementById("customer-contact-name").value,
+        email: document.getElementById("customer-contact-email").value
+      }
+    });
+    document.getElementById("customer-contact-form").reset();
+    await openImplementation(state.selectedImplementationId);
+    const contactStatus = document.getElementById("customer-contact-status");
+    contactStatus.textContent = result.invitationSent
+      ? `Invitation sent to ${result.contact.email}. The personal link expires ${new Date(result.contact.expires_at).toLocaleDateString()}.`
+      : `${result.message || "Invitation email was not sent."}${result.customerPortalUrl ? ` Copy this one-time link and share it securely: ${result.customerPortalUrl}` : ""}`;
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById("customer-contact-list").addEventListener("click", async (event) => {
+  const resendButton = event.target.closest("[data-resend-customer-contact]");
+  if (resendButton && state.selectedImplementationId) {
+    const status = document.getElementById("customer-contact-status");
+    resendButton.disabled = true;
     try {
-      await navigator.clipboard.writeText(link);
-      showToast("Customer link copied.");
-    } catch {
-      showToast("Copy was blocked by the browser. Select and copy the link.", true);
+      const result = await api(`/api/product/implementations/${state.selectedImplementationId}/customer-contacts`, {
+        method: "POST",
+        body: {
+          displayName: resendButton.dataset.contactName || "",
+          email: resendButton.dataset.contactEmail
+        }
+      });
+      await openImplementation(state.selectedImplementationId);
+      status.textContent = result.invitationSent
+        ? `Fresh portal invitation sent to ${result.contact.email}. The personal link expires ${new Date(result.contact.expires_at).toLocaleDateString()}.`
+        : `${result.message || "Invitation email was not sent."}${result.customerPortalUrl ? ` Copy this fresh link and share it securely: ${result.customerPortalUrl}` : ""}`;
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      resendButton.disabled = false;
     }
     return;
   }
-  const createButton = event.target.closest("[data-create-customer-link]");
-  if (!createButton || !state.selectedImplementationId) return;
+  const button = event.target.closest("[data-revoke-customer-contact]");
+  if (!button || !state.selectedImplementationId
+    || !window.confirm("Revoke this contact’s portal access immediately?")) return;
   try {
-    const result = await api(`/api/product/implementations/${state.selectedImplementationId}/customer-link`, {
-      method: "POST",
-      body: {}
+    await api(`/api/product/implementations/${state.selectedImplementationId}/customer-contacts/${button.dataset.revokeCustomerContact}`, {
+      method: "DELETE"
     });
-    state.customerTokens.set(state.selectedImplementationId, result.customerPortalToken);
     await openImplementation(state.selectedImplementationId);
-    showToast("New private customer link created. The previous link is no longer valid.");
+    showToast("Customer portal access revoked.");
+  } catch (error) {
+    showError(error);
+  }
+});
+
+document.getElementById("implementation-message-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("implementation-message-status");
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/messages`, {
+      method: "POST",
+      body: { body: document.getElementById("implementation-message").value }
+    });
+    await openImplementation(state.selectedImplementationId);
+    document.getElementById("implementation-message-status").textContent = "Reply added to the customer conversation.";
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById("launch-stakeholder-list").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-delete-launch-stakeholder]");
+  if (!button || !state.selectedImplementationId
+    || !window.confirm("Remove this stakeholder or approval?")) return;
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/launch-stakeholders/${button.dataset.deleteLaunchStakeholder}`, { method: "DELETE" });
+    await openImplementation(state.selectedImplementationId);
+    showToast("Stakeholder removed.");
+  } catch (error) {
+    showError(error);
+  }
+});
+
+document.getElementById("launch-risk-list").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-delete-launch-risk]");
+  if (!button || !state.selectedImplementationId
+    || !window.confirm("Remove this launch risk? If it is resolved, keep that status in the risk notes.")) return;
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/launch-risks/${button.dataset.deleteLaunchRisk}`, { method: "DELETE" });
+    await openImplementation(state.selectedImplementationId);
+    showToast("Launch risk removed.");
+  } catch (error) {
+    showError(error);
+  }
+});
+
+document.getElementById("implementation-file-list").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-delete-customer-file]");
+  if (!button || !state.selectedImplementationId
+    || !window.confirm("Permanently delete this customer file?")) return;
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/files/${button.dataset.deleteCustomerFile}`, {
+      method: "DELETE"
+    });
+    await openImplementation(state.selectedImplementationId);
+    showToast("Customer file deleted.");
   } catch (error) {
     showError(error);
   }

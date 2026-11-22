@@ -20,10 +20,10 @@ test("Ray responds naturally to common greetings", () => {
 
 test("Ray answers supported Relay workflows", () => {
   assert.match(relayHelpReply("How do I reset my password?"), /Forgot your password/);
+  assert.match(relayHelpReply("Does Relay connect to Slack?"), /HubSpot.*not connected today/i);
   assert.match(relayHelpReply("How do I add a process step?"), /Open Process map/);
   assert.match(relayHelpReply("How do I update a template without changing existing work?"), /Existing implementations.*not changed/i);
   assert.match(relayHelpReply("My customer's link is invalid. What can I do?"), /create a replacement customer link/i);
-  assert.match(relayHelpReply("Does Relay connect to Slack?"), /Workspace owners can connect HubSpot.*Slack/i);
 });
 
 test("Ray answers additional client questions without promising unsupported features", () => {

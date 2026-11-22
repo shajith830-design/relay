@@ -107,23 +107,39 @@
       <a class="wordmark" href="index.html" aria-label="Relay Automation home"><img class="wordmark-logo" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="wordmark-name"><span>Relay</span><small>Automation</small></span></a>
       <div class="workspace-label"><img class="workspace-avatar" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span id="workspace-name-display"></span></div>
       <nav class="side-nav" aria-label="Workspace">
-        <button class="nav-item active" data-view="overview"><span>◫</span> Overview</button>
-        <button class="nav-item" data-view="portfolio"><span>◧</span> Portfolio</button>
-        <button class="nav-item" data-view="processes"><span>≋</span> Process map</button>
-        <button class="nav-item" data-view="templates"><span>▤</span> Templates</button>
-        <button class="nav-item" data-view="implementations"><span>◷</span> Implementations</button>
-        <button class="nav-item" data-view="requirements"><span>✓</span> Customer information</button>
-        <button class="nav-item" data-view="integrations"><span>⇄</span> Integrations</button>
-        <button class="nav-item" data-view="settings"><span>⚙</span> Settings</button>
+        <div class="nav-group">
+          <span class="nav-group-label">Workspace</span>
+          <button class="nav-item active" data-view="overview"><span aria-hidden="true">◫</span> Overview</button>
+        </div>
+        <div class="nav-group">
+          <span class="nav-group-label">Customer work</span>
+          <button class="nav-item" data-view="implementations"><span aria-hidden="true">◷</span> Implementations</button>
+          <button class="nav-item" data-view="portfolio"><span aria-hidden="true">◧</span> Team workload</button>
+        </div>
+        <div class="nav-group">
+          <span class="nav-group-label">Reusable setup</span>
+          <button class="nav-item" data-view="processes"><span aria-hidden="true">≋</span> Process maps</button>
+          <button class="nav-item" data-view="templates"><span aria-hidden="true">▤</span> Templates</button>
+          <button class="nav-item" data-view="requirements"><span aria-hidden="true">✓</span> Customer information</button>
+        </div>
+        <div class="nav-group">
+          <span class="nav-group-label">Workspace settings</span>
+          <button class="nav-item" data-view="integrations"><span aria-hidden="true">⇄</span> Integrations</button>
+          <button class="nav-item" data-view="settings"><span aria-hidden="true">⚙</span> Settings</button>
+        </div>
       </nav>
       <div class="sidebar-bottom">
         <div class="principles-note"><strong>Implementation, made clear</strong><span>Clear steps. Useful next actions. Work together in Relay.</span></div>
         <button id="signout-button" class="signout" type="button">Sign out <span id="user-email"></span></button>
       </div>
     </aside>
+    <button class="sidebar-backdrop" id="sidebar-backdrop" type="button" aria-label="Close navigation" hidden></button>
     <main class="main-content">
       <header class="topbar">
-        <div><span class="eyebrow" id="view-eyebrow">Your workspace</span><h1 id="view-title">Overview</h1></div>
+        <button class="mobile-nav-toggle" id="mobile-nav-toggle" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="topbar-title"><span class="eyebrow" id="view-eyebrow">Your workspace</span><h1 id="view-title" tabindex="-1">Overview</h1></div>
         <button id="refresh-button" class="button secondary" type="button">Refresh</button>
       </header>
       <p class="global-status" id="global-status" role="status" aria-live="polite"></p>
@@ -135,8 +151,8 @@
 
       <section class="view active" id="view-overview">
         <div class="welcome-card">
-          <div><p class="eyebrow">A clear view of the work</p><h2>Keep every implementation moving.</h2><p>Relay highlights missing information, overdue work, and tasks that need follow-up. Growth and Custom also track blockers and prerequisite dependencies.</p></div>
-          <button class="button primary" data-go="implementations" type="button">Start an implementation</button>
+          <div><p class="eyebrow">Your next best action</p><h2>Keep every implementation moving.</h2><p>Relay points you to the next useful action. Reuse a saved template to avoid rebuilding work for each customer.</p></div>
+          <button class="button primary" id="overview-primary-action" data-workflow-action="map-process" type="button">Create a process map</button>
         </div>
         <section class="panel getting-started" id="getting-started" aria-labelledby="getting-started-title" hidden>
           <div class="panel-heading">
@@ -270,6 +286,9 @@
           <form id="implementation-form" class="inline-form">
             <div class="field"><label for="implementation-customer">Customer company</label><input id="implementation-customer" maxlength="120" placeholder="Customer name" required></div>
             <div class="field"><label for="implementation-template">Template</label><select id="implementation-template" required><option value="">Choose a template</option></select></div>
+            <div class="field"><label for="implementation-contact-name">Customer contact name</label><input id="implementation-contact-name" maxlength="120" placeholder="Primary project contact"></div>
+            <div class="field"><label for="implementation-contact-email">Customer contact email</label><input id="implementation-contact-email" type="email" maxlength="254" autocomplete="email" placeholder="client@example.com" required></div>
+            <div class="field"><label for="implementation-launch-date">Target launch date <span class="optional">Optional</span></label><input id="implementation-launch-date" type="date"></div>
             <button class="button primary" type="submit">Start implementation</button>
           </form>
           <p id="implementation-cap-notice" class="status warning" role="status" aria-live="polite" hidden></p>
@@ -289,11 +308,175 @@
         </div>
         <div class="panel" id="implementation-detail" hidden>
           <div class="panel-heading"><div><h2 id="implementation-detail-title">Implementation details</h2><p id="implementation-detail-subtitle"></p></div><button class="text-button" id="close-implementation" type="button">Close</button></div>
+          <div class="two-column implementation-plan-grid">
+            <form id="implementation-launch-plan" class="info-row">
+              <h3>Customer launch plan</h3>
+              <p>Keep the customer owner and target date current; the portal shows these details.</p>
+              <label for="implementation-plan-owner">Customer owner</label><input id="implementation-plan-owner" maxlength="120">
+              <label for="implementation-plan-email">Customer owner email</label><input id="implementation-plan-email" type="email" maxlength="254">
+              <label for="implementation-plan-date">Target launch date</label><input id="implementation-plan-date" type="date">
+              <button class="button secondary" type="submit">Save launch plan</button>
+              <p id="implementation-plan-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+            <section class="info-row" aria-labelledby="customer-contact-heading">
+              <h3 id="customer-contact-heading">Customer portal access</h3>
+              <p>Invite named contacts. Each gets a personal link that expires after 30 days and can be revoked.</p>
+              <form id="customer-contact-form" class="inline-form vertical">
+                <label for="customer-contact-name">Contact name</label><input id="customer-contact-name" maxlength="120">
+                <label for="customer-contact-email">Contact email</label><input id="customer-contact-email" type="email" maxlength="254" required>
+                <button class="button secondary" type="submit">Send portal invitation</button>
+                <p id="customer-contact-status" class="status" role="status" aria-live="polite"></p>
+              </form>
+              <div id="customer-contact-list" class="list-stack"></div>
+            </section>
+          </div>
           <div class="share-box" id="customer-link-box" hidden></div>
+          <section class="panel onboarding-gap-panel" aria-labelledby="onboarding-gap-heading">
+            <div class="panel-heading"><div><h3 id="onboarding-gap-heading">Communication, approvals, and setup</h3><p>Prevent repeated requests and scattered updates across security, integrations, technical setup, adoption, and validation.</p></div></div>
+            <form id="implementation-onboarding-gap-plan" class="launch-readiness-grid">
+              <label>Communication channel<input id="gap-communication-channel" maxlength="400" placeholder="Email, portal, weekly call"></label>
+              <label>Communication cadence<input id="gap-communication-cadence" maxlength="400" placeholder="Every Tuesday and at every blocker"></label>
+              <label>Communication owner name<input id="gap-communication-owner-name" maxlength="120"></label>
+              <label>Communication owner email<input id="gap-communication-owner-email" type="email" maxlength="254"></label>
+              <label>Procurement and approval status<select id="gap-procurement-status"><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="approved">Approved</option><option value="blocked">Blocked</option></select></label>
+              <label>Security and compliance status<select id="gap-security-status"><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="approved">Approved</option><option value="blocked">Blocked</option></select></label>
+              <label>Security/compliance notes<textarea id="gap-security-notes" maxlength="4000" placeholder="Policies, questionnaires, data handling, access controls"></textarea></label>
+              <label>Integration inventory<textarea id="gap-integration-inventory" maxlength="4000" placeholder="APIs, domains, permissions, data mapping, third-party tools"></textarea></label>
+              <label>Integration status<select id="gap-integration-status"><option value="not_started">Not started</option><option value="discovering">Discovering</option><option value="in_progress">In progress</option><option value="tested">Tested</option><option value="blocked">Blocked</option></select></label>
+              <label>Technical setup status<select id="gap-technical-status"><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="tested">Tested</option><option value="ready">Ready</option><option value="blocked">Blocked</option></select></label>
+              <label>Technical setup details<textarea id="gap-technical-notes" maxlength="4000" placeholder="DNS, email authentication, sandbox, user imports, credentials"></textarea></label>
+              <label>Change/adoption status<select id="gap-change-status"><option value="not_started">Not started</option><option value="planned">Planned</option><option value="in_progress">In progress</option><option value="adopted">Adopted</option></select></label>
+              <label>Training and adoption notes<textarea id="gap-adoption-notes" maxlength="4000" placeholder="Role-specific training, champions, internal communications, follow-up"></textarea></label>
+              <label>Early validation status<select id="gap-validation-status"><option value="not_started">Not started</option><option value="planned">Planned</option><option value="in_progress">In progress</option><option value="passed">Passed</option><option value="failed">Failed</option></select></label>
+              <label>Early validation findings<textarea id="gap-validation-notes" maxlength="4000" placeholder="Configuration, data, integration, or usability issues found early"></textarea></label>
+              <label>Post-launch support plan<textarea id="gap-support-plan" maxlength="4000" placeholder="Support owner, hours, escalation route, handoff package, ongoing reviews"></textarea></label>
+              <label>Repeated-request prevention<textarea id="gap-duplicate-control" maxlength="4000" placeholder="Single source of truth, document owner, and request/reuse rule"></textarea></label>
+              <button class="button secondary" type="submit">Save communication and setup plan</button>
+              <p id="gap-plan-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+          <section class="panel" aria-labelledby="delivery-operations-heading">
+            <div class="panel-heading"><div><h3 id="delivery-operations-heading">Delivery operations</h3><p>SOW scope, stage gates, budget/forecast, approvals, time, and timeline events.</p></div></div>
+            <form id="implementation-sow-form" class="launch-readiness-grid">
+              <label>SOW scope<textarea id="sow-scope" maxlength="4000"></textarea></label>
+              <label>Milestones<textarea id="sow-milestones" maxlength="4000"></textarea></label>
+              <label>Exclusions<textarea id="sow-exclusions" maxlength="4000"></textarea></label>
+              <label>Stage gate<select id="sow-stage-gate"><option value="kickoff">Kickoff</option><option value="configuration">Configuration</option><option value="testing">Testing</option><option value="launch">Launch</option><option value="hypercare">Hypercare</option><option value="complete">Complete</option></select></label>
+              <button class="button secondary" type="submit">Save SOW and gate</button>
+              <p id="sow-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+            <form id="implementation-financial-form" class="launch-readiness-grid">
+              <label>Budget amount<input id="finance-budget" type="number" min="0" step="0.01"></label>
+              <label>Forecast amount<input id="finance-forecast" type="number" min="0" step="0.01"></label>
+              <label>Actual cost<input id="finance-cost" type="number" min="0" step="0.01"></label>
+              <label>Invoice status<select id="finance-invoice-status"><option value="not_started">Not started</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="paid">Paid</option><option value="overdue">Overdue</option></select></label>
+              <label>Invoice reference<input id="finance-invoice-reference" maxlength="120"></label>
+              <label>Margin and risk note<textarea id="finance-margin-note" maxlength="4000"></textarea></label>
+              <button class="button secondary" type="submit">Save financial plan</button>
+              <p id="finance-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+            <div class="two-column">
+              <form id="time-entry-form" class="inline-form vertical">
+                <h4>Log time</h4>
+                <label>Work date<input id="time-work-date" type="date" required></label>
+                <label>Minutes<input id="time-minutes" type="number" min="1" max="1440" required></label>
+                <label>Hourly rate<input id="time-rate" type="number" min="0" step="0.01"></label>
+                <label class="check-field"><input id="time-billable" type="checkbox" checked> Billable</label>
+                <label>Note<input id="time-note" maxlength="500"></label>
+                <button class="button secondary" type="submit">Log time</button>
+                <p id="time-status" class="status" role="status" aria-live="polite"></p>
+              </form>
+              <form id="approval-form" class="inline-form vertical">
+                <h4>Request approval</h4>
+                <label>Approval title<input id="approval-title" maxlength="240" required></label>
+                <label>Type<input id="approval-type" maxlength="80" placeholder="Security, contract, launch"></label>
+                <label>Approver name<input id="approval-name" maxlength="120"></label>
+                <label>Approver email<input id="approval-email" type="email" maxlength="254"></label>
+                <label>Due date<input id="approval-due" type="date"></label>
+                <button class="button secondary" type="submit">Create approval</button>
+                <p id="approval-status" class="status" role="status" aria-live="polite"></p>
+              </form>
+            </div>
+            <div id="delivery-operations-summary" class="list-stack"></div>
+            <div class="two-column">
+              <form id="calendar-event-form" class="inline-form vertical">
+                <h4>Add timeline event</h4>
+                <label>Event title<input id="calendar-event-title" maxlength="240" required></label>
+                <label>Start<input id="calendar-event-start" type="datetime-local" required></label>
+                <label>End<input id="calendar-event-end" type="datetime-local"></label>
+                <label>Type<input id="calendar-event-type" maxlength="80" value="meeting"></label>
+                <label>External link<input id="calendar-event-url" type="url" maxlength="1000"></label>
+                <button class="button secondary" type="submit">Add timeline event</button>
+                <p id="calendar-event-status" class="status" role="status" aria-live="polite"></p>
+              </form>
+            </div>
+          </section>
+          <section class="panel launch-readiness-panel" aria-labelledby="launch-readiness-heading">
+            <div class="panel-heading"><div><h3 id="launch-readiness-heading">Launch readiness and handoff</h3><p>Make approvals, testing, training, ownership, rollback, and go-live status explicit.</p></div></div>
+            <form id="implementation-launch-readiness" class="launch-readiness-grid">
+              <label>Success criteria<textarea id="launch-success-criteria" maxlength="4000" placeholder="What outcome proves the customer is ready?"></textarea></label>
+              <label>Test and acceptance plan<textarea id="launch-test-plan" maxlength="4000" placeholder="Acceptance scenarios, test owner, and sign-off process"></textarea></label>
+              <label>Rollback plan<textarea id="launch-rollback-plan" maxlength="4000" placeholder="If launch fails, who acts and what is restored?"></textarea></label>
+              <label>Acceptance status<select id="launch-acceptance-status"><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="accepted">Accepted</option><option value="not_accepted">Not accepted</option></select></label>
+              <label>Training status<select id="launch-training-status"><option value="not_started">Not started</option><option value="scheduled">Scheduled</option><option value="in_progress">In progress</option><option value="complete">Complete</option></select></label>
+              <label>Go-live status<select id="launch-go-live-status"><option value="not_ready">Not ready</option><option value="at_risk">At risk</option><option value="ready">Ready</option><option value="launched">Launched</option></select></label>
+              <label>Support owner<input id="launch-support-name" maxlength="120" placeholder="Name"></label>
+              <label>Support owner email<input id="launch-support-email" type="email" maxlength="254" placeholder="support@example.com"></label>
+              <button class="button secondary" type="submit">Save launch readiness</button>
+              <p id="launch-readiness-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+          <div class="two-column launch-readiness-grid">
+            <section class="panel" aria-labelledby="launch-stakeholders-heading">
+              <div class="panel-heading"><div><h3 id="launch-stakeholders-heading">Approvals and stakeholders</h3><p>Track every person whose approval or participation can block launch.</p></div></div>
+              <form id="launch-stakeholder-form" class="inline-form vertical">
+                <label>Stakeholder name<input id="launch-stakeholder-name" maxlength="120"></label>
+                <label>Stakeholder email<input id="launch-stakeholder-email" type="email" maxlength="254" required></label>
+                <label>Role<input id="launch-stakeholder-role" maxlength="120" placeholder="Finance, IT, Security, Executive sponsor"></label>
+                <label>Approval status<select id="launch-stakeholder-status"><option value="pending">Pending</option><option value="approved">Approved</option><option value="blocked">Blocked</option></select></label>
+                <label>Next action<textarea id="launch-stakeholder-action" maxlength="500"></textarea></label>
+                <button class="button secondary" type="submit">Save stakeholder</button>
+                <p id="launch-stakeholder-status-text" class="status" role="status" aria-live="polite"></p>
+              </form>
+              <div id="launch-stakeholder-list" class="list-stack"></div>
+            </section>
+            <section class="panel" aria-labelledby="launch-risks-heading">
+              <div class="panel-heading"><div><h3 id="launch-risks-heading">Risks and blockers</h3><p>Give every risk an owner, severity, due date, and next action.</p></div></div>
+              <form id="launch-risk-form" class="inline-form vertical">
+                <label>Risk or blocker<input id="launch-risk-title" maxlength="240" required></label>
+                <label>Category<select id="launch-risk-category"><option>Technical</option><option>Security</option><option>Compliance</option><option>Approval</option><option>Data</option><option>Training</option><option>Schedule</option><option>Other</option></select></label>
+                <label>Severity<select id="launch-risk-severity"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
+                <label>Owner name<input id="launch-risk-owner-name" maxlength="120"></label>
+                <label>Owner email<input id="launch-risk-owner-email" type="email" maxlength="254"></label>
+                <label>Due date<input id="launch-risk-due" type="date"></label>
+                <label>Status<select id="launch-risk-status"><option value="open">Open</option><option value="mitigating">Mitigating</option><option value="resolved">Resolved</option></select></label>
+                <label>Next action<textarea id="launch-risk-action" maxlength="500"></textarea></label>
+                <button class="button secondary" type="submit">Save risk</button>
+                <p id="launch-risk-status-text" class="status" role="status" aria-live="polite"></p>
+              </form>
+              <div id="launch-risk-list" class="list-stack"></div>
+            </section>
+          </div>
           <h3 class="subheading">Work plan</h3>
           <div id="implementation-step-list" class="step-list"></div>
           <h3 class="subheading">Required customer information</h3>
           <div id="implementation-requirements" class="step-list"></div>
+          <div class="two-column implementation-collaboration">
+            <section class="panel" aria-labelledby="implementation-files-heading">
+              <div class="panel-heading"><div><h3 id="implementation-files-heading">Customer files</h3><p>Private PDF, PNG, or JPG files, up to 5 MB each and 25 MB total per implementation.</p></div></div>
+              <div id="implementation-file-list" class="list-stack"></div>
+            </section>
+            <section class="panel" aria-labelledby="implementation-messages-heading">
+              <div class="panel-heading"><div><h3 id="implementation-messages-heading">Customer conversation</h3><p>Keep questions, answers, and decisions with this implementation.</p></div></div>
+              <div id="implementation-message-list" class="customer-messages" role="log" aria-live="polite"></div>
+              <form id="implementation-message-form" class="inline-form vertical">
+                <label for="implementation-message">Reply</label>
+                <textarea id="implementation-message" maxlength="4000" required placeholder="Write a clear reply or next step"></textarea>
+                <button class="button secondary" type="submit">Send reply</button>
+                <p id="implementation-message-status" class="status" role="status" aria-live="polite"></p>
+              </form>
+            </section>
+          </div>
         </div>
       </section>
 
@@ -318,11 +501,22 @@
         </div>
       </section>
       <section class="view" id="view-integrations">
-        <div class="section-intro"><h2>Connect your workspace tools</h2><p>Authorize HubSpot and Slack so Relay can share implementation updates with your team. Connections are managed by workspace owners.</p></div>
+        <div class="section-intro"><h2>Connect your workspace tools</h2><p>Authorize the configured HubSpot integration so Relay can hand off Closed Won deals and share implementation progress. Connections are managed by workspace owners.</p></div>
         <div class="panel">
           <div class="panel-heading"><div><h2>Available integrations</h2><p>Connect an account to enable workspace updates and synchronization.</p></div></div>
           <p id="integrations-demo-note" class="empty-state" hidden>Sample preview: connection controls do not contact an external service.</p>
           <div id="integration-list" class="list-stack"></div>
+          <section id="hubspot-handoff-panel" class="integration-handoff" hidden aria-labelledby="hubspot-handoff-title">
+            <h3 id="hubspot-handoff-title">Start onboarding from HubSpot Closed Won</h3>
+            <p>Select the exact sales pipeline, its Closed Won stage, and a Relay template. Relay checks for matching deals every five minutes and creates one implementation per deal. If a matching deal has a customer contact and Resend is configured, Relay emails that contact a personal portal invitation.</p>
+            <form id="hubspot-handoff-form" class="inline-form vertical">
+              <div class="field"><label for="hubspot-pipeline">HubSpot pipeline</label><select id="hubspot-pipeline" required></select></div>
+              <div class="field"><label for="hubspot-stage">Closed Won stage</label><select id="hubspot-stage" required></select></div>
+              <div class="field"><label for="hubspot-template">Relay onboarding template</label><select id="hubspot-template" required></select></div>
+              <button class="button secondary" type="submit">Save handoff</button>
+              <p id="hubspot-handoff-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
           <p id="integration-status" class="appearance-status" role="status" aria-live="polite"></p>
         </div>
       </section>
@@ -340,7 +534,7 @@
               <small>Dark mode uses a darker workspace and panels.</small>
             </div>
             <div class="panel">
-              <div class="panel-heading"><div><h2>Notifications and reminders</h2><p>Send implementation updates and due-date reminders to workspace members, and quiet-customer escalations to backup contacts.</p></div></div>
+              <div class="panel-heading"><div><h2>Notifications and reminders</h2><p>Send task reminders to assigned teammates and invited customer contacts, notify the team about customer questions and files, and escalate missing information to a backup contact.</p></div></div>
               <p id="notifications-demo-note" class="empty-state" hidden>Sample preview: settings are saved locally; no email is sent.</p>
               <form id="notification-settings-form" class="inline-form vertical">
                 <label class="check-field"><input id="notifications-email-enabled" type="checkbox"> Enable email notifications</label>
@@ -363,6 +557,23 @@
             </div>
           </div>
           <p class="appearance-status" id="appearance-status" role="status" aria-live="polite"></p>
+        </div>
+        <div class="panel">
+          <div class="panel-heading"><div><h2>Team capacity</h2><p>Create weekly team capacity plans.</p></div></div>
+          <div class="two-column">
+            <div>
+              <form id="capacity-form" class="inline-form vertical">
+                <h3>Weekly team capacity</h3>
+                <label>Team member<select id="capacity-user"></select></label>
+                <label>Week starting<input id="capacity-week" type="date" required></label>
+                <label>Available minutes<input id="capacity-minutes" type="number" min="0" max="10080" value="2400" required></label>
+                <label>Capacity note<input id="capacity-note" maxlength="500"></label>
+                <button class="button secondary" type="submit">Save capacity</button>
+                <p id="capacity-status" class="status" role="status" aria-live="polite"></p>
+              </form>
+            </div>
+          </div>
+          <div id="automation-capacity-summary" class="list-stack"></div>
         </div>
         <div class="panel account-deletion-panel">
           <div class="panel-heading"><div><h2>Delete your Relay account</h2><p>This permanently removes your account and its personal data. Workspace data is handled according to the ownership choices below.</p></div></div>

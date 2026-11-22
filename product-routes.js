@@ -14,6 +14,10 @@ const { relayHelpReply } = require("./public/relay-help");
 
 const SESSION_COOKIE = "relay_session";
 const SESSION_DAYS = 14;
+const CUSTOMER_LINK_DAYS = 30;
+const CUSTOMER_FILE_LIMIT = 5 * 1024 * 1024;
+const CUSTOMER_FILE_COUNT_LIMIT = 20;
+const CUSTOMER_FILE_TOTAL_LIMIT = 25 * 1024 * 1024;
 const rateLimitBuckets = new Map();
 
 function hashToken(token) {
@@ -134,6 +138,80 @@ function inputValueError(type, value) {
   return "";
 }
 
+function customerFileType(contentType, filename, content) {
+  const extension = filename.toLowerCase().split(".").pop();
+  const allowed = {
+    pdf: "application/pdf",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg"
+  };
+  if (!Buffer.isBuffer(content) || content.length < 1 || content.length > CUSTOMER_FILE_LIMIT
+    || allowed[extension] !== contentType) return "";
+  if (contentType === "application/pdf" && content.subarray(0, 5).toString("ascii") !== "%PDF-") return "";
+  if (contentType === "image/png"
+    && !content.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return "";
+  if (contentType === "image/jpeg"
+    && !(content[0] === 0xff && content[1] === 0xd8 && content[2] === 0xff)) return "";
+  return contentType;
+}
+
+function safeCustomerFilename(value) {
+  if (typeof value !== "string") return "";
+  return value.replace(/[\/\\\u0000-\u001f\u007f]/g, "_").trim().slice(0, 150);
+}
+
+async function sendProductEmail({ to, subject, text }) {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.AUTH_EMAIL_FROM?.trim();
+  if (!apiKey || !from) return { sent: false, error: "Customer email is not configured. Copy the secure link and share it directly." };
+  const emailUrl = process.env.NODE_ENV === "test" && process.env.AUTH_EMAIL_API_URL
+    ? process.env.AUTH_EMAIL_API_URL
+    : "https://api.resend.com/emails";
+  const response = await fetch(emailUrl, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to: [to], subject, text }),
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) throw new Error(`Email provider returned HTTP ${response.status}.`);
+  return { sent: true };
+}
+
+async function hubspotAccessToken(integration, workspaceId, database) {
+  let accessToken = decryptIntegrationValue(integration.access_token_cipher);
+  if (!integration.token_expires_at || Date.parse(integration.token_expires_at) > Date.now() + 30_000) {
+    return accessToken;
+  }
+  if (!integration.refresh_token_cipher) throw new Error("HubSpot authorization expired. Reconnect HubSpot.");
+  const refreshResponse = await fetch("https://api.hubapi.com/oauth/v3/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: process.env.HUBSPOT_CLIENT_ID || "",
+      client_secret: process.env.HUBSPOT_CLIENT_SECRET || "",
+      refresh_token: decryptIntegrationValue(integration.refresh_token_cipher)
+    }),
+    signal: AbortSignal.timeout(10000)
+  });
+  const refreshed = await refreshResponse.json().catch(() => ({}));
+  if (!refreshResponse.ok || !refreshed.access_token || !Number.isFinite(refreshed.expires_in)) {
+    throw new Error("HubSpot authorization could not be refreshed.");
+  }
+  accessToken = refreshed.access_token;
+  const expiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
+  const encryptedToken = encryptIntegrationValue(accessToken);
+  await database.prepare(`
+    UPDATE product_workspace_integrations SET access_token_cipher = $1,
+      token_expires_at = $2, updated_at = CURRENT_TIMESTAMP
+    WHERE workspace_id = $3 AND provider = 'hubspot'
+  `).run(encryptedToken, expiresAt, workspaceId);
+  integration.token_expires_at = expiresAt;
+  integration.access_token_cipher = encryptedToken;
+  return accessToken;
+}
+
 function validDate(value) {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
     && !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
@@ -174,6 +252,289 @@ function installProductRoutes(app, db, isProduction) {
     `).run(eventKey, workspaceId, implementationId, eventType, JSON.stringify(payload));
   }
 
+  async function resolveCustomerAccess(token) {
+    const hashedToken = hashToken(token);
+    const contact = await database.prepare(`
+      SELECT c.id AS contact_id, c.email AS contact_email, c.display_name AS contact_name,
+        c.implementation_id, c.expires_at, i.id, i.workspace_id, i.template_id,
+        i.customer_name, i.target_launch_date, i.customer_owner_name, i.customer_owner_email,
+        i.success_criteria, i.acceptance_status, i.test_plan, i.training_status,
+        i.support_owner_name, i.support_owner_email, i.rollback_plan, i.go_live_status
+        , i.communication_channel, i.communication_cadence, i.communication_owner_name,
+        i.communication_owner_email, i.procurement_status, i.security_status, i.security_notes,
+        i.integration_inventory, i.integration_status, i.technical_setup_status,
+        i.technical_setup_notes, i.change_management_status, i.adoption_notes,
+        i.early_validation_status, i.early_validation_notes, i.post_launch_support_plan,
+        i.duplicate_request_control
+      FROM product_customer_contacts c
+      JOIN product_implementations i ON i.id = c.implementation_id
+      JOIN product_workspace_subscriptions s ON s.workspace_id = i.workspace_id
+      WHERE c.token_hash = $1 AND c.revoked_at IS NULL
+        AND c.expires_at > CURRENT_TIMESTAMP AND s.expires_at > CURRENT_TIMESTAMP
+    `).get(hashedToken);
+    if (contact) return { implementation: contact, contact };
+
+    const implementation = await database.prepare(`
+      SELECT i.id AS implementation_id, i.workspace_id, i.template_id, i.customer_name,
+        i.target_launch_date, i.customer_owner_name, i.customer_owner_email,
+        i.success_criteria, i.acceptance_status, i.test_plan, i.training_status,
+        i.support_owner_name, i.support_owner_email, i.rollback_plan, i.go_live_status
+        , i.communication_channel, i.communication_cadence, i.communication_owner_name,
+        i.communication_owner_email, i.procurement_status, i.security_status, i.security_notes,
+        i.integration_inventory, i.integration_status, i.technical_setup_status,
+        i.technical_setup_notes, i.change_management_status, i.adoption_notes,
+        i.early_validation_status, i.early_validation_notes, i.post_launch_support_plan,
+        i.duplicate_request_control
+      FROM product_implementations i
+      JOIN product_workspace_subscriptions s ON s.workspace_id = i.workspace_id
+      WHERE i.portal_token_hash = $1 AND s.expires_at > CURRENT_TIMESTAMP
+    `).get(hashedToken);
+    return implementation ? { implementation, contact: null } : null;
+  }
+
+  async function sendCustomerContactInvitation({ req, implementation, contactEmail, contactName, token }) {
+    const baseUrl = process.env.PUBLIC_BASE_URL?.trim() || `${req.protocol}://${req.get("host")}`;
+    let customerUrl;
+    try {
+      customerUrl = new URL("/customer.html", baseUrl);
+      if (!["http:", "https:"].includes(customerUrl.protocol) || customerUrl.username || customerUrl.password) {
+        throw new Error("The customer portal URL is invalid.");
+      }
+    } catch {
+      throw new Error("The customer portal URL is not configured correctly.");
+    }
+    customerUrl.searchParams.set("token", token);
+    const link = customerUrl.href;
+    const greeting = contactName ? `Hello ${contactName},` : "Hello,";
+    const launchDate = implementation.target_launch_date
+      ? `The current target launch date is ${implementation.target_launch_date}.`
+      : "Your implementation team will share the launch plan in the portal.";
+    try {
+      const emailResult = await sendProductEmail({
+        to: contactEmail,
+        subject: `Your ${implementation.customer_name} onboarding with Relay`,
+        text: `${greeting}\n\nYour team has invited you to the ${implementation.customer_name} onboarding portal. Use this private link to share requested information, upload files, see progress, and ask questions:\n\n${link}\n\n${launchDate}\n\nThis link is personal and expires in ${CUSTOMER_LINK_DAYS} days. If you did not expect this invitation, contact your implementation team.`
+      });
+      return { ...emailResult, link: emailResult.sent ? "" : link };
+    } catch (error) {
+      return { sent: false, error: `Invitation email could not be sent: ${error.message}`, link };
+    }
+  }
+
+  async function loadHubSpotPipelines(workspaceId) {
+    const integration = await database.prepare(`
+      SELECT access_token_cipher, refresh_token_cipher, token_expires_at,
+        hubspot_onboarding_pipeline_id, hubspot_onboarding_stage_id, hubspot_onboarding_template_id
+      FROM product_workspace_integrations
+      WHERE workspace_id = $1 AND provider = 'hubspot'
+    `).get(workspaceId);
+    if (!integration) throw new Error("Connect HubSpot before configuring onboarding handoff.");
+    const accessToken = await hubspotAccessToken(integration, workspaceId, database);
+    const response = await fetch("https://api.hubapi.com/crm/v3/pipelines/deals", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(10000)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(result.results)) {
+      throw new Error(`HubSpot pipeline list could not be loaded (HTTP ${response.status}).`);
+    }
+    return {
+      integration,
+      pipelines: result.results.map((pipeline) => ({
+        id: String(pipeline.id),
+        label: String(pipeline.label || pipeline.id),
+        stages: (pipeline.stages || []).map((stage) => ({
+          id: String(stage.id),
+          label: String(stage.label || stage.id),
+          isClosedWon: Number(stage.metadata?.probability) === 1
+        }))
+      }))
+    };
+  }
+
+  async function pollHubSpotOnboarding(integration, req) {
+    const workspaceId = integration.workspace_id;
+    const accessToken = await hubspotAccessToken(integration, workspaceId, database);
+    const previousSync = Date.parse(integration.hubspot_onboarding_last_synced_at) || Date.now();
+    const modifiedSince = Math.max(0, previousSync - 10 * 60 * 1000);
+    if (process.env.RESEND_API_KEY && process.env.AUTH_EMAIL_FROM) {
+      const unsentInvitations = await database.prepare(`
+        SELECT h.deal_id, h.invitation_sent_at, i.id, i.customer_name, i.target_launch_date,
+          i.customer_owner_name, i.customer_owner_email
+        FROM product_hubspot_imports h
+        JOIN product_implementations i ON i.id = h.implementation_id
+        WHERE h.workspace_id = $1 AND h.invitation_sent_at IS NULL
+          AND BTRIM(i.customer_owner_email) != ''
+      `).all(workspaceId);
+      for (const imported of unsentInvitations) {
+        const contact = await database.prepare(`
+          SELECT id, invitation_sent_at FROM product_customer_contacts
+          WHERE implementation_id = $1 AND email = $2
+        `).get(imported.id, imported.customer_owner_email);
+        if (contact?.invitation_sent_at) {
+          await database.prepare(`
+            UPDATE product_hubspot_imports SET invitation_sent_at = $1
+            WHERE workspace_id = $2 AND deal_id = $3
+          `).run(contact.invitation_sent_at, workspaceId, imported.deal_id);
+          continue;
+        }
+        const token = randomBytes(32).toString("base64url");
+        const expiresAt = new Date(Date.now() + CUSTOMER_LINK_DAYS * 86400000).toISOString();
+        await database.prepare(`
+          INSERT INTO product_customer_contacts
+            (implementation_id, email, display_name, token_hash, expires_at, revoked_at)
+          VALUES ($1, $2, $3, $4, $5, NULL)
+          ON CONFLICT (implementation_id, email) DO UPDATE SET
+            display_name = excluded.display_name, token_hash = excluded.token_hash,
+            expires_at = excluded.expires_at, invitation_sent_at = NULL,
+            revoked_at = NULL, last_activity_at = CURRENT_TIMESTAMP
+        `).run(imported.id, imported.customer_owner_email, imported.customer_owner_name, hashToken(token), expiresAt);
+        const invitation = await sendCustomerContactInvitation({
+          req,
+          implementation: imported,
+          contactEmail: imported.customer_owner_email,
+          contactName: imported.customer_owner_name,
+          token
+        });
+        if (invitation.sent) {
+          await database.prepare(`
+            UPDATE product_customer_contacts SET invitation_sent_at = CURRENT_TIMESTAMP
+            WHERE implementation_id = $1 AND email = $2
+          `).run(imported.id, imported.customer_owner_email);
+          await database.prepare(`
+            UPDATE product_hubspot_imports SET invitation_sent_at = CURRENT_TIMESTAMP
+            WHERE workspace_id = $1 AND deal_id = $2
+          `).run(workspaceId, imported.deal_id);
+        } else {
+          throw new Error(invitation.error || "A customer invitation could not be sent.");
+        }
+      }
+    }
+    let after;
+    let pages = 0;
+    let created = 0;
+    do {
+      if (++pages > 10) {
+        throw new Error("The HubSpot handoff found more than 1,000 recently changed matching deals. Choose a narrower pipeline or contact support before retrying.");
+      }
+      const body = {
+        filterGroups: [{
+          filters: [
+            { propertyName: "pipeline", operator: "EQ", value: integration.hubspot_onboarding_pipeline_id },
+            { propertyName: "dealstage", operator: "EQ", value: integration.hubspot_onboarding_stage_id },
+            { propertyName: "hs_lastmodifieddate", operator: "GTE", value: String(modifiedSince) }
+          ]
+        }],
+        properties: ["dealname", "pipeline", "dealstage", "hs_lastmodifieddate"],
+        sorts: ["hs_lastmodifieddate"],
+        limit: 100,
+        ...(after ? { after } : {})
+      };
+      const response = await fetch("https://api.hubapi.com/crm/v3/objects/deals/search", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(result.results)) {
+        throw new Error(`HubSpot Closed Won search failed (HTTP ${response.status}).`);
+      }
+      for (const deal of result.results) {
+        if (!deal.id || deal.properties?.pipeline !== integration.hubspot_onboarding_pipeline_id
+          || deal.properties?.dealstage !== integration.hubspot_onboarding_stage_id) continue;
+        const alreadyImported = await database.prepare(`
+          SELECT implementation_id, invitation_sent_at
+          FROM product_hubspot_imports WHERE workspace_id = $1 AND deal_id = $2
+        `).get(workspaceId, String(deal.id));
+        if (alreadyImported) continue;
+        let contact = null;
+        const associationResponse = await fetch(
+          `https://api.hubapi.com/crm/v4/objects/deals/${encodeURIComponent(deal.id)}/associations/contacts?limit=1`,
+          { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(10000) }
+        );
+        if (associationResponse.ok) {
+          const associations = await associationResponse.json().catch(() => ({}));
+          const contactId = associations.results?.[0]?.toObjectId;
+          if (contactId) {
+            const contactResponse = await fetch(
+              `https://api.hubapi.com/crm/v3/objects/contacts/${encodeURIComponent(contactId)}?properties=email,firstname,lastname,company`,
+              { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(10000) }
+            );
+            const contactResult = await contactResponse.json().catch(() => ({}));
+            if (!contactResponse.ok) {
+              throw new Error(`HubSpot customer details could not be loaded (HTTP ${contactResponse.status}).`);
+            }
+            contact = contactResult.properties || null;
+          }
+        } else if (associationResponse.status !== 404) {
+          throw new Error(`HubSpot customer contact lookup failed (HTTP ${associationResponse.status}).`);
+        }
+        const customerName = requiredText(contact?.company, 120)
+          || requiredText(deal.properties?.dealname, 120)
+          || `HubSpot deal ${deal.id}`;
+        const contactName = [contact?.firstname, contact?.lastname].filter(Boolean).join(" ").slice(0, 120);
+        const contactEmail = typeof contact?.email === "string" ? contact.email.trim().toLowerCase() : "";
+        if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+          throw new Error(`HubSpot contact for deal ${deal.id} has an invalid email address.`);
+        }
+        const template = await database.prepare(`
+          SELECT id, name, steps_json FROM product_templates
+          WHERE id = $1 AND workspace_id = $2
+        `).get(integration.hubspot_onboarding_template_id, workspaceId);
+        if (!template) throw new Error("The configured HubSpot onboarding template is no longer available.");
+        const creation = await createImplementationFromTemplate({
+          workspaceId,
+          template,
+          customerName,
+          customerOwnerName: contactName,
+          customerOwnerEmail: contactEmail,
+          sourceDealId: String(deal.id),
+          sourcePipelineId: String(deal.properties.pipeline)
+        });
+        if (!creation.implementation) throw new Error(creation.error || "The implementation could not be created.");
+        const implementation = creation.implementation;
+        if (creation.duplicate) continue;
+        created += 1;
+        if (!contactEmail || !process.env.RESEND_API_KEY || !process.env.AUTH_EMAIL_FROM) continue;
+        const token = randomBytes(32).toString("base64url");
+        const expiresAt = new Date(Date.now() + CUSTOMER_LINK_DAYS * 86400000).toISOString();
+        await database.prepare(`
+          INSERT INTO product_customer_contacts
+            (implementation_id, email, display_name, token_hash, expires_at, revoked_at)
+          VALUES ($1, $2, $3, $4, $5, NULL)
+          ON CONFLICT (implementation_id, email) DO UPDATE SET
+            display_name = excluded.display_name, token_hash = excluded.token_hash,
+            expires_at = excluded.expires_at, invitation_sent_at = NULL,
+            revoked_at = NULL, last_activity_at = CURRENT_TIMESTAMP
+        `).run(implementation.id, contactEmail, contactName, hashToken(token), expiresAt);
+        const invitation = await sendCustomerContactInvitation({
+          req, implementation, contactEmail, contactName, token
+        });
+        if (invitation.sent) {
+          await database.prepare(`
+            UPDATE product_customer_contacts SET invitation_sent_at = CURRENT_TIMESTAMP
+            WHERE implementation_id = $1 AND email = $2
+          `).run(implementation.id, contactEmail);
+          await database.prepare(`
+            UPDATE product_hubspot_imports SET invitation_sent_at = CURRENT_TIMESTAMP
+            WHERE workspace_id = $1 AND deal_id = $2
+          `).run(workspaceId, String(deal.id));
+        } else {
+          throw new Error(invitation.error || "A customer invitation could not be sent.");
+        }
+      }
+      after = result.paging?.next?.after;
+    } while (after);
+    await database.prepare(`
+      UPDATE product_workspace_integrations
+      SET hubspot_onboarding_last_synced_at = CURRENT_TIMESTAMP,
+        hubspot_onboarding_last_error = '', hubspot_onboarding_last_error_at = NULL
+      WHERE workspace_id = $1 AND provider = 'hubspot'
+    `).run(workspaceId);
+    return created;
+  }
+
   function requirePlanFeature(req, res, feature, featureName) {
     if (req.product.planDetails.features[feature]) return true;
     sendError(res, 403, `${featureName} is included with Growth and Custom plans. Upgrade this workspace to use it.`);
@@ -212,6 +573,111 @@ function installProductRoutes(app, db, isProduction) {
         )
       )
     `).get(workspaceId)).count;
+  }
+
+  async function createImplementationFromTemplate({
+    workspaceId,
+    template,
+    customerName,
+    customerOwnerName = "",
+    customerOwnerEmail = "",
+    targetLaunchDate = "",
+    sourceDealId = "",
+    sourcePipelineId = ""
+  }) {
+    const steps = JSON.parse(template.steps_json);
+    if (!Array.isArray(steps) || steps.length === 0) {
+      return { implementation: null, error: "This template has no saved steps." };
+    }
+    const result = await database.transaction(async () => {
+      if (sourceDealId) {
+        const existing = await database.prepare(`
+          SELECT implementation_id FROM product_hubspot_imports
+          WHERE workspace_id = $1 AND deal_id = $2
+        `).get(workspaceId, sourceDealId);
+        if (existing) {
+          return {
+            implementation: await database.prepare(`
+              SELECT id, customer_name, created_at, target_launch_date,
+                customer_owner_name, customer_owner_email
+              FROM product_implementations WHERE id = $1
+            `).get(existing.implementation_id),
+            duplicate: true
+          };
+        }
+      }
+      const plan = await lockWorkspace(workspaceId);
+      if (steps.some((step) => Array.isArray(step.dependsOnPositions) && step.dependsOnPositions.length)
+        && !plan.features.dependencies) {
+        return { implementation: null, error: "Task prerequisites are not included in this workspace plan." };
+      }
+      const activeCount = await countActiveImplementations(workspaceId);
+      if (plan.activeImplementationLimit !== null && activeCount >= plan.activeImplementationLimit) {
+        return { implementation: null, error: "This workspace has reached its active implementation limit." };
+      }
+      const implementation = await database.prepare(`
+        INSERT INTO product_implementations
+          (workspace_id, template_id, customer_name, target_launch_date,
+            customer_owner_name, customer_owner_email, hubspot_source_deal_id, hubspot_source_pipeline_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id, customer_name, created_at, target_launch_date,
+          customer_owner_name, customer_owner_email
+      `).get(workspaceId, template.id, customerName, targetLaunchDate,
+        customerOwnerName, customerOwnerEmail, sourceDealId, sourcePipelineId);
+      const insertStep = database.prepare(`
+        INSERT INTO product_implementation_steps
+          (implementation_id, title, description, owner, position, due_at, stage, assignee_user_id, customer_visible)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id
+      `);
+      const stepIdsByPosition = new Map();
+      for (const step of steps) {
+        const dueDate = new Date();
+        dueDate.setUTCHours(0, 0, 0, 0);
+        dueDate.setUTCDate(dueDate.getUTCDate() + (Number.isInteger(step.dueOffsetDays) ? step.dueOffsetDays : 0));
+        const inserted = await insertStep.run(
+          implementation.id,
+          step.title,
+          step.description || "",
+          step.owner || "",
+          step.position,
+          Number.isInteger(step.dueOffsetDays) ? dueDate.toISOString().slice(0, 10) : "",
+          step.stage || "Implementation",
+          step.assigneeUserId || null,
+          step.customerVisible === true
+        );
+        stepIdsByPosition.set(step.position, inserted.lastInsertRowid);
+      }
+      const addDependency = database.prepare(`
+        INSERT INTO product_implementation_step_dependencies (implementation_step_id, depends_on_step_id)
+        VALUES ($1, $2)
+      `);
+      for (const step of steps) {
+        for (const dependencyPosition of step.dependsOnPositions || []) {
+          const dependencyId = stepIdsByPosition.get(dependencyPosition);
+          const currentStepId = stepIdsByPosition.get(step.position);
+          if (!dependencyId || !currentStepId) throw new Error("Template contains an invalid prerequisite reference.");
+          await addDependency.run(currentStepId, dependencyId);
+        }
+      }
+      await database.prepare(`
+        INSERT INTO product_customer_inputs (implementation_id, requirement_id)
+        SELECT $1, id FROM product_requirements
+        WHERE workspace_id = $2 AND (template_id IS NULL OR template_id = $3)
+      `).run(implementation.id, workspaceId, template.id);
+      if (sourceDealId) {
+        await database.prepare(`
+          INSERT INTO product_hubspot_imports (workspace_id, deal_id, pipeline_id, implementation_id)
+          VALUES ($1, $2, $3, $4)
+        `).run(workspaceId, sourceDealId, sourcePipelineId, implementation.id);
+      }
+      await enqueueWorkspaceEvent(workspaceId, implementation.id, "implementation.created");
+      return { implementation, duplicate: false };
+    });
+    if (!result.implementation) return result;
+    return {
+      ...result,
+      implementation: { ...result.implementation, template_name: template.name }
+    };
   }
 
   for (const method of ["get", "post", "put", "patch", "delete"]) {
@@ -1047,10 +1513,17 @@ function installProductRoutes(app, db, isProduction) {
       FROM product_workspace_notification_settings WHERE workspace_id = $1
     `).get(workspaceId)) || { email_enabled: false, reminder_days_before: 2 };
     const integrations = await (database.prepare(`
-      SELECT provider, external_account_id, updated_at
+      SELECT provider, external_account_id, updated_at, hubspot_onboarding_pipeline_id,
+        hubspot_onboarding_stage_id, hubspot_onboarding_template_id,
+        hubspot_onboarding_last_error, hubspot_onboarding_last_error_at
       FROM product_workspace_integrations WHERE workspace_id = $1
       ORDER BY provider
     `).all(workspaceId));
+    const capacityPlans = await database.prepare(`
+      SELECT c.user_id, u.email AS user_email, c.week_start, c.available_minutes, c.capacity_note
+      FROM product_capacity_plans c JOIN product_users u ON u.id = c.user_id
+      WHERE c.workspace_id = $1 ORDER BY c.week_start DESC, u.email
+    `).all(workspaceId);
     const activeImplementationCount = await countActiveImplementations(workspaceId);
     return res.json({
       processes,
@@ -1062,6 +1535,7 @@ function installProductRoutes(app, db, isProduction) {
       teamWorkload,
       notificationSettings,
       integrations,
+      capacityPlans,
       role: req.product.role,
       plan: req.product.planDetails,
       usage: {
@@ -1094,7 +1568,7 @@ function installProductRoutes(app, db, isProduction) {
 
   app.post("/api/product/integrations/:provider/connect", sameOrigin, requireSession, async (req, res) => {
       const { provider } = req.params;
-      if (!["hubspot", "slack"].includes(provider)) return sendError(res, 404, "Integration not found.");
+      if (provider !== "hubspot") return sendError(res, 404, "Integration not found.");
       if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can connect integrations.");
       const providerKey = provider.toUpperCase();
       const clientId = process.env[`${providerKey}_CLIENT_ID`]?.trim();
@@ -1107,7 +1581,7 @@ function installProductRoutes(app, db, isProduction) {
       ].filter(Boolean);
       if (missingConfiguration.length) {
         return sendError(res, 503,
-          `${provider === "hubspot" ? "HubSpot" : "Slack"} OAuth setup is incomplete. Configure ${missingConfiguration.join(", ")} in the Relay deployment.`);
+          `HubSpot OAuth setup is incomplete. Configure ${missingConfiguration.join(", ")} in the Relay deployment.`);
       }
       try {
         integrationKey();
@@ -1132,24 +1606,72 @@ function installProductRoutes(app, db, isProduction) {
         VALUES ($1, $2, $3, $4, $5)
       `).run(hashToken(rawState), req.product.workspaceId, provider, req.product.userId,
         new Date(Date.now() + 10 * 60 * 1000).toISOString());
-      const authorizationUrl = new URL(provider === "hubspot"
-        ? "https://app.hubspot.com/oauth/authorize"
-        : "https://slack.com/oauth/v2/authorize");
+      const authorizationUrl = new URL("https://app.hubspot.com/oauth/authorize");
       authorizationUrl.searchParams.set("client_id", clientId);
       authorizationUrl.searchParams.set("redirect_uri", callbackUrl);
       authorizationUrl.searchParams.set("state", rawState);
-      authorizationUrl.searchParams.set("scope", provider === "hubspot"
-        ? "crm.objects.deals.read crm.objects.deals.write"
-        : "incoming-webhook");
+      authorizationUrl.searchParams.set("scope", "crm.objects.deals.read crm.objects.deals.write crm.objects.contacts.read crm.schemas.deals.read");
       return res.json({ authorizationUrl: authorizationUrl.toString() });
     });
+
+  app.get("/api/product/integrations/hubspot/pipelines", requireSession, async (req, res) => {
+    try {
+      const { integration, pipelines } = await loadHubSpotPipelines(req.product.workspaceId);
+      return res.json({
+        pipelines,
+        configuration: {
+          pipelineId: integration.hubspot_onboarding_pipeline_id,
+          stageId: integration.hubspot_onboarding_stage_id,
+          templateId: integration.hubspot_onboarding_template_id
+        }
+      });
+    } catch (error) {
+      return sendError(res, 502, error.message);
+    }
+  });
+
+  app.put("/api/product/integrations/hubspot/onboarding", sameOrigin, requireSession, async (req, res) => {
+    if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can configure HubSpot handoff.");
+    const pipelineId = requiredText(req.body.pipelineId, 120);
+    const stageId = requiredText(req.body.stageId, 120);
+    const templateId = validId(req.body.templateId);
+    if (!pipelineId || !stageId || !templateId) {
+      return sendError(res, 400, "Choose a HubSpot pipeline, its Closed Won stage, and a Relay template.");
+    }
+    const template = await database.prepare(`
+      SELECT id, steps_json FROM product_templates
+      WHERE id = $1 AND workspace_id = $2
+    `).get(templateId, req.product.workspaceId);
+    if (!template || !Array.isArray(JSON.parse(template.steps_json)) || !JSON.parse(template.steps_json).length) {
+      return sendError(res, 400, "Choose a template with at least one saved step.");
+    }
+    try {
+      const { pipelines } = await loadHubSpotPipelines(req.product.workspaceId);
+      const pipeline = pipelines.find((item) => item.id === pipelineId);
+      const stage = pipeline?.stages.find((item) => item.id === stageId);
+      if (!stage?.isClosedWon) {
+        return sendError(res, 400, "Choose a Closed Won stage from the selected HubSpot pipeline.");
+      }
+      await database.prepare(`
+        UPDATE product_workspace_integrations
+        SET hubspot_onboarding_pipeline_id = $1, hubspot_onboarding_stage_id = $2,
+          hubspot_onboarding_template_id = $3, hubspot_onboarding_last_synced_at = CURRENT_TIMESTAMP,
+          hubspot_onboarding_last_error = '', hubspot_onboarding_last_error_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE workspace_id = $4 AND provider = 'hubspot'
+      `).run(pipelineId, stageId, templateId, req.product.workspaceId);
+      return res.json({ success: true, message: "Closed Won handoff is configured. New matching deals will start once." });
+    } catch (error) {
+      return sendError(res, 502, error.message);
+    }
+  });
 
   app.get("/api/product/integrations/callback/:provider", async (req, res) => {
       const { provider } = req.params;
       const stateToken = typeof req.query.state === "string" ? req.query.state : "";
       const code = typeof req.query.code === "string" ? req.query.code : "";
       const redirectToSettings = (result) => res.redirect(303, `/product.html?integration=${encodeURIComponent(result)}`);
-      if (!["hubspot", "slack"].includes(provider) || !/^[A-Za-z0-9_-]{40,60}$/.test(stateToken) || !code) {
+      if (provider !== "hubspot" || !/^[A-Za-z0-9_-]{40,60}$/.test(stateToken) || !code) {
         return redirectToSettings("connect_failed");
       }
       const pending = await database.prepare(`
@@ -1176,9 +1698,7 @@ function installProductRoutes(app, db, isProduction) {
           redirect_uri: callbackUrl,
           code
         });
-        const tokenEndpoint = provider === "hubspot"
-          ? "https://api.hubapi.com/oauth/v3/token"
-          : "https://slack.com/api/oauth.v2.access";
+        const tokenEndpoint = "https://api.hubapi.com/oauth/v3/token";
         const response = await fetch(tokenEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -1186,13 +1706,8 @@ function installProductRoutes(app, db, isProduction) {
           signal: AbortSignal.timeout(10000)
         });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok || (provider === "slack" && !result.ok) || !result.access_token) {
+        if (!response.ok || !result.access_token) {
           console.error(JSON.stringify({ event: "integration_oauth_exchange_failed", provider, provider_status: response.status }));
-          return redirectToSettings("connect_failed");
-        }
-        const webhookUrl = provider === "slack" ? result.incoming_webhook?.url : "";
-        if (provider === "slack" && (!webhookUrl || new URL(webhookUrl).protocol !== "https:")) {
-          console.error(JSON.stringify({ event: "integration_oauth_webhook_missing", provider }));
           return redirectToSettings("connect_failed");
         }
         await database.prepare(`
@@ -1213,9 +1728,9 @@ function installProductRoutes(app, db, isProduction) {
           provider,
           encryptIntegrationValue(result.access_token),
           result.refresh_token ? encryptIntegrationValue(result.refresh_token) : "",
-          webhookUrl ? encryptIntegrationValue(webhookUrl) : "",
+          "",
           Number.isFinite(result.expires_in) ? new Date(Date.now() + result.expires_in * 1000).toISOString() : null,
-          String(provider === "hubspot" ? result.hub_id || "" : result.team?.id || ""),
+          String(result.hub_id || ""),
           pending.created_by
         );
         return redirectToSettings(`${provider}_connected`);
@@ -1227,7 +1742,7 @@ function installProductRoutes(app, db, isProduction) {
 
   app.delete("/api/product/integrations/:provider", sameOrigin, requireSession, async (req, res) => {
       const { provider } = req.params;
-      if (!["hubspot", "slack"].includes(provider)) return sendError(res, 404, "Integration not found.");
+      if (provider !== "hubspot") return sendError(res, 404, "Integration not found.");
       if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can disconnect integrations.");
       await database.prepare(
         "DELETE FROM product_workspace_integrations WHERE workspace_id = $1 AND provider = $2"
@@ -1244,6 +1759,36 @@ function installProductRoutes(app, db, isProduction) {
       if (!expectedToken) return sendError(res, 503, "Event processing is not configured.");
       if (expectedBuffer.length !== suppliedBuffer.length || !timingSafeEqual(expectedBuffer, suppliedBuffer)) {
         return sendError(res, 401, "Not authorized.");
+      }
+
+      const configuredHubspots = await database.prepare(`
+        SELECT h.workspace_id, h.access_token_cipher, h.refresh_token_cipher, h.token_expires_at,
+          h.hubspot_onboarding_pipeline_id, h.hubspot_onboarding_stage_id,
+          h.hubspot_onboarding_template_id, h.hubspot_onboarding_last_synced_at
+        FROM product_workspace_integrations h
+        JOIN product_workspace_subscriptions s ON s.workspace_id = h.workspace_id
+        WHERE h.provider = 'hubspot' AND h.hubspot_onboarding_pipeline_id != ''
+          AND h.hubspot_onboarding_stage_id != '' AND h.hubspot_onboarding_template_id IS NOT NULL
+          AND s.expires_at > CURRENT_TIMESTAMP
+      `).all();
+      let hubspotImportsCreated = 0;
+      let hubspotImportFailures = 0;
+      for (const integration of configuredHubspots) {
+        try {
+          hubspotImportsCreated += await pollHubSpotOnboarding(integration, req);
+        } catch (error) {
+          hubspotImportFailures += 1;
+          await database.prepare(`
+            UPDATE product_workspace_integrations
+            SET hubspot_onboarding_last_error = $1, hubspot_onboarding_last_error_at = CURRENT_TIMESTAMP
+            WHERE workspace_id = $2 AND provider = 'hubspot'
+          `).run(error.message.slice(0, 500), integration.workspace_id);
+          console.error(JSON.stringify({
+            event: "hubspot_closed_won_poll_failed",
+            workspace_id: integration.workspace_id,
+            message: error.message
+          }));
+        }
       }
 
       const reminders = await database.prepare(`
@@ -1275,6 +1820,35 @@ function installProductRoutes(app, db, isProduction) {
           customerName: reminder.customer_name
         }));
       }
+      const customerTaskReminders = await database.prepare(`
+        SELECT i.workspace_id, i.id AS implementation_id, i.customer_name,
+          c.id AS contact_id, c.email AS recipient_email, s.id AS task_id, s.title,
+          s.due_at
+        FROM product_workspace_notification_settings n
+        JOIN product_implementations i ON i.workspace_id = n.workspace_id
+        JOIN product_workspace_subscriptions subscription ON subscription.workspace_id = i.workspace_id
+        JOIN product_customer_contacts c ON c.implementation_id = i.id
+        JOIN product_implementation_steps s ON s.implementation_id = i.id
+        WHERE n.email_enabled = TRUE AND subscription.expires_at > CURRENT_TIMESTAMP
+          AND c.revoked_at IS NULL AND c.expires_at > CURRENT_TIMESTAMP
+          AND s.customer_visible = TRUE AND s.status != 'done' AND s.due_at != ''
+          AND s.due_at <= (CURRENT_DATE + n.reminder_days_before)::text
+      `).all();
+      for (const reminder of customerTaskReminders) {
+        const eventKey = `customer-task-reminder:${reminder.contact_id}:${reminder.task_id}:${reminder.due_at}`;
+        await database.prepare(`
+          INSERT INTO product_workspace_events
+            (event_key, workspace_id, implementation_id, event_type, payload)
+          VALUES ($1, $2, $3, 'customer.task_reminder', $4::jsonb)
+          ON CONFLICT (event_key) DO NOTHING
+        `).run(eventKey, reminder.workspace_id, reminder.implementation_id, JSON.stringify({
+          contactId: reminder.contact_id,
+          recipientEmail: reminder.recipient_email,
+          customerName: reminder.customer_name,
+          taskTitle: reminder.title,
+          dueAt: reminder.due_at
+        }));
+      }
 
       const customerEscalations = await database.prepare(`
         SELECT i.id AS implementation_id, i.workspace_id, i.customer_name, i.escalation_email,
@@ -1282,6 +1856,8 @@ function installProductRoutes(app, db, isProduction) {
           GREATEST(
             COALESCE((SELECT MAX(c.updated_at) FROM product_customer_inputs c
               WHERE c.implementation_id = i.id AND BTRIM(c.value) != ''), i.created_at),
+            COALESCE((SELECT MAX(contact.last_activity_at) FROM product_customer_contacts contact
+              WHERE contact.implementation_id = i.id AND contact.revoked_at IS NULL), i.created_at),
             COALESCE((SELECT MAX(e.created_at) FROM product_workspace_events e
               WHERE e.implementation_id = i.id
                 AND e.event_type IN ('customer.information_submitted', 'customer.tasks_completed')), i.created_at)
@@ -1333,7 +1909,7 @@ function installProductRoutes(app, db, isProduction) {
           FOR UPDATE SKIP LOCKED
         )
         RETURNING id, workspace_id, implementation_id, event_type, payload, attempts,
-          email_sent_at, slack_sent_at, hubspot_synced_at
+          email_sent_at, hubspot_synced_at
       `).all();
       let processed = 0;
       let failures = 0;
@@ -1386,10 +1962,20 @@ function installProductRoutes(app, db, isProduction) {
           }
           const message = event.event_type === "task.reminder"
             ? `Reminder: ${event.payload.taskTitle} for ${event.payload.customerName} ${event.payload.isOverdue ? "is overdue (was due)" : "is due"} ${event.payload.dueAt}.`
+            : event.event_type === "customer.task_reminder"
+              ? `A friendly reminder that “${event.payload.taskTitle}” for ${event.payload.customerName} is due ${event.payload.dueAt}. Please use the personal portal link from your onboarding invitation to review the task or message your implementation team.`
             : event.event_type === "customer.escalation"
               ? `Relay is following up because required setup information for ${event.payload.customerName} has not been received. The original customer contact has been quiet for at least ${event.payload.escalationDelayDays} days. Still needed: ${event.payload.missingInformation || "required setup information"}.`
             : event.event_type === "implementation.created"
               ? `Implementation started for ${implementation?.customer_name || "a customer"}.`
+              : event.event_type === "customer.message"
+                ? `A new message from ${event.payload.senderName || "the customer"} is waiting in the ${implementation?.customer_name || "customer"} portal.`
+                : event.event_type === "customer.file_uploaded"
+                  ? `${event.payload.uploadedBy || "The customer"} uploaded “${event.payload.filename}” for ${implementation?.customer_name || "a customer"}.`
+                  : event.event_type === "team.message"
+                    ? `Your implementation team replied to your message about ${implementation?.customer_name || "your onboarding"}. Open the personal portal link from your invitation to read the reply.`
+                    : event.event_type === "customer.invited"
+                      ? `${event.payload.contactName || event.payload.recipientEmail} was invited to the ${implementation?.customer_name || "customer"} portal.`
               : event.event_type === "customer.information_submitted"
                 ? `Customer information was submitted for ${implementation?.customer_name || "a customer"}.`
                 : event.event_type === "customer.tasks_completed"
@@ -1403,7 +1989,7 @@ function installProductRoutes(app, db, isProduction) {
               const apiKey = process.env.RESEND_API_KEY?.trim();
               const from = process.env.AUTH_EMAIL_FROM?.trim();
               if (!apiKey || !from) throw new Error("Email notifications are enabled but Resend is not configured.");
-              const recipientRows = event.event_type === "customer.escalation"
+              const recipientRows = ["customer.escalation", "customer.task_reminder", "team.message"].includes(event.event_type)
                 ? [{ email: event.payload.recipientEmail }]
                 : event.event_type === "task.reminder" && event.payload.assignedUserId
                 ? await database.prepare(`
@@ -1425,9 +2011,15 @@ function installProductRoutes(app, db, isProduction) {
                     to: recipientRows.map((row) => row.email),
                     subject: event.event_type === "customer.escalation"
                       ? `Relay follow-up needed: ${event.payload.customerName}`
+                      : event.event_type === "customer.task_reminder"
+                        ? `Onboarding task due: ${event.payload.customerName}`
+                        : event.event_type === "team.message"
+                          ? `Your implementation team replied`
                       : `Relay update: ${event.payload.taskTitle || implementation?.customer_name || "customer implementation"}`,
                     text: event.event_type === "customer.escalation"
                       ? `${message}\n\nPlease contact the implementation team if you can help move this forward.`
+                      : ["customer.task_reminder", "team.message"].includes(event.event_type)
+                        ? `${message}\n\nIf you cannot access your portal link, reply to your implementation team and they can send a new one.`
                       : `${message}\n\nOpen your Relay workspace to review the next steps.`
                   }),
                   signal: AbortSignal.timeout(10000)
@@ -1445,23 +2037,6 @@ function installProductRoutes(app, db, isProduction) {
               token_expires_at
             FROM product_workspace_integrations WHERE workspace_id = $1
           `).all(event.workspace_id);
-          const slack = integrations.find((item) => item.provider === "slack");
-          if (!event.slack_sent_at) {
-            if (slack?.webhook_url_cipher) {
-              const webhookUrl = decryptIntegrationValue(slack.webhook_url_cipher);
-              const response = await fetch(webhookUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: message, mrkdwn: false }),
-                signal: AbortSignal.timeout(10000)
-              });
-              if (!response.ok) throw new Error(`Slack webhook returned HTTP ${response.status}.`);
-            }
-            await database.prepare(
-              "UPDATE product_workspace_events SET slack_sent_at = CURRENT_TIMESTAMP WHERE id = $1"
-            ).run(event.id);
-          }
-
           const hubspot = integrations.find((item) => item.provider === "hubspot");
           if (!event.hubspot_synced_at) {
             if (hubspot && implementation) {
@@ -1546,7 +2121,13 @@ function installProductRoutes(app, db, isProduction) {
           }));
         }
       }
-      return res.json({ processed, failures, remindersQueued: reminders.length });
+      return res.json({
+        processed,
+        failures,
+        remindersQueued: reminders.length + customerTaskReminders.length,
+        hubspotImportsCreated,
+        hubspotImportFailures
+      });
     });
 
   app.get("/api/product/portfolio.csv", requireSession, async (req, res) => {
@@ -2037,6 +2618,13 @@ function installProductRoutes(app, db, isProduction) {
   app.delete("/api/product/templates/:templateId", sameOrigin, requireSession, async (req, res) => {
     const templateId = validId(req.params.templateId);
     if (!templateId) return sendError(res, 400, "Invalid template.");
+    const hubspotHandoff = await database.prepare(`
+      SELECT 1 AS configured FROM product_workspace_integrations
+      WHERE workspace_id = $1 AND provider = 'hubspot' AND hubspot_onboarding_template_id = $2
+    `).get(req.product.workspaceId, templateId);
+    if (hubspotHandoff) {
+      return sendError(res, 409, "This template is selected for HubSpot onboarding. Choose a different handoff template before deleting it.");
+    }
     const implementationCount = (await database.prepare(
       "SELECT COUNT(*) AS count FROM product_implementations WHERE template_id = $1 AND workspace_id = $2"
     ).get(templateId, req.product.workspaceId)).count;
@@ -2051,7 +2639,18 @@ function installProductRoutes(app, db, isProduction) {
   app.post("/api/product/implementations", sameOrigin, requireSession, async (req, res) => {
     const templateId = validId(req.body.templateId);
     const customerName = requiredText(req.body.customerName, 120);
+    const customerOwnerName = typeof req.body.customerOwnerName === "string"
+      ? req.body.customerOwnerName.trim().slice(0, 120)
+      : "";
+    const customerOwnerEmail = typeof req.body.customerOwnerEmail === "string"
+      ? req.body.customerOwnerEmail.trim().toLowerCase().slice(0, 254)
+      : "";
+    const targetLaunchDate = req.body.targetLaunchDate ?? "";
     if (!templateId || !customerName) return sendError(res, 400, "Choose a template and enter the customer’s company name.");
+    if ((customerOwnerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerOwnerEmail))
+      || (targetLaunchDate !== "" && !validDate(targetLaunchDate))) {
+      return sendError(res, 400, "Enter a valid customer contact email and target launch date.");
+    }
     const template = await (database.prepare(
       "SELECT id, name, steps_json FROM product_templates WHERE id = $1 AND workspace_id = $2"
     ).get(templateId, req.product.workspaceId));
@@ -2061,61 +2660,50 @@ function installProductRoutes(app, db, isProduction) {
     if (steps.some((step) => Array.isArray(step.dependsOnPositions) && step.dependsOnPositions.length)
       && !requirePlanFeature(req, res, "dependencies", "Task prerequisites")) return;
 
-    const rawPortalToken = randomBytes(32).toString("base64url");
-    const implementation = await database.transaction(async () => {
-      const plan = await lockWorkspace(req.product.workspaceId);
-      const activeCount = await countActiveImplementations(req.product.workspaceId);
-      if (plan.activeImplementationLimit !== null
-        && activeCount >= plan.activeImplementationLimit) return null;
-      const implementation = await (database.prepare(
-        "INSERT INTO product_implementations (workspace_id, template_id, customer_name, portal_token_hash) VALUES ($1, $2, $3, $4) RETURNING id, customer_name, created_at"
-      ).get(req.product.workspaceId, templateId, customerName, hashToken(rawPortalToken)));
-      const insertStep = database.prepare(
-        `INSERT INTO product_implementation_steps
-          (implementation_id, title, description, owner, position, due_at, stage, assignee_user_id, customer_visible)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`
-      );
-      const stepIdsByPosition = new Map();
-      for (const step of steps) {
-        const dueDate = new Date();
-        dueDate.setUTCHours(0, 0, 0, 0);
-        dueDate.setUTCDate(dueDate.getUTCDate() + (Number.isInteger(step.dueOffsetDays) ? step.dueOffsetDays : 0));
-        const inserted = await (insertStep.run(
-          implementation.id,
-          step.title,
-          step.description || "",
-          step.owner || "",
-          step.position,
-          Number.isInteger(step.dueOffsetDays) ? dueDate.toISOString().slice(0, 10) : "",
-          step.stage || "Implementation",
-          step.assigneeUserId || null,
-          step.customerVisible === true
-        ));
-        stepIdsByPosition.set(step.position, inserted.lastInsertRowid);
-      }
-      const addDependency = database.prepare(
-        "INSERT INTO product_implementation_step_dependencies (implementation_step_id, depends_on_step_id) VALUES ($1, $2)"
-      );
-      for (const step of steps) {
-        for (const dependencyPosition of step.dependsOnPositions || []) {
-          const dependencyId = stepIdsByPosition.get(dependencyPosition);
-          const currentStepId = stepIdsByPosition.get(step.position);
-          if (!dependencyId || !currentStepId) throw new Error("Template contains an invalid prerequisite reference.");
-          await (addDependency.run(currentStepId, dependencyId));
-        }
-      }
-      await (database.prepare(`
-        INSERT INTO product_customer_inputs (implementation_id, requirement_id)
-        SELECT $1, id FROM product_requirements
-        WHERE workspace_id = $2 AND (template_id IS NULL OR template_id = $3)
-      `).run(implementation.id, req.product.workspaceId, templateId));
-      await enqueueWorkspaceEvent(req.product.workspaceId, implementation.id, "implementation.created");
-      return implementation;
+    const creation = await createImplementationFromTemplate({
+      workspaceId: req.product.workspaceId,
+      template,
+      customerName,
+      customerOwnerName,
+      customerOwnerEmail,
+      targetLaunchDate
     });
-    if (!implementation) return sendError(res, 409, "This workspace has reached its active implementation limit. Complete an implementation or upgrade the plan.");
+    if (!creation.implementation) return sendError(res, 409, `${creation.error} Complete an implementation or upgrade the plan.`);
+    const implementation = creation.implementation;
+    let customerInvitation = null;
+    if (customerOwnerEmail) {
+      const customerToken = randomBytes(32).toString("base64url");
+      const expiresAt = new Date(Date.now() + CUSTOMER_LINK_DAYS * 86400000).toISOString();
+      await database.prepare(`
+        INSERT INTO product_customer_contacts
+          (implementation_id, email, display_name, token_hash, expires_at)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (implementation_id, email) DO UPDATE SET
+          display_name = excluded.display_name, token_hash = excluded.token_hash,
+          expires_at = excluded.expires_at, invitation_sent_at = NULL,
+          revoked_at = NULL, last_activity_at = CURRENT_TIMESTAMP
+      `).run(implementation.id, customerOwnerEmail, customerOwnerName, hashToken(customerToken), expiresAt);
+      customerInvitation = await sendCustomerContactInvitation({
+        req,
+        implementation,
+        contactEmail: customerOwnerEmail,
+        contactName: customerOwnerName,
+        token: customerToken
+      });
+      if (customerInvitation.sent) {
+        await database.prepare(`
+          UPDATE product_customer_contacts SET invitation_sent_at = CURRENT_TIMESTAMP
+          WHERE implementation_id = $1 AND email = $2
+        `).run(implementation.id, customerOwnerEmail);
+      }
+    }
     return res.status(201).json({
-      implementation: { ...implementation, template_name: template.name },
-      customerPortalToken: rawPortalToken
+      implementation,
+      customerInvitation: customerInvitation && {
+        sent: customerInvitation.sent,
+        ...(customerInvitation.link ? { link: customerInvitation.link } : {}),
+        ...(customerInvitation.error ? { message: customerInvitation.error } : {})
+      }
     });
   });
 
@@ -2137,7 +2725,16 @@ function installProductRoutes(app, db, isProduction) {
     if (!implementationId) return sendError(res, 400, "Invalid implementation.");
     const implementation = await (database.prepare(`
       SELECT i.id, i.customer_name, i.created_at, i.template_id, i.escalation_email,
-        i.escalation_delay_days,
+        i.escalation_delay_days, i.target_launch_date, i.customer_owner_name, i.customer_owner_email,
+        i.success_criteria, i.acceptance_status, i.test_plan, i.training_status,
+        i.support_owner_name, i.support_owner_email, i.rollback_plan, i.go_live_status,
+        i.communication_channel, i.communication_cadence, i.communication_owner_name,
+        i.communication_owner_email, i.procurement_status, i.security_status, i.security_notes,
+        i.integration_inventory, i.integration_status, i.technical_setup_status,
+        i.technical_setup_notes, i.change_management_status, i.adoption_notes,
+        i.early_validation_status, i.early_validation_notes, i.post_launch_support_plan,
+        i.duplicate_request_control,
+        i.sow_scope, i.sow_milestones, i.sow_exclusions, i.stage_gate_status,
         t.name AS template_name,
         i.portal_token_hash IS NOT NULL AS has_customer_link
       FROM product_implementations i
@@ -2159,7 +2756,545 @@ function installProductRoutes(app, db, isProduction) {
       ORDER BY s.position, s.id
     `).all(implementationId));
     implementation.requirements = await (implementationRequirements(implementationId, req.product.workspaceId, implementation.template_id));
+    implementation.customerContacts = await database.prepare(`
+      SELECT id, email, display_name, expires_at, invitation_sent_at, revoked_at, last_activity_at, created_at
+      FROM product_customer_contacts
+      WHERE implementation_id = $1
+      ORDER BY created_at DESC, id DESC
+    `).all(implementationId);
+    implementation.customerMessages = await database.prepare(`
+      SELECT id, sender_role, sender_name, sender_email, body, created_at
+      FROM product_customer_messages WHERE implementation_id = $1
+      ORDER BY created_at, id
+    `).all(implementationId);
+    implementation.customerFiles = await database.prepare(`
+      SELECT id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, created_at
+      FROM product_customer_files WHERE implementation_id = $1
+      ORDER BY created_at DESC, id DESC
+    `).all(implementationId);
+    implementation.launchStakeholders = await database.prepare(`
+      SELECT id, display_name, email, role, approval_status, next_action, created_at
+      FROM product_launch_stakeholders WHERE implementation_id = $1
+      ORDER BY created_at, id
+    `).all(implementationId);
+    implementation.launchRisks = await database.prepare(`
+      SELECT id, category, title, owner_name, owner_email, severity, status, next_action, due_at, created_at
+      FROM product_launch_risks WHERE implementation_id = $1
+      ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+        created_at DESC, id DESC
+    `).all(implementationId);
+    implementation.approvals = await database.prepare(`
+      SELECT id, title, approval_type, approver_name, approver_email, status, due_at, created_at
+      FROM product_approval_requests WHERE implementation_id = $1
+      ORDER BY created_at DESC, id DESC
+    `).all(implementationId);
+    implementation.timeEntries = await database.prepare(`
+      SELECT t.id, t.user_id, u.email AS user_email, t.work_date, t.minutes, t.billable, t.note, t.hourly_rate, t.created_at
+      FROM product_time_entries t LEFT JOIN product_users u ON u.id = t.user_id
+      WHERE t.implementation_id = $1 ORDER BY t.work_date DESC, t.id DESC
+    `).all(implementationId);
+    implementation.financialPlan = await database.prepare(`
+      SELECT budget_amount, forecast_amount, actual_cost, invoice_status, invoice_reference, margin_note, updated_at
+      FROM product_financial_plans WHERE implementation_id = $1
+    `).get(implementationId) || {
+      budget_amount: 0, forecast_amount: 0, actual_cost: 0, invoice_status: "not_started",
+      invoice_reference: "", margin_note: ""
+    };
+    implementation.calendarEvents = await database.prepare(`
+      SELECT id, title, start_at, end_at, event_type, external_url, created_at
+      FROM product_calendar_events WHERE implementation_id = $1
+      ORDER BY start_at, id
+    `).all(implementationId);
     return res.json({ implementation });
+  });
+
+  app.patch("/api/product/implementations/:implementationId/launch-plan", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const customerOwnerName = typeof req.body.customerOwnerName === "string"
+      ? req.body.customerOwnerName.trim().slice(0, 120)
+      : null;
+    const customerOwnerEmail = typeof req.body.customerOwnerEmail === "string"
+      ? req.body.customerOwnerEmail.trim().toLowerCase().slice(0, 254)
+      : null;
+    const targetLaunchDate = req.body.targetLaunchDate ?? "";
+    if (!implementationId || customerOwnerName === null || customerOwnerEmail === null
+      || (customerOwnerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerOwnerEmail))
+      || (targetLaunchDate !== "" && !validDate(targetLaunchDate))) {
+      return sendError(res, 400, "Enter a valid customer owner, email address, and target launch date.");
+    }
+    const result = await database.prepare(`
+      UPDATE product_implementations
+      SET customer_owner_name = $1, customer_owner_email = $2, target_launch_date = $3
+      WHERE id = $4 AND workspace_id = $5
+    `).run(customerOwnerName, customerOwnerEmail, targetLaunchDate, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Implementation not found.");
+    return res.json({ customerOwnerName, customerOwnerEmail, targetLaunchDate });
+  });
+
+  app.patch("/api/product/implementations/:implementationId/launch-readiness", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const acceptedStatuses = new Set(["not_started", "in_progress", "accepted", "not_accepted"]);
+    const trainingStatuses = new Set(["not_started", "scheduled", "in_progress", "complete"]);
+    const goLiveStatuses = new Set(["not_ready", "at_risk", "ready", "launched"]);
+    const successCriteria = typeof req.body.successCriteria === "string" ? req.body.successCriteria.trim().slice(0, 4000) : null;
+    const testPlan = typeof req.body.testPlan === "string" ? req.body.testPlan.trim().slice(0, 4000) : null;
+    const rollbackPlan = typeof req.body.rollbackPlan === "string" ? req.body.rollbackPlan.trim().slice(0, 4000) : null;
+    const supportOwnerName = typeof req.body.supportOwnerName === "string" ? req.body.supportOwnerName.trim().slice(0, 120) : null;
+    const supportOwnerEmail = typeof req.body.supportOwnerEmail === "string" ? req.body.supportOwnerEmail.trim().toLowerCase().slice(0, 254) : null;
+    const acceptanceStatus = req.body.acceptanceStatus;
+    const trainingStatus = req.body.trainingStatus;
+    const goLiveStatus = req.body.goLiveStatus;
+    if (!implementationId || successCriteria === null || testPlan === null || rollbackPlan === null
+      || supportOwnerName === null || supportOwnerEmail === null
+      || !acceptedStatuses.has(acceptanceStatus) || !trainingStatuses.has(trainingStatus)
+      || !goLiveStatuses.has(goLiveStatus)
+      || (supportOwnerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportOwnerEmail))) {
+      return sendError(res, 400, "Enter valid launch-readiness, acceptance, training, support, and go-live details.");
+    }
+    const result = await database.prepare(`
+      UPDATE product_implementations
+      SET success_criteria = $1, acceptance_status = $2, test_plan = $3, training_status = $4,
+        support_owner_name = $5, support_owner_email = $6, rollback_plan = $7, go_live_status = $8
+      WHERE id = $9 AND workspace_id = $10
+    `).run(successCriteria, acceptanceStatus, testPlan, trainingStatus, supportOwnerName,
+      supportOwnerEmail, rollbackPlan, goLiveStatus, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Implementation not found.");
+    return res.json({
+      successCriteria, acceptanceStatus, testPlan, trainingStatus,
+      supportOwnerName, supportOwnerEmail, rollbackPlan, goLiveStatus
+    });
+  });
+
+  app.patch("/api/product/implementations/:implementationId/sow", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can update SOW and stage-gate details.");
+    const sowScope = typeof req.body.sowScope === "string" ? req.body.sowScope.trim().slice(0, 4000) : "";
+    const sowMilestones = typeof req.body.sowMilestones === "string" ? req.body.sowMilestones.trim().slice(0, 4000) : "";
+    const sowExclusions = typeof req.body.sowExclusions === "string" ? req.body.sowExclusions.trim().slice(0, 4000) : "";
+    const stageGateStatus = ["kickoff", "configuration", "testing", "launch", "hypercare", "complete"].includes(req.body.stageGateStatus)
+      ? req.body.stageGateStatus : "kickoff";
+    if (!implementationId) return sendError(res, 400, "Invalid implementation.");
+    const result = await database.prepare(`
+      UPDATE product_implementations
+      SET sow_scope = $1, sow_milestones = $2, sow_exclusions = $3, stage_gate_status = $4
+      WHERE id = $5 AND workspace_id = $6
+    `).run(sowScope, sowMilestones, sowExclusions, stageGateStatus, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Implementation not found.");
+    return res.json({ sowScope, sowMilestones, sowExclusions, stageGateStatus });
+  });
+
+  app.patch("/api/product/implementations/:implementationId/financial-plan", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can update financial plans.");
+    const number = (value) => {
+      if (typeof value !== "number" && typeof value !== "string") return null;
+      if (typeof value === "string" && value.trim() === "") return 0;
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1000000000000) return null;
+      return parsed;
+    };
+    const budgetAmount = number(req.body.budgetAmount);
+    const forecastAmount = number(req.body.forecastAmount);
+    const actualCost = number(req.body.actualCost);
+    const invoiceStatus = ["not_started", "draft", "sent", "paid", "overdue"].includes(req.body.invoiceStatus)
+      ? req.body.invoiceStatus : "not_started";
+    const invoiceReference = typeof req.body.invoiceReference === "string" ? req.body.invoiceReference.trim().slice(0, 120) : "";
+    const marginNote = typeof req.body.marginNote === "string" ? req.body.marginNote.trim().slice(0, 4000) : "";
+    if (!implementationId || budgetAmount === null || forecastAmount === null || actualCost === null) {
+      return sendError(res, 400, "Enter valid non-negative financial amounts.");
+    }
+    const implementation = await database.prepare(
+      "SELECT id FROM product_implementations WHERE id = $1 AND workspace_id = $2"
+    ).get(implementationId, req.product.workspaceId);
+    if (!implementation) return sendError(res, 404, "Implementation not found.");
+    await database.prepare(`
+      INSERT INTO product_financial_plans
+        (implementation_id, budget_amount, forecast_amount, actual_cost, invoice_status, invoice_reference, margin_note)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT (implementation_id) DO UPDATE SET
+        budget_amount = excluded.budget_amount, forecast_amount = excluded.forecast_amount,
+        actual_cost = excluded.actual_cost, invoice_status = excluded.invoice_status,
+        invoice_reference = excluded.invoice_reference, margin_note = excluded.margin_note,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(implementationId, budgetAmount, forecastAmount, actualCost, invoiceStatus, invoiceReference, marginNote);
+    return res.json({ budgetAmount, forecastAmount, actualCost, invoiceStatus, invoiceReference, marginNote });
+  });
+
+  app.post("/api/product/implementations/:implementationId/time-entries", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const minutes = Number(req.body.minutes);
+    const workDate = req.body.workDate ?? "";
+    const billable = typeof req.body.billable === "boolean" ? req.body.billable : true;
+    const note = typeof req.body.note === "string" ? req.body.note.trim().slice(0, 500) : "";
+    const hourlyRate = Number.isFinite(Number(req.body.hourlyRate))
+      ? Math.min(1000000, Math.max(0, Number(req.body.hourlyRate))) : 0;
+    if (!implementationId || !Number.isInteger(minutes) || minutes < 1 || minutes > 1440
+      || !validDate(workDate)) return sendError(res, 400, "Enter a valid work date and time entry.");
+    const implementation = await database.prepare(
+      "SELECT id FROM product_implementations WHERE id = $1 AND workspace_id = $2"
+    ).get(implementationId, req.product.workspaceId);
+    if (!implementation) return sendError(res, 404, "Implementation not found.");
+    const entry = await database.prepare(`
+      INSERT INTO product_time_entries
+        (implementation_id, user_id, work_date, minutes, billable, note, hourly_rate)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, implementation_id, user_id, work_date, minutes, billable, note, hourly_rate, created_at
+    `).get(implementationId, req.product.userId, workDate, minutes, billable, note, hourlyRate);
+    return res.status(201).json({ entry });
+  });
+
+  app.delete("/api/product/implementations/:implementationId/time-entries/:entryId", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const entryId = validId(req.params.entryId);
+    if (!implementationId || !entryId) return sendError(res, 400, "Invalid time entry.");
+    const result = await database.prepare(`
+      DELETE FROM product_time_entries t
+      USING product_implementations i
+      WHERE t.id = $1 AND t.implementation_id = $2
+        AND i.id = t.implementation_id AND i.workspace_id = $3
+    `).run(entryId, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Time entry not found.");
+    return res.json({ success: true });
+  });
+
+  app.post("/api/product/implementations/:implementationId/approvals", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const title = requiredText(req.body.title, 240);
+    const approvalType = typeof req.body.approvalType === "string" ? req.body.approvalType.trim().slice(0, 80) : "other";
+    const approverName = typeof req.body.approverName === "string" ? req.body.approverName.trim().slice(0, 120) : "";
+    const approverEmail = typeof req.body.approverEmail === "string" ? req.body.approverEmail.trim().toLowerCase().slice(0, 254) : "";
+    const dueAt = req.body.dueAt ?? "";
+    if (!implementationId || !title || (approverEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(approverEmail))
+      || (dueAt !== "" && !validDate(dueAt))) return sendError(res, 400, "Enter a valid approval and approver.");
+    const implementation = await database.prepare(
+      "SELECT id FROM product_implementations WHERE id = $1 AND workspace_id = $2"
+    ).get(implementationId, req.product.workspaceId);
+    if (!implementation) return sendError(res, 404, "Implementation not found.");
+    const approval = await database.prepare(`
+      INSERT INTO product_approval_requests
+        (implementation_id, title, approval_type, approver_name, approver_email, status, due_at)
+      VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+      RETURNING id, title, approval_type, approver_name, approver_email, status, due_at, created_at
+    `).get(implementationId, title, approvalType, approverName, approverEmail, dueAt);
+    return res.status(201).json({ approval });
+  });
+
+  app.patch("/api/product/implementations/:implementationId/approvals/:approvalId", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const approvalId = validId(req.params.approvalId);
+    const status = ["pending", "approved", "rejected"].includes(req.body.status) ? req.body.status : "";
+    if (!implementationId || !approvalId || !status) return sendError(res, 400, "Choose a valid approval status.");
+    const result = await database.prepare(`
+      UPDATE product_approval_requests a
+      SET status = $1
+      FROM product_implementations i
+      WHERE a.id = $2 AND a.implementation_id = $3
+        AND i.id = a.implementation_id AND i.workspace_id = $4
+    `).run(status, approvalId, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Approval not found.");
+    return res.json({ success: true, status });
+  });
+
+  app.delete("/api/product/implementations/:implementationId/approvals/:approvalId", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const approvalId = validId(req.params.approvalId);
+    if (!implementationId || !approvalId) return sendError(res, 400, "Invalid approval.");
+    const result = await database.prepare(`
+      DELETE FROM product_approval_requests a
+      USING product_implementations i
+      WHERE a.id = $1 AND a.implementation_id = $2
+        AND i.id = a.implementation_id AND i.workspace_id = $3
+    `).run(approvalId, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Approval not found.");
+    return res.json({ success: true });
+  });
+
+  app.patch("/api/product/implementations/:implementationId/onboarding-gap-plan", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const textFields = [
+      "communicationChannel", "communicationCadence", "communicationOwnerName", "communicationOwnerEmail",
+      "securityNotes", "integrationInventory", "integrationStatus", "technicalSetupNotes",
+      "adoptionNotes", "earlyValidationNotes", "postLaunchSupportPlan", "duplicateRequestControl"
+    ];
+    const normalized = {};
+    for (const field of textFields) {
+      normalized[field] = typeof req.body[field] === "string" ? req.body[field].trim().slice(0, 4000) : null;
+    }
+    const procurementStatus = req.body.procurementStatus;
+    const securityStatus = req.body.securityStatus;
+    const technicalSetupStatus = req.body.technicalSetupStatus;
+    const changeManagementStatus = req.body.changeManagementStatus;
+    const earlyValidationStatus = req.body.earlyValidationStatus;
+    const integrationStatus = req.body.integrationStatus;
+    if (!implementationId || Object.values(normalized).includes(null)
+      || !["not_started", "in_progress", "approved", "blocked"].includes(procurementStatus)
+      || !["not_started", "in_progress", "approved", "blocked"].includes(securityStatus)
+      || !["not_started", "discovering", "in_progress", "tested", "blocked"].includes(integrationStatus)
+      || !["not_started", "in_progress", "tested", "ready", "blocked"].includes(technicalSetupStatus)
+      || !["not_started", "planned", "in_progress", "adopted"].includes(changeManagementStatus)
+      || !["not_started", "planned", "in_progress", "passed", "failed"].includes(earlyValidationStatus)
+      || (normalized.communicationOwnerEmail
+        && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.communicationOwnerEmail))) {
+      return sendError(res, 400, "Enter valid communication, approval, security, integration, setup, adoption, and validation details.");
+    }
+    const result = await database.prepare(`
+      UPDATE product_implementations SET
+        communication_channel = $1, communication_cadence = $2,
+        communication_owner_name = $3, communication_owner_email = $4,
+        procurement_status = $5, security_status = $6, security_notes = $7,
+        integration_inventory = $8, integration_status = $9,
+        technical_setup_status = $10, technical_setup_notes = $11,
+        change_management_status = $12, adoption_notes = $13,
+        early_validation_status = $14, early_validation_notes = $15,
+        post_launch_support_plan = $16, duplicate_request_control = $17
+      WHERE id = $18 AND workspace_id = $19
+    `).run(
+      normalized.communicationChannel, normalized.communicationCadence,
+      normalized.communicationOwnerName, normalized.communicationOwnerEmail,
+      procurementStatus, securityStatus, normalized.securityNotes,
+      normalized.integrationInventory, integrationStatus,
+      technicalSetupStatus, normalized.technicalSetupNotes,
+      changeManagementStatus, normalized.adoptionNotes,
+      earlyValidationStatus, normalized.earlyValidationNotes,
+      normalized.postLaunchSupportPlan, normalized.duplicateRequestControl,
+      implementationId, req.product.workspaceId
+    );
+    if (!result.changes) return sendError(res, 404, "Implementation not found.");
+    return res.json(normalized);
+  });
+
+  app.post("/api/product/implementations/:implementationId/calendar-events", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const title = requiredText(req.body.title, 240);
+    const startAt = typeof req.body.startAt === "string" ? req.body.startAt.trim().slice(0, 40) : "";
+    const endAt = typeof req.body.endAt === "string" ? req.body.endAt.trim().slice(0, 40) : "";
+    const eventType = typeof req.body.eventType === "string" ? req.body.eventType.trim().slice(0, 80) : "meeting";
+    const externalUrl = typeof req.body.externalUrl === "string" ? req.body.externalUrl.trim().slice(0, 1000) : "";
+    if (!implementationId || !title || !startAt
+      || Number.isNaN(Date.parse(startAt))
+      || (endAt && (Number.isNaN(Date.parse(endAt)) || Date.parse(endAt) < Date.parse(startAt)))
+      || (externalUrl && !/^https?:\/\//i.test(externalUrl))) {
+      return sendError(res, 400, "Enter a valid event title, start/end time, and optional HTTPS URL.");
+    }
+    const implementation = await database.prepare(
+      "SELECT id FROM product_implementations WHERE id = $1 AND workspace_id = $2"
+    ).get(implementationId, req.product.workspaceId);
+    if (!implementation) return sendError(res, 404, "Implementation not found.");
+    const event = await database.prepare(`
+      INSERT INTO product_calendar_events (implementation_id, title, start_at, end_at, event_type, external_url)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, title, start_at, end_at, event_type, external_url, created_at
+    `).get(implementationId, title, startAt, endAt, eventType, externalUrl);
+    return res.status(201).json({ event });
+  });
+
+  app.delete("/api/product/implementations/:implementationId/calendar-events/:eventId", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const eventId = validId(req.params.eventId);
+    if (!implementationId || !eventId) return sendError(res, 400, "Invalid calendar event.");
+    const result = await database.prepare(`
+      DELETE FROM product_calendar_events c
+      USING product_implementations i
+      WHERE c.id = $1 AND c.implementation_id = $2
+        AND i.id = c.implementation_id AND i.workspace_id = $3
+    `).run(eventId, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Calendar event not found.");
+    return res.json({ success: true });
+  });
+
+  app.post("/api/product/capacity-plans", sameOrigin, requireSession, async (req, res) => {
+    if (req.product.role !== "owner") return sendError(res, 403, "Only a workspace owner can update capacity plans.");
+    const userId = validId(req.body.userId);
+    const weekStart = typeof req.body.weekStart === "string" ? req.body.weekStart : "";
+    const availableMinutes = Number(req.body.availableMinutes);
+    const capacityNote = typeof req.body.capacityNote === "string" ? req.body.capacityNote.trim().slice(0, 500) : "";
+    if (!userId || !validDate(weekStart) || !Number.isInteger(availableMinutes)
+      || availableMinutes < 0 || availableMinutes > 10080) {
+      return sendError(res, 400, "Enter a valid team member, week, and available capacity.");
+    }
+    const member = await database.prepare(`
+      SELECT u.id FROM product_users u JOIN product_memberships m ON m.user_id = u.id
+      WHERE u.id = $1 AND m.workspace_id = $2
+    `).get(userId, req.product.workspaceId);
+    if (!member) return sendError(res, 404, "Team member not found.");
+    const plan = await database.prepare(`
+      INSERT INTO product_capacity_plans
+        (workspace_id, user_id, week_start, available_minutes, capacity_note)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (workspace_id, user_id, week_start) DO UPDATE SET
+        available_minutes = excluded.available_minutes, capacity_note = excluded.capacity_note,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING workspace_id, user_id, week_start, available_minutes, capacity_note, updated_at
+    `).get(req.product.workspaceId, userId, weekStart, availableMinutes, capacityNote);
+    return res.status(201).json({ plan });
+  });
+
+  app.post("/api/product/implementations/:implementationId/launch-stakeholders", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const displayName = typeof req.body.displayName === "string" ? req.body.displayName.trim().slice(0, 120) : "";
+    const email = requiredText(req.body.email, 254).toLowerCase();
+    const role = typeof req.body.role === "string" ? req.body.role.trim().slice(0, 120) : "";
+    const approvalStatus = ["pending", "approved", "blocked"].includes(req.body.approvalStatus) ? req.body.approvalStatus : "pending";
+    const nextAction = typeof req.body.nextAction === "string" ? req.body.nextAction.trim().slice(0, 500) : "";
+    if (!implementationId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return sendError(res, 400, "Enter a valid stakeholder name, role, and email address.");
+    }
+    const implementation = await database.prepare(
+      "SELECT id FROM product_implementations WHERE id = $1 AND workspace_id = $2"
+    ).get(implementationId, req.product.workspaceId);
+    if (!implementation) return sendError(res, 404, "Implementation not found.");
+    const stakeholder = await database.prepare(`
+      INSERT INTO product_launch_stakeholders
+        (implementation_id, display_name, email, role, approval_status, next_action)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (implementation_id, email) DO UPDATE SET
+        display_name = excluded.display_name, role = excluded.role,
+        approval_status = excluded.approval_status, next_action = excluded.next_action
+      RETURNING id, display_name, email, role, approval_status, next_action, created_at
+    `).get(implementationId, displayName, email, role, approvalStatus, nextAction);
+    return res.status(201).json({ stakeholder });
+  });
+
+  app.delete("/api/product/implementations/:implementationId/launch-stakeholders/:stakeholderId", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const stakeholderId = validId(req.params.stakeholderId);
+    const result = await database.prepare(`
+      DELETE FROM product_launch_stakeholders s
+      USING product_implementations i
+      WHERE s.id = $1 AND s.implementation_id = $2
+        AND i.id = s.implementation_id AND i.workspace_id = $3
+    `).run(stakeholderId, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Stakeholder not found.");
+    return res.json({ success: true });
+  });
+
+  app.post("/api/product/implementations/:implementationId/launch-risks", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const title = typeof req.body.title === "string" ? req.body.title.trim().slice(0, 240) : "";
+    const category = typeof req.body.category === "string" ? req.body.category.trim().slice(0, 80) : "Other";
+    const ownerName = typeof req.body.ownerName === "string" ? req.body.ownerName.trim().slice(0, 120) : "";
+    const ownerEmail = typeof req.body.ownerEmail === "string" ? req.body.ownerEmail.trim().toLowerCase().slice(0, 254) : "";
+    const severity = ["low", "medium", "high", "critical"].includes(req.body.severity) ? req.body.severity : "medium";
+    const status = ["open", "mitigating", "resolved"].includes(req.body.status) ? req.body.status : "open";
+    const nextAction = typeof req.body.nextAction === "string" ? req.body.nextAction.trim().slice(0, 500) : "";
+    const dueAt = req.body.dueAt ?? "";
+    if (!implementationId || !title || (dueAt !== "" && !validDate(dueAt))
+      || (ownerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail))) {
+      return sendError(res, 400, "Enter a valid risk, owner, severity, and due date.");
+    }
+    const implementation = await database.prepare(
+      "SELECT id FROM product_implementations WHERE id = $1 AND workspace_id = $2"
+    ).get(implementationId, req.product.workspaceId);
+    if (!implementation) return sendError(res, 404, "Implementation not found.");
+    const risk = await database.prepare(`
+      INSERT INTO product_launch_risks
+        (implementation_id, category, title, owner_name, owner_email, severity, status, next_action, due_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id, category, title, owner_name, owner_email, severity, status, next_action, due_at, created_at
+    `).get(implementationId, category, title, ownerName, ownerEmail, severity, status, nextAction, dueAt);
+    return res.status(201).json({ risk });
+  });
+
+  app.delete("/api/product/implementations/:implementationId/launch-risks/:riskId", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const riskId = validId(req.params.riskId);
+    const result = await database.prepare(`
+      DELETE FROM product_launch_risks r
+      USING product_implementations i
+      WHERE r.id = $1 AND r.implementation_id = $2
+        AND i.id = r.implementation_id AND i.workspace_id = $3
+    `).run(riskId, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Risk not found.");
+    return res.json({ success: true });
+  });
+
+  app.post("/api/product/implementations/:implementationId/customer-contacts", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const email = requiredText(req.body.email, 254).toLowerCase();
+    const displayName = typeof req.body.displayName === "string" ? req.body.displayName.trim().slice(0, 120) : "";
+    if (!implementationId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+      || (typeof req.body.displayName !== "undefined" && typeof req.body.displayName !== "string")) {
+      return sendError(res, 400, "Enter a valid customer contact name and email address.");
+    }
+    const implementation = await database.prepare(`
+      SELECT id, customer_name, target_launch_date FROM product_implementations
+      WHERE id = $1 AND workspace_id = $2
+    `).get(implementationId, req.product.workspaceId);
+    if (!implementation) return sendError(res, 404, "Implementation not found.");
+    const token = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + CUSTOMER_LINK_DAYS * 86400000).toISOString();
+    await database.prepare("UPDATE product_implementations SET portal_token_hash = NULL WHERE id = $1")
+      .run(implementationId);
+    const contact = await database.prepare(`
+      INSERT INTO product_customer_contacts
+        (implementation_id, email, display_name, token_hash, expires_at, revoked_at, last_activity_at)
+      VALUES ($1, $2, $3, $4, $5, NULL, CURRENT_TIMESTAMP)
+      ON CONFLICT (implementation_id, email) DO UPDATE SET
+        display_name = excluded.display_name, token_hash = excluded.token_hash,
+        expires_at = excluded.expires_at, invitation_sent_at = NULL,
+        revoked_at = NULL, last_activity_at = CURRENT_TIMESTAMP
+      RETURNING id, email, display_name, expires_at, invitation_sent_at, revoked_at, last_activity_at, created_at
+    `).get(implementationId, email, displayName, hashToken(token), expiresAt);
+    const invitation = await sendCustomerContactInvitation({
+      req, implementation, contactEmail: email, contactName: displayName, token
+    });
+    if (invitation.sent) {
+      await database.prepare(`
+        UPDATE product_customer_contacts SET invitation_sent_at = CURRENT_TIMESTAMP WHERE id = $1
+      `).run(contact.id);
+      contact.invitation_sent_at = new Date().toISOString();
+      await enqueueWorkspaceEvent(req.product.workspaceId, implementationId, "customer.invited", {
+        recipientEmail: email,
+        contactName: displayName
+      });
+    }
+    return res.status(201).json({
+      contact,
+      invitationSent: invitation.sent,
+      ...(invitation.link ? { customerPortalUrl: invitation.link } : {}),
+      ...(invitation.error ? { message: invitation.error } : {})
+    });
+  });
+
+  app.delete("/api/product/implementations/:implementationId/customer-contacts/:contactId", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const contactId = validId(req.params.contactId);
+    if (!implementationId || !contactId) return sendError(res, 400, "Invalid customer contact.");
+    const result = await database.prepare(`
+      UPDATE product_customer_contacts SET revoked_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND implementation_id = $2
+        AND implementation_id IN (SELECT id FROM product_implementations WHERE workspace_id = $3)
+        AND revoked_at IS NULL
+    `).run(contactId, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Active customer contact not found.");
+    return res.json({ success: true });
+  });
+
+  app.post("/api/product/implementations/:implementationId/messages", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const body = requiredText(req.body.body, 4000);
+    if (!implementationId || !body) return sendError(res, 400, "Enter a message up to 4,000 characters.");
+    const implementation = await database.prepare(`
+      SELECT id FROM product_implementations WHERE id = $1 AND workspace_id = $2
+    `).get(implementationId, req.product.workspaceId);
+    if (!implementation) return sendError(res, 404, "Implementation not found.");
+    const message = await database.prepare(`
+      INSERT INTO product_customer_messages
+        (implementation_id, sender_role, sender_name, sender_email, body)
+      VALUES ($1, 'team', $2, $3, $4)
+      RETURNING id, sender_role, sender_name, sender_email, body, created_at
+    `).get(implementationId, req.product.email, req.product.email, body);
+    const contacts = await database.prepare(`
+      SELECT email FROM product_customer_contacts
+      WHERE implementation_id = $1 AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+    `).all(implementationId);
+    for (const contact of contacts) {
+      await enqueueWorkspaceEvent(req.product.workspaceId, implementationId, "team.message", {
+        messageId: message.id,
+        recipientEmail: contact.email
+      });
+    }
+    return res.status(201).json({ message });
   });
 
   app.patch("/api/product/implementations/:implementationId/customer-escalation", sameOrigin, requireSession, async (req, res) => {
@@ -2256,6 +3391,16 @@ function installProductRoutes(app, db, isProduction) {
     if (templateId && !await (database.prepare(
       "SELECT id FROM product_templates WHERE id = $1 AND workspace_id = $2"
     ).get(templateId, req.product.workspaceId))) return sendError(res, 404, "Template not found.");
+    const normalizedName = name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const existingRequest = await database.prepare(`
+      SELECT id, name FROM product_requirements
+      WHERE workspace_id = $1
+        AND (($2::integer IS NULL AND template_id IS NULL) OR template_id = $2)
+        AND lower(regexp_replace(name, '[^a-z0-9]+', ' ', 'g')) = $3
+    `).get(req.product.workspaceId, templateId, normalizedName);
+    if (existingRequest) {
+      return sendError(res, 409, `This information has already been requested as “${existingRequest.name}”. Reuse that request instead of asking the customer again.`);
+    }
     const requirementCount = (await database.prepare(
       "SELECT COUNT(*) AS count FROM product_requirements WHERE workspace_id = $1"
     ).get(req.product.workspaceId)).count;
@@ -2310,16 +3455,13 @@ function installProductRoutes(app, db, isProduction) {
   app.get("/api/product/customer/:token", async (req, res) => {
     const token = req.params.token;
     if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return sendError(res, 404, "Customer link not found.");
-    const implementation = await (database.prepare(`
-      SELECT i.id, i.workspace_id, i.template_id, i.customer_name
-      FROM product_implementations i
-      JOIN product_workspace_subscriptions s ON s.workspace_id = i.workspace_id
-      WHERE i.portal_token_hash = $1 AND s.expires_at > CURRENT_TIMESTAMP
-    `).get(hashToken(token)));
-    if (!implementation) return sendError(res, 404, "Customer link not found or no longer available.");
+    const access = await resolveCustomerAccess(token);
+    if (!access) return sendError(res, 404, "Customer link not found or no longer available.");
+    const { implementation, contact } = access;
     const requirements = await (implementationRequirements(implementation.id, implementation.workspace_id, implementation.template_id));
     const tasks = await database.prepare(`
       SELECT s.id, s.title, s.description, s.stage, s.status, s.due_at,
+        s.is_blocked, s.blocker_reason, s.blocker_next_action,
         EXISTS (
           SELECT 1
           FROM product_implementation_step_dependencies d
@@ -2338,13 +3480,58 @@ function installProductRoutes(app, db, isProduction) {
         completed: stageTasks.filter((task) => task.status === "done").length
       };
     });
+    const messages = await database.prepare(`
+      SELECT id, sender_role, sender_name, body, created_at
+      FROM product_customer_messages WHERE implementation_id = $1
+      ORDER BY created_at, id
+    `).all(implementation.id);
+    const files = await database.prepare(`
+      SELECT id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, created_at
+      FROM product_customer_files WHERE implementation_id = $1
+      ORDER BY created_at DESC, id DESC
+    `).all(implementation.id);
+    if (contact) {
+      await database.prepare(`
+        UPDATE product_customer_contacts SET last_activity_at = CURRENT_TIMESTAMP WHERE id = $1
+      `).run(contact.contact_id);
+    }
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("Cache-Control", "no-store");
     return res.json({
       customerName: implementation.customer_name,
+      customerOwnerName: implementation.customer_owner_name,
+      customerOwnerEmail: implementation.customer_owner_email,
+      targetLaunchDate: implementation.target_launch_date,
+      successCriteria: implementation.success_criteria,
+      acceptanceStatus: implementation.acceptance_status,
+      testPlan: implementation.test_plan,
+      trainingStatus: implementation.training_status,
+      supportOwnerName: implementation.support_owner_name,
+      supportOwnerEmail: implementation.support_owner_email,
+      rollbackPlan: implementation.rollback_plan,
+      goLiveStatus: implementation.go_live_status,
+      communicationChannel: implementation.communication_channel,
+      communicationCadence: implementation.communication_cadence,
+      communicationOwnerName: implementation.communication_owner_name,
+      communicationOwnerEmail: implementation.communication_owner_email,
+      procurementStatus: implementation.procurement_status,
+      securityStatus: implementation.security_status,
+      integrationStatus: implementation.integration_status,
+      technicalSetupStatus: implementation.technical_setup_status,
+      changeManagementStatus: implementation.change_management_status,
+      earlyValidationStatus: implementation.early_validation_status,
+      postLaunchSupportPlan: implementation.post_launch_support_plan,
+      contact: contact ? {
+        id: contact.contact_id,
+        name: contact.contact_name,
+        email: contact.contact_email,
+        expiresAt: contact.expires_at
+      } : null,
       requirements,
       tasks,
       milestones,
+      messages,
+      files,
       progress: tasks.length
         ? Math.round((tasks.filter((task) => task.status === "done").length / tasks.length) * 100)
         : null
@@ -2360,17 +3547,14 @@ function installProductRoutes(app, db, isProduction) {
     if (!Array.isArray(completedStepIds) || completedStepIds.length > 200) {
       return sendError(res, 400, "Submit a valid list of customer tasks.");
     }
-    const implementation = await (database.prepare(`
-      SELECT i.id, i.workspace_id, i.template_id
-      FROM product_implementations i
-      JOIN product_workspace_subscriptions s ON s.workspace_id = i.workspace_id
-      WHERE i.portal_token_hash = $1 AND s.expires_at > CURRENT_TIMESTAMP
-    `).get(hashToken(token)));
-    if (!implementation) return sendError(res, 404, "Customer link not found or no longer available.");
+    const access = await resolveCustomerAccess(token);
+    if (!access) return sendError(res, 404, "Customer link not found or no longer available.");
+    const authorizedImplementation = access.implementation;
+    const implementationId = authorizedImplementation.implementation_id;
     const validRequirements = (await implementationRequirements(
-      implementation.id,
-      implementation.workspace_id,
-      implementation.template_id
+      implementationId,
+      authorizedImplementation.workspace_id,
+      authorizedImplementation.template_id
     )).map((requirement) => ({ ...requirement, current_value: requirement.value }));
     const entries = [];
     const entryIds = new Set();
@@ -2406,7 +3590,7 @@ function installProductRoutes(app, db, isProduction) {
     }
     if (stepIds.length) {
       const customerSteps = await database.prepare(`
-        SELECT s.id, EXISTS (
+        SELECT s.id, s.is_blocked, EXISTS (
           SELECT 1 FROM product_implementation_step_dependencies d
           JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id
           WHERE d.implementation_step_id = s.id AND parent.status != 'done'
@@ -2414,8 +3598,11 @@ function installProductRoutes(app, db, isProduction) {
         FROM product_implementation_steps s
         WHERE s.implementation_id = $1 AND s.customer_visible = TRUE
           AND s.id = ANY($2::integer[])
-      `).all(implementation.id, stepIds);
+      `).all(implementationId, stepIds);
       if (customerSteps.length !== stepIds.length) return sendError(res, 400, "One or more customer tasks are unavailable.");
+      if (customerSteps.some((step) => step.is_blocked)) {
+        return sendError(res, 409, "This task is blocked. Send your implementation team a message for the next update.");
+      }
       if (customerSteps.some((step) => step.waiting)) return sendError(res, 409, "Complete the prerequisite steps before marking this task done.");
     }
     await database.transaction(async () => {
@@ -2425,23 +3612,226 @@ function installProductRoutes(app, db, isProduction) {
         ON CONFLICT (implementation_id, requirement_id)
         DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
       `);
-      for (const entry of entries) await (save.run(implementation.id, entry.requirementId, entry.value));
+      for (const entry of entries) await (save.run(implementationId, entry.requirementId, entry.value));
       if (stepIds.length) {
         await database.prepare(`
           UPDATE product_implementation_steps SET status = 'done', updated_at = CURRENT_TIMESTAMP
           WHERE implementation_id = $1 AND customer_visible = TRUE AND id = ANY($2::integer[])
-        `).run(implementation.id, stepIds);
-        await enqueueWorkspaceEvent(implementation.workspace_id, implementation.id, "customer.tasks_completed", {
+        `).run(implementationId, stepIds);
+        await enqueueWorkspaceEvent(authorizedImplementation.workspace_id, implementationId, "customer.tasks_completed", {
           count: stepIds.length
         });
       }
       if (entries.length) {
-        await enqueueWorkspaceEvent(implementation.workspace_id, implementation.id, "customer.information_submitted");
+        await enqueueWorkspaceEvent(authorizedImplementation.workspace_id, implementationId, "customer.information_submitted");
+      }
+      if (access.contact) {
+        await database.prepare(`
+          UPDATE product_customer_contacts SET last_activity_at = CURRENT_TIMESTAMP WHERE id = $1
+        `).run(access.contact.contact_id);
       }
     });
     res.setHeader("Referrer-Policy", "no-referrer");
     return res.json({ success: true });
   });
+
+  app.post("/api/product/customer/:token/messages", sameOrigin,
+    limitRequests("customer-message", 10, 15 * 60 * 1000, "Too many messages. Please wait before sending another."),
+    async (req, res) => {
+      const token = req.params.token;
+      const body = requiredText(req.body.body, 4000);
+      const senderName = typeof req.body.senderName === "string" ? req.body.senderName.trim().slice(0, 120) : "";
+      if (!/^[A-Za-z0-9_-]{40,60}$/.test(token) || !body) {
+        return sendError(res, 400, "Enter a message up to 4,000 characters.");
+      }
+      const access = await resolveCustomerAccess(token);
+      if (!access) return sendError(res, 404, "Customer link not found or no longer available.");
+      const { implementation, contact } = access;
+      const message = await database.prepare(`
+        INSERT INTO product_customer_messages
+          (implementation_id, contact_id, sender_role, sender_name, sender_email, body)
+        VALUES ($1, $2, 'customer', $3, $4, $5)
+        RETURNING id, sender_role, sender_name, body, created_at
+      `).get(
+        implementation.implementation_id,
+        contact?.contact_id || null,
+        contact?.contact_name || senderName || "Customer",
+        contact?.contact_email || "",
+        body
+      );
+      if (contact) {
+        await database.prepare(`
+          UPDATE product_customer_contacts SET last_activity_at = CURRENT_TIMESTAMP WHERE id = $1
+        `).run(contact.contact_id);
+      }
+      await enqueueWorkspaceEvent(implementation.workspace_id, implementation.implementation_id, "customer.message", {
+        messageId: message.id,
+        senderName: message.sender_name
+      });
+      return res.status(201).json({ message });
+    });
+
+  app.post("/api/product/customer/:token/files", sameOrigin, async (req, res) => {
+      const token = req.params.token;
+      let filename = "";
+      try {
+        filename = safeCustomerFilename(decodeURIComponent(req.get("X-File-Name") || ""));
+      } catch {
+        return sendError(res, 400, "The file name is invalid.");
+      }
+      const contentType = (req.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
+      const content = req.body;
+      if (!/^[A-Za-z0-9_-]{40,60}$/.test(token) || !filename
+        || !customerFileType(contentType, filename, content)) {
+        return sendError(res, 400, "Upload a PDF, PNG, or JPG file no larger than 5 MB.");
+      }
+      const access = await resolveCustomerAccess(token);
+      if (!access) return sendError(res, 404, "Customer link not found or no longer available.");
+      const { implementation, contact } = access;
+      const saved = await database.transaction(async () => {
+        const lockedImplementation = await database.prepare(`
+          SELECT id FROM product_implementations WHERE id = $1 FOR UPDATE
+        `).get(implementation.implementation_id);
+        if (!lockedImplementation) {
+          return { error: "This implementation is no longer available.", status: 404 };
+        }
+        const usage = await database.prepare(`
+          SELECT COUNT(*) AS count, COALESCE(SUM(size_bytes), 0) AS total_bytes
+          FROM product_customer_files WHERE implementation_id = $1
+        `).get(implementation.implementation_id);
+        if (Number(usage.count) >= CUSTOMER_FILE_COUNT_LIMIT
+          || Number(usage.total_bytes) + content.length > CUSTOMER_FILE_TOTAL_LIMIT) {
+          return {
+            error: "This implementation can store up to 20 files and 25 MB total.",
+            status: 409
+          };
+        }
+        const file = await database.prepare(`
+          INSERT INTO product_customer_files
+            (implementation_id, contact_id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, content)
+          VALUES ($1, $2, 'customer', $3, $4, $5, $6, $7)
+          RETURNING id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, created_at
+        `).get(
+          implementation.implementation_id,
+          contact?.contact_id || null,
+          contact?.contact_name || "Customer",
+          filename,
+          contentType,
+          content.length,
+          content
+        );
+        return { file };
+      });
+      if (saved.error) return sendError(res, saved.status, saved.error);
+      const { file } = saved;
+      if (contact) {
+        await database.prepare(`
+          UPDATE product_customer_contacts SET last_activity_at = CURRENT_TIMESTAMP WHERE id = $1
+        `).run(contact.contact_id);
+      }
+      await enqueueWorkspaceEvent(implementation.workspace_id, implementation.implementation_id, "customer.file_uploaded", {
+        filename,
+        uploadedBy: file.uploaded_by_name
+      });
+      return res.status(201).json({ file });
+    });
+
+  app.get("/api/product/customer/:token/files/:fileId", async (req, res) => {
+    const token = req.params.token;
+    const fileId = validId(req.params.fileId);
+    if (!/^[A-Za-z0-9_-]{40,60}$/.test(token) || !fileId) {
+      return sendError(res, 404, "Customer file not found.");
+    }
+    const access = await resolveCustomerAccess(token);
+    if (!access) return sendError(res, 404, "Customer file not found.");
+    const file = await database.prepare(`
+      SELECT filename, content_type, content, size_bytes FROM product_customer_files
+      WHERE id = $1 AND implementation_id = $2
+    `).get(fileId, access.implementation.implementation_id);
+    if (!file) return sendError(res, 404, "Customer file not found.");
+    const asciiFilename = file.filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+    res.setHeader("Content-Type", file.content_type);
+    res.setHeader("Content-Disposition", `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
+    res.setHeader("Content-Length", file.size_bytes);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return res.send(file.content);
+  });
+
+  app.get("/api/product/implementations/:implementationId/files/:fileId", requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const fileId = validId(req.params.fileId);
+    if (!implementationId || !fileId) return sendError(res, 404, "Customer file not found.");
+    const file = await database.prepare(`
+      SELECT f.filename, f.content_type, f.content, f.size_bytes
+      FROM product_customer_files f
+      JOIN product_implementations i ON i.id = f.implementation_id
+      WHERE f.id = $1 AND f.implementation_id = $2 AND i.workspace_id = $3
+    `).get(fileId, implementationId, req.product.workspaceId);
+    if (!file) return sendError(res, 404, "Customer file not found.");
+    const asciiFilename = file.filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+    res.setHeader("Content-Type", file.content_type);
+    res.setHeader("Content-Disposition", `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
+    res.setHeader("Content-Length", file.size_bytes);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return res.send(file.content);
+  });
+
+  app.delete("/api/product/implementations/:implementationId/files/:fileId", sameOrigin, requireSession, async (req, res) => {
+    const implementationId = validId(req.params.implementationId);
+    const fileId = validId(req.params.fileId);
+    if (!implementationId || !fileId) return sendError(res, 400, "Invalid customer file.");
+    const result = await database.prepare(`
+      DELETE FROM product_customer_files f USING product_implementations i
+      WHERE f.id = $1 AND f.implementation_id = $2
+        AND i.id = f.implementation_id AND i.workspace_id = $3
+    `).run(fileId, implementationId, req.product.workspaceId);
+    if (!result.changes) return sendError(res, 404, "Customer file not found.");
+    return res.json({ success: true });
+  });
+
+  app.post("/api/product/customer/:token/renew", sameOrigin,
+    limitRequests("customer-link-renewal", 5, 15 * 60 * 1000, "Too many link requests. Please wait before trying again."),
+    async (req, res) => {
+      const token = req.params.token;
+      const email = requiredText(req.body.email, 254).toLowerCase();
+      if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)
+        || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return sendError(res, 400, "Enter the email address that received your invitation.");
+      }
+      const contact = await database.prepare(`
+        SELECT c.id, c.implementation_id, c.email, c.display_name,
+          i.customer_name, i.target_launch_date
+        FROM product_customer_contacts c
+        JOIN product_implementations i ON i.id = c.implementation_id
+        JOIN product_workspace_subscriptions s ON s.workspace_id = i.workspace_id
+        WHERE c.token_hash = $1 AND lower(c.email) = $2
+          AND c.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP
+      `).get(hashToken(token), email);
+      if (!contact) {
+        return res.json({ message: "If this link is eligible, a fresh personal invitation will be sent to that email." });
+      }
+      const newToken = randomBytes(32).toString("base64url");
+      const expiresAt = new Date(Date.now() + CUSTOMER_LINK_DAYS * 86400000).toISOString();
+      const invitation = await sendCustomerContactInvitation({
+        req,
+        implementation: contact,
+        contactEmail: contact.email,
+        contactName: contact.display_name,
+        token: newToken
+      });
+      if (!invitation.sent) {
+        return sendError(res, 503, "A fresh link could not be emailed right now. Please reply to your original invitation for help.");
+      }
+      await database.prepare(`
+        UPDATE product_customer_contacts
+        SET token_hash = $1, expires_at = $2, invitation_sent_at = CURRENT_TIMESTAMP,
+          last_activity_at = CURRENT_TIMESTAMP
+        WHERE id = $3 AND revoked_at IS NULL
+      `).run(hashToken(newToken), expiresAt, contact.id);
+      return res.json({ message: "A fresh personal link has been emailed. Check your inbox." });
+    });
 
   app.use("/api/product", (_req, res) => sendError(res, 404, "Product endpoint not found."));
 }

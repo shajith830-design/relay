@@ -36,6 +36,9 @@ const config = {
 };
 
 const app = express();
+const customerFileUploadBuckets = new Map();
+const customerFileUploadLimit = 10;
+const customerFileUploadWindowMs = 60 * 60 * 1000;
 
 app.disable("x-powered-by");
 app.set("trust proxy", trustProxyHops);
@@ -50,7 +53,34 @@ app.use((_req, res, next) => {
   res.set(headers);
   next();
 });
-app.use("/api/product/customer", express.json({ limit: "128kb" }));
+app.use("/api/product/customer", (req, res, next) => {
+  const isCustomerFileUpload = req.method === "POST" && /^\/[^/]+\/files$/.test(req.path);
+  if (isCustomerFileUpload) {
+    const now = Date.now();
+    const key = req.ip || "unknown";
+    let bucket = customerFileUploadBuckets.get(key);
+    if (!bucket || now - bucket.startedAt >= customerFileUploadWindowMs) {
+      bucket = { startedAt: now, count: 0 };
+      customerFileUploadBuckets.set(key, bucket);
+    }
+    if (bucket.count >= customerFileUploadLimit) {
+      return res.status(429).json({ error: "Too many uploads. Please wait before uploading another file." });
+    }
+    bucket.count += 1;
+    if (customerFileUploadBuckets.size > 10000) {
+      for (const [ip, entry] of customerFileUploadBuckets) {
+        if (now - entry.startedAt >= customerFileUploadWindowMs) customerFileUploadBuckets.delete(ip);
+      }
+      if (customerFileUploadBuckets.size > 10000) {
+        customerFileUploadBuckets.delete(customerFileUploadBuckets.keys().next().value);
+      }
+    }
+  }
+  const parser = isCustomerFileUpload
+    ? express.raw({ type: () => true, limit: "5mb" })
+    : express.json({ limit: "128kb" });
+  return parser(req, res, next);
+});
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 app.get("/product", (req, res) => {

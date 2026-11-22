@@ -73,6 +73,43 @@
     implementations: [{
       id: 9040, template_id: 9020, customer_name: "Acme Example Co.", template_name: "Standard onboarding",
       created_at: dateOffset(-5), has_customer_link: true, escalation_email: "", escalation_delay_days: 5,
+      target_launch_date: dateOffset(15), customer_owner_name: "Jordan Lee", customer_owner_email: "jordan@acme.example",
+      success_criteria: "Customer team completes a successful test and confirms the launch workflow.",
+      acceptance_status: "in_progress",
+      test_plan: "Run the configured workspace through the customer acceptance checklist.",
+      training_status: "scheduled",
+      support_owner_name: "Relay Support",
+      support_owner_email: "support@relay.example",
+      rollback_plan: "Freeze changes, restore the previous workspace configuration, and notify the project owner.",
+      go_live_status: "at_risk",
+      communication_channel: "Customer portal and Tuesday project call",
+      communication_cadence: "Weekly and when a blocker changes",
+      communication_owner_name: "Jordan Lee",
+      communication_owner_email: "jordan@acme.example",
+      procurement_status: "in_progress",
+      security_status: "in_progress",
+      security_notes: "Security questionnaire and access review are in progress.",
+      integration_inventory: "API and domain configuration",
+      integration_status: "in_progress",
+      technical_setup_status: "tested",
+      technical_setup_notes: "DNS and sandbox setup are in progress.",
+      change_management_status: "planned",
+      adoption_notes: "Role-specific training and internal champions are planned.",
+      early_validation_status: "in_progress",
+      early_validation_notes: "Data and integration testing have started.",
+      post_launch_support_plan: "Relay support owner, office hours, and escalation route.",
+      duplicate_request_control: "Use the portal and shared request history; do not repeat a submitted request.",
+      sow_scope: "Configure and launch the standard onboarding workflow.",
+      sow_milestones: "Kickoff, configuration, acceptance testing, launch.",
+      sow_exclusions: "Custom development and third-party system support.",
+      stage_gate_status: "configuration",
+      financialPlan: { budget_amount: 12000, forecast_amount: 12000, actual_cost: 4200, invoice_status: "draft", invoice_reference: "SAMPLE-INV-100", margin_note: "Status and reference are fictional planning fields; Relay does not generate or send invoices." },
+      timeEntries: [],
+      approvals: [],
+      calendarEvents: [],
+      launchStakeholders: [],
+      launchRisks: [],
+      customerContacts: [], customerMessages: [], customerFiles: [],
       steps: [
         {
           id: 9041, title: "Confirm project goals", description: "Agree on success measures and the project owner.",
@@ -105,7 +142,8 @@
       ]
     }],
     customerTokens: new Map(),
-    helpMessages: []
+    helpMessages: [],
+    capacityPlans: []
   };
 
   function clone(value) {
@@ -228,6 +266,7 @@
       }),
       notificationSettings: clone(data.notificationSettings),
       integrations: clone(data.integrations),
+      capacityPlans: clone(data.capacityPlans || []),
       role: "owner"
     };
   }
@@ -262,7 +301,9 @@
   function responseForImplementation(implementation) {
     if (!implementation) throw new Error("Implementation not found in the local demo data.");
     applyPortalValues(implementation);
-    return { implementation: clone(implementation) };
+    const result = clone(implementation);
+    result.customerContacts = (result.customerContacts || []).map(({ token, ...contact }) => contact);
+    return { implementation: result };
   }
 
   function readPortalSnapshots() {
@@ -270,7 +311,7 @@
     return stored ? JSON.parse(stored) : {};
   }
 
-  function savePortalSnapshot(token, implementation) {
+  function savePortalSnapshot(token, implementation, preserveExisting = false) {
     const portals = readPortalSnapshots();
     const previousPortal = Object.values(portals)
       .find((portal) => portal.implementationId === implementation.id);
@@ -280,13 +321,46 @@
         if (requirement) requirement.value = savedRequirement.value;
       }
     }
-    for (const [savedToken, portal] of Object.entries(portals)) {
-      if (portal.implementationId === implementation.id) delete portals[savedToken];
+    if (!preserveExisting) {
+      for (const [savedToken, portal] of Object.entries(portals)) {
+        if (portal.implementationId === implementation.id) delete portals[savedToken];
+      }
     }
     portals[token] = {
       implementationId: implementation.id,
       customerName: implementation.customer_name,
+      customerOwnerName: implementation.customer_owner_name || "",
+      customerOwnerEmail: implementation.customer_owner_email || "",
+      targetLaunchDate: implementation.target_launch_date || "",
+      successCriteria: implementation.success_criteria || "",
+      acceptanceStatus: implementation.acceptance_status || "not_started",
+      testPlan: implementation.test_plan || "",
+      trainingStatus: implementation.training_status || "not_started",
+      supportOwnerName: implementation.support_owner_name || "",
+      supportOwnerEmail: implementation.support_owner_email || "",
+      rollbackPlan: implementation.rollback_plan || "",
+      goLiveStatus: implementation.go_live_status || "not_ready",
+      communicationChannel: implementation.communication_channel || "",
+      communicationCadence: implementation.communication_cadence || "",
+      communicationOwnerName: implementation.communication_owner_name || "",
+      communicationOwnerEmail: implementation.communication_owner_email || "",
+      procurementStatus: implementation.procurement_status || "not_started",
+      securityStatus: implementation.security_status || "not_started",
+      integrationStatus: implementation.integration_status || "not_started",
+      technicalSetupStatus: implementation.technical_setup_status || "not_started",
+      changeManagementStatus: implementation.change_management_status || "not_started",
+      earlyValidationStatus: implementation.early_validation_status || "not_started",
+      postLaunchSupportPlan: implementation.post_launch_support_plan || "",
+      contact: (implementation.customerContacts || []).find((contact) => contact.token === token)
+        ? {
+          id: (implementation.customerContacts || []).find((contact) => contact.token === token).id,
+          name: (implementation.customerContacts || []).find((contact) => contact.token === token).display_name,
+          email: (implementation.customerContacts || []).find((contact) => contact.token === token).email,
+          expiresAt: (implementation.customerContacts || []).find((contact) => contact.token === token).expires_at
+        } : null,
       requirements: clone(implementation.requirements),
+      messages: clone(implementation.customerMessages || []),
+      files: clone(implementation.customerFiles || []),
       tasks: implementation.steps.filter((step) => step.customer_visible).map((step) => ({
         id: step.id,
         title: step.title,
@@ -294,6 +368,9 @@
         stage: step.stage,
         status: step.status,
         due_at: step.due_at,
+        is_blocked: step.is_blocked,
+        blocker_reason: step.blocker_reason,
+        blocker_next_action: step.blocker_next_action,
         waiting: Boolean(step.waiting_on),
         dependsOn: clone(step.dependsOn || [])
       }))
@@ -302,11 +379,16 @@
   }
 
   function findPortalSnapshot(token) {
-    return readPortalSnapshots()[token] || null;
+    const portal = readPortalSnapshots()[token] || null;
+    if (portal?.contact?.expiresAt && Date.parse(portal.contact.expiresAt) <= Date.now()) return null;
+    return portal;
   }
 
   function implementationForCustomerToken(token) {
-    return data.implementations.find((implementation) => data.customerTokens.get(implementation.id) === token);
+    return data.implementations.find((implementation) =>
+      data.customerTokens.get(implementation.id) === token
+      || (implementation.customerContacts || []).some((contact) =>
+        contact.token === token && !contact.revoked_at && Date.parse(contact.expires_at) > Date.now()));
   }
 
   function validateCustomerValue(requirement, value) {
@@ -358,6 +440,20 @@
       return Promise.resolve({ dismissed: data.onboardingDismissed });
     }
     if (path === "/api/product/workspace") return Promise.resolve(workspaceData());
+    if (path === "/api/product/capacity-plans" && method === "POST") {
+      const plan = {
+        user_id: Number(body.userId), user_email: data.members.find((member) => member.id === Number(body.userId))?.email || "",
+        week_start: String(body.weekStart || ""), available_minutes: Number(body.availableMinutes),
+        capacity_note: String(body.capacityNote || ""), updated_at: new Date().toISOString()
+      };
+      if (!plan.week_start || !Number.isInteger(plan.available_minutes) || plan.available_minutes < 0) {
+        return Promise.reject(new Error("Enter a valid team member, week, and available capacity."));
+      }
+      data.capacityPlans = (data.capacityPlans || []).filter((item) =>
+        !(item.user_id === plan.user_id && item.week_start === plan.week_start));
+      data.capacityPlans.push(plan);
+      return Promise.resolve({ plan });
+    }
     if (path === "/api/product/notifications" && method === "PATCH") {
       const reminderDaysBefore = Number(body.reminderDaysBefore);
       if (!Number.isInteger(reminderDaysBefore) || reminderDaysBefore < 0 || reminderDaysBefore > 30) {
@@ -372,14 +468,14 @@
         reminderDaysBefore: data.notificationSettings.reminder_days_before
       });
     }
-    if ((match = path.match(/^\/api\/product\/integrations\/(hubspot|slack)\/connect$/)) && method === "POST") {
+    if ((match = path.match(/^\/api\/product\/integrations\/hubspot\/connect$/)) && method === "POST") {
       const provider = match[1];
       if (!data.integrations.some((integration) => integration.provider === provider)) {
         data.integrations.push({ provider, connected_at: new Date().toISOString(), demo: true });
       }
       return Promise.resolve({ demoConnected: true });
     }
-    if ((match = path.match(/^\/api\/product\/integrations\/(hubspot|slack)$/)) && method === "DELETE") {
+    if ((match = path.match(/^\/api\/product\/integrations\/hubspot$/)) && method === "DELETE") {
       data.integrations = data.integrations.filter((integration) => integration.provider !== match[1]);
       return Promise.resolve({ success: true });
     }
@@ -599,6 +695,10 @@
       const implementation = {
         id: nextId++, template_id: template.id, customer_name: customerName, template_name: template.name,
         created_at: new Date().toISOString(), has_customer_link: false,
+        target_launch_date: String(body.targetLaunchDate || ""),
+        customer_owner_name: String(body.customerOwnerName || "").trim(),
+        customer_owner_email: String(body.customerOwnerEmail || "").trim().toLowerCase(),
+        customerContacts: [], customerMessages: [], customerFiles: [],
         steps: template.steps.map((step, index) => ({
           id: nextId++, title: step.title, description: step.description, owner: step.owner,
           position: index + 1, status: "not_started", updated_at: new Date().toISOString(),
@@ -616,12 +716,26 @@
           .filter(Boolean);
       });
       updateWaitingTasks(implementation);
-      const token = `local-demo-${nextId++}`;
-      data.customerTokens.set(implementation.id, token);
-      savePortalSnapshot(token, implementation);
-      implementation.has_customer_link = true;
       data.implementations.unshift(implementation);
-      return Promise.resolve({ implementation: clone(implementation), customerPortalToken: token });
+      let customerInvitation = null;
+      if (implementation.customer_owner_email) {
+        const token = `local-demo-${nextId++}`;
+        const contact = {
+          id: nextId++, email: implementation.customer_owner_email,
+          display_name: implementation.customer_owner_name,
+          expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+          invitation_sent_at: null, revoked_at: null, last_activity_at: new Date().toISOString(),
+          created_at: new Date().toISOString(), token
+        };
+        implementation.customerContacts.push(contact);
+        savePortalSnapshot(token, implementation, true);
+        customerInvitation = {
+          sent: false,
+          link: `${window.location.origin}/customer.html?token=${encodeURIComponent(token)}&demo=workspace`,
+          message: "Sample preview only. No email was sent."
+        };
+      }
+      return Promise.resolve({ implementation: responseForImplementation(implementation).implementation, customerInvitation });
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)$/)) && method === "GET") {
       return Promise.resolve(responseForImplementation(findImplementation(match[1])));
@@ -639,6 +753,247 @@
       implementation.escalation_delay_days = delay;
       return Promise.resolve({ escalationEmail: email, escalationDelayDays: delay });
     }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/launch-plan$/)) && method === "PATCH") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.customer_owner_name = String(body.customerOwnerName || "").trim();
+      implementation.customer_owner_email = String(body.customerOwnerEmail || "").trim().toLowerCase();
+      implementation.target_launch_date = String(body.targetLaunchDate || "");
+      for (const contact of implementation.customerContacts || []) savePortalSnapshot(contact.token, implementation, true);
+      return Promise.resolve({
+        customerOwnerName: implementation.customer_owner_name,
+        customerOwnerEmail: implementation.customer_owner_email,
+        targetLaunchDate: implementation.target_launch_date
+      });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/launch-readiness$/)) && method === "PATCH") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.success_criteria = String(body.successCriteria || "").trim();
+      implementation.acceptance_status = String(body.acceptanceStatus || "not_started");
+      implementation.test_plan = String(body.testPlan || "").trim();
+      implementation.training_status = String(body.trainingStatus || "not_started");
+      implementation.support_owner_name = String(body.supportOwnerName || "").trim();
+      implementation.support_owner_email = String(body.supportOwnerEmail || "").trim().toLowerCase();
+      implementation.rollback_plan = String(body.rollbackPlan || "").trim();
+      implementation.go_live_status = String(body.goLiveStatus || "not_ready");
+      return Promise.resolve(clone(body));
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/sow$/)) && method === "PATCH") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.sow_scope = String(body.sowScope || "").trim();
+      implementation.sow_milestones = String(body.sowMilestones || "").trim();
+      implementation.sow_exclusions = String(body.sowExclusions || "").trim();
+      implementation.stage_gate_status = String(body.stageGateStatus || "kickoff");
+      return Promise.resolve(clone(body));
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/financial-plan$/)) && method === "PATCH") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.financialPlan = {
+        budget_amount: Number(body.budgetAmount || 0),
+        forecast_amount: Number(body.forecastAmount || 0),
+        actual_cost: Number(body.actualCost || 0),
+        invoice_status: String(body.invoiceStatus || "not_started"),
+        invoice_reference: String(body.invoiceReference || ""),
+        margin_note: String(body.marginNote || "")
+      };
+      return Promise.resolve(clone(body));
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/time-entries$/)) && method === "POST") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.timeEntries ||= [];
+      const entry = {
+        id: nextId++, user_email: "owner@demo.invalid", work_date: String(body.workDate || ""),
+        minutes: Number(body.minutes || 0), billable: body.billable !== false,
+        note: String(body.note || ""), hourly_rate: Number(body.hourlyRate || 0),
+        created_at: new Date().toISOString()
+      };
+      if (!entry.work_date || !Number.isInteger(entry.minutes) || entry.minutes < 1) {
+        return Promise.reject(new Error("Enter a valid work date and time entry."));
+      }
+      implementation.timeEntries.unshift(entry);
+      return Promise.resolve({ entry: clone(entry) });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/approvals$/)) && method === "POST") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.approvals ||= [];
+      const approval = {
+        id: nextId++, title: String(body.title || "").trim(),
+        approval_type: String(body.approvalType || "other"),
+        approver_name: String(body.approverName || ""), approver_email: String(body.approverEmail || "").toLowerCase(),
+        status: "pending", due_at: String(body.dueAt || ""), created_at: new Date().toISOString()
+      };
+      if (!approval.title) return Promise.reject(new Error("Enter an approval title."));
+      implementation.approvals.unshift(approval);
+      return Promise.resolve({ approval: clone(approval) });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/approvals\/(\d+)$/)) && method === "PATCH") {
+      const implementation = findImplementation(match[1]);
+      const approval = implementation?.approvals?.find((item) => item.id === Number(match[2]));
+      if (!approval) return Promise.reject(new Error("Approval not found."));
+      approval.status = String(body.status || approval.status);
+      return Promise.resolve({ success: true, status: approval.status });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/approvals\/(\d+)$/)) && method === "DELETE") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.approvals = (implementation.approvals || []).filter((approval) => approval.id !== Number(match[2]));
+      return Promise.resolve({ success: true });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/time-entries\/(\d+)$/)) && method === "DELETE") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.timeEntries = (implementation.timeEntries || []).filter((entry) => entry.id !== Number(match[2]));
+      return Promise.resolve({ success: true });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/calendar-events$/)) && method === "POST") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.calendarEvents ||= [];
+      const event = { id: nextId++, title: String(body.title || "").trim(), start_at: String(body.startAt || ""), end_at: String(body.endAt || ""), event_type: String(body.eventType || "meeting"), external_url: String(body.externalUrl || ""), created_at: new Date().toISOString() };
+      if (!event.title || !event.start_at) return Promise.reject(new Error("Enter an event title and start time."));
+      implementation.calendarEvents.push(event);
+      return Promise.resolve({ event: clone(event) });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/calendar-events\/(\d+)$/)) && method === "DELETE") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.calendarEvents = (implementation.calendarEvents || []).filter((event) => event.id !== Number(match[2]));
+      return Promise.resolve({ success: true });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/onboarding-gap-plan$/)) && method === "PATCH") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.communication_channel = String(body.communicationChannel || "").trim();
+      implementation.communication_cadence = String(body.communicationCadence || "").trim();
+      implementation.communication_owner_name = String(body.communicationOwnerName || "").trim();
+      implementation.communication_owner_email = String(body.communicationOwnerEmail || "").trim().toLowerCase();
+      implementation.procurement_status = String(body.procurementStatus || "not_started");
+      implementation.security_status = String(body.securityStatus || "not_started");
+      implementation.security_notes = String(body.securityNotes || "").trim();
+      implementation.integration_inventory = String(body.integrationInventory || "").trim();
+      implementation.integration_status = String(body.integrationStatus || "not_started");
+      implementation.technical_setup_status = String(body.technicalSetupStatus || "not_started");
+      implementation.technical_setup_notes = String(body.technicalSetupNotes || "").trim();
+      implementation.change_management_status = String(body.changeManagementStatus || "not_started");
+      implementation.adoption_notes = String(body.adoptionNotes || "").trim();
+      implementation.early_validation_status = String(body.earlyValidationStatus || "not_started");
+      implementation.early_validation_notes = String(body.earlyValidationNotes || "").trim();
+      implementation.post_launch_support_plan = String(body.postLaunchSupportPlan || "").trim();
+      implementation.duplicate_request_control = String(body.duplicateRequestControl || "").trim();
+      return Promise.resolve(clone(body));
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/launch-stakeholders$/)) && method === "POST") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      const stakeholder = {
+        id: nextId++, display_name: String(body.displayName || "").trim(),
+        email: String(body.email || "").trim().toLowerCase(), role: String(body.role || "").trim(),
+        approval_status: String(body.approvalStatus || "pending"), next_action: String(body.nextAction || "").trim(),
+        created_at: new Date().toISOString()
+      };
+      implementation.launchStakeholders ||= [];
+      const existing = implementation.launchStakeholders.find((item) => item.email === stakeholder.email);
+      if (existing) Object.assign(existing, stakeholder);
+      else implementation.launchStakeholders.push(stakeholder);
+      return Promise.resolve({ stakeholder: clone(existing || stakeholder) });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/launch-stakeholders\/(\d+)$/)) && method === "DELETE") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.launchStakeholders = (implementation.launchStakeholders || [])
+        .filter((stakeholder) => stakeholder.id !== Number(match[2]));
+      return Promise.resolve({ success: true });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/launch-risks$/)) && method === "POST") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      const risk = {
+        id: nextId++, category: String(body.category || "Other"), title: String(body.title || "").trim(),
+        owner_name: String(body.ownerName || "").trim(), owner_email: String(body.ownerEmail || "").trim().toLowerCase(),
+        severity: String(body.severity || "medium"), status: String(body.status || "open"),
+        next_action: String(body.nextAction || "").trim(), due_at: String(body.dueAt || ""),
+        created_at: new Date().toISOString()
+      };
+      if (!risk.title) return Promise.reject(new Error("Enter a risk or blocker."));
+      implementation.launchRisks ||= [];
+      implementation.launchRisks.unshift(risk);
+      return Promise.resolve({ risk: clone(risk) });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/launch-risks\/(\d+)$/)) && method === "DELETE") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.launchRisks = (implementation.launchRisks || [])
+        .filter((risk) => risk.id !== Number(match[2]));
+      return Promise.resolve({ success: true });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/customer-contacts$/)) && method === "POST") {
+      const implementation = findImplementation(match[1]);
+      const email = String(body.email || "").trim().toLowerCase();
+      const displayName = String(body.displayName || "").trim();
+      if (!implementation || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return Promise.reject(new Error("Enter a valid customer contact name and email address."));
+      }
+      data.customerTokens.delete(implementation.id);
+      implementation.has_customer_link = false;
+      const token = `local-demo-${nextId++}`;
+      const contact = {
+        id: nextId++, email, display_name: displayName,
+        expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+        invitation_sent_at: null, revoked_at: null, last_activity_at: new Date().toISOString(),
+        created_at: new Date().toISOString(), token
+      };
+      implementation.customerContacts ||= [];
+      const existing = implementation.customerContacts.find((item) => item.email === email);
+      if (existing) Object.assign(existing, contact);
+      else implementation.customerContacts.push(contact);
+      savePortalSnapshot(token, implementation, true);
+      return Promise.resolve({
+        contact: clone((({ token: _token, ...item }) => item)(contact)),
+        invitationSent: false,
+        customerPortalUrl: `${window.location.origin}/customer.html?token=${encodeURIComponent(token)}&demo=workspace`,
+        message: "Sample preview only. No email was sent."
+      });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/customer-contacts\/(\d+)$/)) && method === "DELETE") {
+      const implementation = findImplementation(match[1]);
+      const contact = implementation?.customerContacts?.find((item) => item.id === Number(match[2]));
+      if (!contact) return Promise.reject(new Error("Customer contact not found."));
+      contact.revoked_at = new Date().toISOString();
+      const portals = readPortalSnapshots();
+      delete portals[contact.token];
+      window.localStorage.setItem(portalStorageKey, JSON.stringify(portals));
+      return Promise.resolve({ success: true });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/messages$/)) && method === "POST") {
+      const implementation = findImplementation(match[1]);
+      const message = String(body.body || "").trim();
+      if (!implementation || !message || message.length > 4000) return Promise.reject(new Error("Enter a message up to 4,000 characters."));
+      const saved = {
+        id: nextId++, sender_role: "team", sender_name: data.user.email,
+        sender_email: data.user.email, body: message, created_at: new Date().toISOString()
+      };
+      implementation.customerMessages ||= [];
+      implementation.customerMessages.push(saved);
+      for (const contact of implementation.customerContacts || []) {
+        if (!contact.revoked_at && Date.parse(contact.expires_at) > Date.now()) {
+          savePortalSnapshot(contact.token, implementation, true);
+        }
+      }
+      return Promise.resolve({ message: clone(saved) });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/files\/(\d+)$/)) && method === "DELETE") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.customerFiles = (implementation.customerFiles || [])
+        .filter((file) => file.id !== Number(match[2]));
+      for (const contact of implementation.customerContacts || []) savePortalSnapshot(contact.token, implementation, true);
+      return Promise.resolve({ success: true });
+    }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/customer-link$/)) && method === "POST") {
       const implementation = findImplementation(match[1]);
       if (!implementation) return Promise.reject(new Error("Implementation not found."));
@@ -654,14 +1009,19 @@
       const portal = implementation ? null : findPortalSnapshot(token);
       if (!implementation && !portal) return Promise.reject(new Error("Customer link not found or no longer available."));
       if (method === "GET") {
+        const contact = implementation?.customerContacts?.find((item) => item.token === token) || portal?.contact;
         const tasks = implementation
           ? implementation.steps.filter((step) => step.customer_visible).map((step) => ({
             id: step.id, title: step.title, description: step.description, stage: step.stage,
-            status: step.status, due_at: step.due_at, waiting: Boolean(step.waiting_on)
+            status: step.status, due_at: step.due_at, is_blocked: step.is_blocked,
+            blocker_reason: step.blocker_reason, blocker_next_action: step.blocker_next_action,
+            waiting: Boolean(step.waiting_on)
           }))
           : (portal.tasks || []).map((step) => ({
             id: step.id, title: step.title, description: step.description, stage: step.stage,
-            status: step.status, due_at: step.due_at, waiting: Boolean(step.waiting)
+            status: step.status, due_at: step.due_at, is_blocked: step.is_blocked,
+            blocker_reason: step.blocker_reason, blocker_next_action: step.blocker_next_action,
+            waiting: Boolean(step.waiting)
           }));
         const milestones = [...new Set(tasks.map((task) => task.stage))].map((stage) => {
           const stageTasks = tasks.filter((task) => task.stage === stage);
@@ -673,9 +1033,37 @@
         });
         return Promise.resolve({
           customerName: implementation?.customer_name || portal.customerName,
+          customerOwnerName: implementation?.customer_owner_name || portal.customerOwnerName || "",
+          customerOwnerEmail: implementation?.customer_owner_email || portal.customerOwnerEmail || "",
+          targetLaunchDate: implementation?.target_launch_date || portal.targetLaunchDate || "",
+          successCriteria: implementation?.success_criteria || portal.successCriteria || "",
+          acceptanceStatus: implementation?.acceptance_status || portal.acceptanceStatus || "not_started",
+          testPlan: implementation?.test_plan || portal.testPlan || "",
+          trainingStatus: implementation?.training_status || portal.trainingStatus || "not_started",
+          supportOwnerName: implementation?.support_owner_name || portal.supportOwnerName || "",
+          supportOwnerEmail: implementation?.support_owner_email || portal.supportOwnerEmail || "",
+          rollbackPlan: implementation?.rollback_plan || portal.rollbackPlan || "",
+          goLiveStatus: implementation?.go_live_status || portal.goLiveStatus || "not_ready",
+          communicationChannel: implementation?.communication_channel || portal.communicationChannel || "",
+          communicationCadence: implementation?.communication_cadence || portal.communicationCadence || "",
+          communicationOwnerName: implementation?.communication_owner_name || portal.communicationOwnerName || "",
+          communicationOwnerEmail: implementation?.communication_owner_email || portal.communicationOwnerEmail || "",
+          procurementStatus: implementation?.procurement_status || portal.procurementStatus || "not_started",
+          securityStatus: implementation?.security_status || portal.securityStatus || "not_started",
+          integrationStatus: implementation?.integration_status || portal.integrationStatus || "not_started",
+          technicalSetupStatus: implementation?.technical_setup_status || portal.technicalSetupStatus || "not_started",
+          changeManagementStatus: implementation?.change_management_status || portal.changeManagementStatus || "not_started",
+          earlyValidationStatus: implementation?.early_validation_status || portal.earlyValidationStatus || "not_started",
+          postLaunchSupportPlan: implementation?.post_launch_support_plan || portal.postLaunchSupportPlan || "",
+          contact: contact ? {
+            id: contact.id, name: contact.display_name || contact.name,
+            email: contact.email, expiresAt: contact.expires_at || contact.expiresAt
+          } : null,
           requirements: clone(implementation?.requirements || portal.requirements),
           tasks,
           milestones,
+          messages: clone(implementation?.customerMessages || portal.messages || []),
+          files: clone(implementation?.customerFiles || portal.files || []),
           progress: tasks.length ? Math.round((tasks.filter((task) => task.status === "done").length / tasks.length) * 100) : null
         });
       }
@@ -718,9 +1106,9 @@
         }
         if (taskIds.some((id) => {
           const task = availableTasks.find((item) => item.id === id);
-          return Boolean(task?.waiting_on || task?.waiting);
+          return Boolean(task?.waiting_on || task?.waiting || task?.is_blocked);
         })) {
-          return Promise.reject(new Error("Complete the prerequisite steps before marking this task done."));
+          return Promise.reject(new Error("This task is blocked or waiting for a prerequisite. Message your implementation team for the next update."));
         }
         for (const [requirementId, value] of submitted) {
           const requirement = requirements.find((item) => item.id === requirementId);
@@ -736,13 +1124,64 @@
           }
         }
         if (implementation) updateWaitingTasks(implementation);
-        if (implementation) savePortalSnapshot(token, implementation);
+        if (implementation) savePortalSnapshot(token, implementation, Boolean(
+          implementation.customerContacts?.some((contact) => contact.token === token)
+        ));
         else {
           portal.tasks = availableTasks;
           window.localStorage.setItem(portalStorageKey, JSON.stringify({ ...readPortalSnapshots(), [token]: portal }));
         }
         return Promise.resolve({ success: true });
       }
+    }
+    if ((match = path.match(/^\/api\/product\/customer\/([A-Za-z0-9_-]+)\/messages$/)) && method === "POST") {
+      const token = decodeURIComponent(match[1]);
+      const implementation = implementationForCustomerToken(token);
+      const bodyText = String(body.body || "").trim();
+      if (!implementation || !bodyText || bodyText.length > 4000) {
+        return Promise.reject(new Error("Enter a message up to 4,000 characters."));
+      }
+      const contact = implementation.customerContacts?.find((item) => item.token === token);
+      const message = {
+        id: nextId++, sender_role: "customer",
+        sender_name: contact?.display_name || "Customer",
+        body: bodyText, created_at: new Date().toISOString()
+      };
+      implementation.customerMessages ||= [];
+      implementation.customerMessages.push(message);
+      savePortalSnapshot(token, implementation, Boolean(contact));
+      return Promise.resolve({ message: clone(message) });
+    }
+    if ((match = path.match(/^\/api\/product\/customer\/([A-Za-z0-9_-]+)\/files$/)) && method === "POST") {
+      const token = decodeURIComponent(match[1]);
+      const implementation = implementationForCustomerToken(token);
+      const filename = String(body.filename || "");
+      const type = String(body.contentType || "");
+      const size = Number(body.size);
+      const extension = filename.toLowerCase().split(".").pop();
+      const allowed = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg" };
+      if (!implementation || allowed[extension] !== type || !Number.isInteger(size) || size < 1 || size > 5 * 1024 * 1024) {
+        return Promise.reject(new Error("Upload a PDF, PNG, or JPG file no larger than 5 MB."));
+      }
+      const currentFiles = implementation.customerFiles || [];
+      const totalBytes = currentFiles.reduce((total, file) => total + Number(file.size_bytes || 0), 0);
+      if (currentFiles.length >= 20 || totalBytes + size > 25 * 1024 * 1024) {
+        return Promise.reject(new Error("This implementation can store up to 20 files and 25 MB total."));
+      }
+      const file = {
+        id: nextId++, uploaded_by_role: "customer", uploaded_by_name: "Customer",
+        filename, content_type: type, size_bytes: size, created_at: new Date().toISOString(), demo: true
+      };
+      implementation.customerFiles ||= [];
+      implementation.customerFiles.unshift(file);
+      const contact = implementation.customerContacts?.find((item) => item.token === token);
+      savePortalSnapshot(token, implementation, Boolean(contact));
+      return Promise.resolve({ file: clone(file) });
+    }
+    if ((match = path.match(/^\/api\/product\/customer\/([A-Za-z0-9_-]+)\/renew$/)) && method === "POST") {
+      return Promise.resolve({
+        message: "Sample preview only. No email was sent; return to the workspace to copy a sample invitation link."
+      });
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/steps\/(\d+)$/)) && method === "PATCH") {
       const implementation = findImplementation(match[1]);

@@ -18,7 +18,41 @@
       <p class="eyebrow">Customer setup</p>
       <h1 id="customer-title">Help us get your implementation ready.</h1>
       <p class="muted" id="customer-intro">Share the requested information with your implementation team.</p>
+      <section id="customer-launch-plan" class="customer-launch-plan" hidden aria-label="Your launch plan">
+        <h2>Your launch plan</h2>
+        <p id="customer-launch-date"></p>
+        <p id="customer-owner"></p>
+      </section>
+      <section id="customer-launch-readiness" class="customer-launch-plan" hidden aria-label="Launch readiness">
+        <h2>Launch readiness</h2>
+        <p id="customer-launch-success"></p>
+        <p id="customer-launch-test"></p>
+        <p id="customer-launch-training"></p>
+        <p id="customer-launch-support"></p>
+        <p id="customer-launch-go-live"></p>
+      </section>
+      <section id="customer-onboarding-gap-plan" class="customer-launch-plan" hidden aria-label="Communication and setup plan">
+        <h2>Communication and setup</h2>
+        <p id="customer-gap-communication"></p>
+        <p id="customer-gap-procurement"></p>
+        <p id="customer-gap-security"></p>
+        <p id="customer-gap-integration"></p>
+        <p id="customer-gap-technical"></p>
+        <p id="customer-gap-adoption"></p>
+        <p id="customer-gap-validation"></p>
+        <p id="customer-gap-support"></p>
+      </section>
       <div id="customer-loading" class="status" role="status" aria-live="polite">Loading your secure request…</div>
+      <section id="customer-access-recovery" hidden aria-labelledby="customer-access-recovery-title">
+        <h2 id="customer-access-recovery-title">Need a fresh portal link?</h2>
+        <p class="muted">Enter the email address that received your invitation. We’ll send a new personal link if this request is eligible.</p>
+        <form id="customer-access-recovery-form">
+          <label for="customer-recovery-email">Invitation email</label>
+          <input id="customer-recovery-email" type="email" maxlength="254" autocomplete="email" required>
+          <button class="button secondary" type="submit">Email me a fresh link</button>
+          <p class="status" id="customer-access-recovery-status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
       <section id="customer-progress" class="customer-progress" hidden aria-label="Implementation progress">
         <h2>Implementation progress</h2>
         <p id="customer-progress-label"></p>
@@ -31,11 +65,32 @@
       </section>
       <form id="customer-form" hidden>
         <div id="customer-fields"></div>
-        <p class="customer-privacy">Only submit the information requested for setup. Never share passwords, payment card details, or other secrets through this form.</p>
+        <p class="customer-privacy">Only submit the information requested for setup. Never share passwords, API keys, payment card details, or other secrets here or in uploaded files.</p>
         <button class="button primary full" type="submit">Send information</button>
         <p class="status" id="customer-status" role="status" aria-live="polite"></p>
       </form>
       <div id="customer-success" class="result-box" hidden>Thank you. Your information has been sent to the implementation team.</div>
+      <section id="customer-files-section" hidden aria-labelledby="customer-files-title">
+        <h2 id="customer-files-title">Share a file</h2>
+        <p class="muted">PDF, PNG, or JPG up to 5 MB each, with up to 20 files and 25 MB total per implementation. Do not upload secrets or passwords.</p>
+        <form id="customer-file-form">
+          <label for="customer-file-input">Choose a file</label>
+          <input id="customer-file-input" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg">
+          <button class="button secondary" type="submit">Upload file</button>
+          <p class="status" id="customer-file-status" role="status" aria-live="polite"></p>
+        </form>
+        <div id="customer-files" class="list-stack"></div>
+      </section>
+      <section id="customer-conversation-section" hidden aria-labelledby="customer-conversation-title">
+        <h2 id="customer-conversation-title">Questions and updates</h2>
+        <div id="customer-messages" class="customer-messages" role="log" aria-live="polite" aria-relevant="additions text"></div>
+        <form id="customer-message-form">
+          <label for="customer-message">Message your implementation team</label>
+          <textarea id="customer-message" maxlength="4000" required placeholder="Ask a question or share an update"></textarea>
+          <button class="button secondary" type="submit">Send message</button>
+          <p class="status" id="customer-message-status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
     </section>
     <p class="auth-foot">A clear, practical onboarding experience with Relay. <a href="privacy.html">Privacy</a></p>
   </main>

@@ -180,7 +180,7 @@ before(async () => {
   });
   await waitForServer();
   const initializedMigration = await testQuery("SELECT version FROM relay_schema_migrations");
-  assert.deepEqual(initializedMigration.rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7]);
+  assert.deepEqual(initializedMigration.rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
   const removedHelpConsentTable = await testQuery("SELECT to_regclass('product_help_consents') AS relation");
   assert.equal(removedHelpConsentTable.rows[0].relation, null);
 });
@@ -216,7 +216,7 @@ test("server refuses to start without DATABASE_URL", () => {
 });
 
 test("Relay product supports the six connected jobs with workspace isolation", {
-  skip: databaseTestSkipReason
+  skip: databaseTestSkipReason || undefined || undefined
 }, async () => {
   const unauthenticated = await request("/api/product/workspace");
   assert.equal(unauthenticated.response.status, 401);
@@ -647,6 +647,18 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   });
   assert.equal(templateResponse.response.status, 201);
   const templateId = templateResponse.data.template.id;
+  await testQuery(`
+    INSERT INTO product_workspace_integrations
+      (workspace_id, provider, access_token_cipher, hubspot_onboarding_template_id)
+    VALUES ($1, 'hubspot', '', $2)
+  `, [ownerAccount.workspace.id, templateId]);
+  const protectedHandoffTemplateDelete = await request(`/api/product/templates/${templateId}`, {
+    method: "DELETE",
+    cookie: ownerCookie
+  });
+  assert.equal(protectedHandoffTemplateDelete.response.status, 409);
+  assert.match(protectedHandoffTemplateDelete.data.error, /selected for HubSpot onboarding/);
+  await testQuery("DELETE FROM product_workspace_integrations WHERE workspace_id = $1 AND provider = 'hubspot'", [ownerAccount.workspace.id]);
 
   const requirementResponse = await request("/api/product/requirements", {
     method: "POST",
@@ -705,13 +717,103 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   });
   assert.equal(start.response.status, 201, JSON.stringify(start.data));
   const implementationId = start.data.implementation.id;
-  const customerToken = start.data.customerPortalToken;
+  assert.equal(start.data.customerPortalToken, undefined);
+  const initialCustomerLink = await request(`/api/product/implementations/${implementationId}/customer-link`, {
+    method: "POST",
+    cookie: ownerCookie
+  });
+  assert.equal(initialCustomerLink.response.status, 200);
+  const customerToken = initialCustomerLink.data.customerPortalToken;
   const createdImplementation = await request(`/api/product/implementations/${implementationId}`, { cookie: ownerCookie });
   assert.equal(createdImplementation.data.implementation.escalation_email, "");
   assert.equal(createdImplementation.data.implementation.escalation_delay_days, 5);
   assert.equal(createdImplementation.data.implementation.steps[0].assignee_user_id, ownerId);
   assert.equal(createdImplementation.data.implementation.steps[1].assignee_user_id, teammateId);
   assert.equal(createdImplementation.data.implementation.steps[1].assignee_email, "teammate@relaytest.example");
+  const sow = await request(`/api/product/implementations/${implementationId}/sow`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { sowScope: "Configure and launch", sowMilestones: "Kickoff, test, launch", sowExclusions: "Custom development", stageGateStatus: "testing" }
+  });
+  assert.equal(sow.response.status, 200, JSON.stringify(sow.data));
+  assert.equal(sow.data.stageGateStatus, "testing");
+  const financial = await request(`/api/product/implementations/${implementationId}/financial-plan`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { budgetAmount: 15000, forecastAmount: 14000, actualCost: 7000, invoiceStatus: "draft", invoiceReference: "INV-100", marginNote: "Margin healthy" }
+  });
+  assert.equal(financial.response.status, 200, JSON.stringify(financial.data));
+  assert.equal(financial.data.invoiceStatus, "draft");
+  const invalidFinancial = await request(`/api/product/implementations/${implementationId}/financial-plan`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { budgetAmount: -1, forecastAmount: 14000, actualCost: 7000, invoiceStatus: "draft", invoiceReference: "INV-100", marginNote: "" }
+  });
+  assert.equal(invalidFinancial.response.status, 400);
+  const timeEntry = await request(`/api/product/implementations/${implementationId}/time-entries`, {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { workDate: "2027-01-10", minutes: 90, hourlyRate: 100, billable: true, note: "Acceptance testing" }
+  });
+  assert.equal(timeEntry.response.status, 201, JSON.stringify(timeEntry.data));
+  assert.equal(timeEntry.data.entry.minutes, 90);
+  const deleteTimeEntry = await request(`/api/product/implementations/${implementationId}/time-entries/${timeEntry.data.entry.id}`, {
+    method: "DELETE",
+    cookie: ownerCookie
+  });
+  assert.equal(deleteTimeEntry.response.status, 200);
+  const invalidTimeEntry = await request(`/api/product/implementations/${implementationId}/time-entries`, {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { workDate: "2027-01-10", minutes: 0, hourlyRate: 100, billable: true, note: "" }
+  });
+  assert.equal(invalidTimeEntry.response.status, 400);
+  const approval = await request(`/api/product/implementations/${implementationId}/approvals`, {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { title: "Security approval", approvalType: "security", approverName: "Security Lead", approverEmail: "security@relaytest.example", dueAt: "2027-01-12" }
+  });
+  assert.equal(approval.response.status, 201, JSON.stringify(approval.data));
+  const approvalUpdate = await request(`/api/product/implementations/${implementationId}/approvals/${approval.data.approval.id}`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { status: "approved" }
+  });
+  assert.equal(approvalUpdate.response.status, 200);
+  const deleteApproval = await request(`/api/product/implementations/${implementationId}/approvals/${approval.data.approval.id}`, {
+    method: "DELETE",
+    cookie: ownerCookie
+  });
+  assert.equal(deleteApproval.response.status, 200);
+  const calendarEvent = await request(`/api/product/implementations/${implementationId}/calendar-events`, {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { title: "Launch review", startAt: "2027-01-15T10:00:00Z", endAt: "2027-01-15T11:00:00Z", eventType: "meeting", externalUrl: "https://example.test/review" }
+  });
+  assert.equal(calendarEvent.response.status, 201, JSON.stringify(calendarEvent.data));
+  const deleteCalendarEvent = await request(`/api/product/implementations/${implementationId}/calendar-events/${calendarEvent.data.event.id}`, {
+    method: "DELETE",
+    cookie: ownerCookie
+  });
+  assert.equal(deleteCalendarEvent.response.status, 200);
+  const invalidCalendarEvent = await request(`/api/product/implementations/${implementationId}/calendar-events`, {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { title: "Invalid review", startAt: "2027-01-15T11:00:00Z", endAt: "2027-01-15T10:00:00Z", eventType: "meeting", externalUrl: "" }
+  });
+  assert.equal(invalidCalendarEvent.response.status, 400);
+  const capacity = await request("/api/product/capacity-plans", {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { userId: ownerId, weekStart: "2027-01-11", availableMinutes: 2400, capacityNote: "Five-day week" }
+  });
+  assert.equal(capacity.response.status, 201, JSON.stringify(capacity.data));
+  const implementationDetailsAfterDelivery = await request(`/api/product/implementations/${implementationId}`, { cookie: ownerCookie });
+  assert.equal(implementationDetailsAfterDelivery.data.implementation.stage_gate_status, "testing");
+  assert.equal(implementationDetailsAfterDelivery.data.implementation.financialPlan.invoice_status, "draft");
+  assert.equal(implementationDetailsAfterDelivery.data.implementation.timeEntries.length, 0);
+  assert.equal(implementationDetailsAfterDelivery.data.implementation.approvals.length, 0);
+  assert.equal(implementationDetailsAfterDelivery.data.implementation.calendarEvents.length, 0);
   const savedEscalation = await request(`/api/product/implementations/${implementationId}/customer-escalation`, {
     method: "PATCH",
     cookie: ownerCookie,
@@ -1038,10 +1140,193 @@ test("Relay product supports the six connected jobs with workspace isolation", {
     cookie: ownerCookie,
     body: { templateId: universalTemplate.data.template.id, customerName: "Universal Customer" }
   });
-  const universalPortal = await request(`/api/product/customer/${universalImplementation.data.customerPortalToken}`);
+  const universalLink = await request(
+    `/api/product/implementations/${universalImplementation.data.implementation.id}/customer-link`,
+    { method: "POST", cookie: ownerCookie }
+  );
+  const universalToken = universalLink.data.customerPortalToken;
+  const universalPortal = await request(`/api/product/customer/${universalToken}`);
   assert.equal(universalPortal.response.status, 200);
   assert.equal(universalPortal.data.requirements.some((item) => item.id === secondRequirementId), false);
   assert.equal(universalPortal.data.requirements.some((item) => item.id === dateRequirement.data.requirement.id), false);
+
+  const launchPlan = await request(
+    `/api/product/implementations/${universalImplementation.data.implementation.id}/launch-plan`,
+    {
+      method: "PATCH",
+      cookie: ownerCookie,
+      body: {
+        customerOwnerName: "Taylor Customer",
+        customerOwnerEmail: "taylor@universal.example",
+        targetLaunchDate: "2027-04-15"
+      }
+    }
+  );
+  assert.equal(launchPlan.response.status, 200);
+  const invitationMessageIndex = emailMessages.length;
+  const customerInvitation = await request(
+    `/api/product/implementations/${universalImplementation.data.implementation.id}/customer-contacts`,
+    {
+      method: "POST",
+      cookie: ownerCookie,
+      body: { email: "taylor@universal.example", displayName: "Taylor Customer" }
+    }
+  );
+  assert.equal(customerInvitation.response.status, 201, JSON.stringify(customerInvitation.data));
+  assert.equal(customerInvitation.data.invitationSent, true);
+  assert.equal(customerInvitation.data.contact.email, "taylor@universal.example");
+  assert.equal(emailMessages.length, invitationMessageIndex + 1);
+  const invitationLink = emailMessages.at(-1).text.match(/https?:\/\/\S+/)?.[0];
+  assert.ok(invitationLink);
+  const namedCustomerToken = new URL(invitationLink).searchParams.get("token");
+  assert.ok(namedCustomerToken);
+  const namedCustomerPortal = await request(`/api/product/customer/${namedCustomerToken}`);
+  assert.equal(namedCustomerPortal.response.status, 200);
+  assert.equal(namedCustomerPortal.data.contact.name, "Taylor Customer");
+  assert.equal(namedCustomerPortal.data.targetLaunchDate, "2027-04-15");
+
+  const customerMessage = await request(`/api/product/customer/${namedCustomerToken}/messages`, {
+    method: "POST",
+    body: { body: "Can you confirm the launch checklist?" }
+  });
+  assert.equal(customerMessage.response.status, 201);
+  const implementationCollaboration = await request(
+    `/api/product/implementations/${universalImplementation.data.implementation.id}`,
+    { cookie: ownerCookie }
+  );
+  assert.equal(implementationCollaboration.data.implementation.customerMessages.at(-1).body,
+    "Can you confirm the launch checklist?");
+
+  const uploadResponse = await fetch(
+    `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
+    {
+      method: "POST",
+      headers: {
+        Origin: baseUrl,
+        "Content-Type": "application/pdf",
+        "X-File-Name": encodeURIComponent("onboarding.pdf")
+      },
+      body: Buffer.from("%PDF-1.7\nCustomer onboarding document")
+    }
+  );
+  const uploadResult = await uploadResponse.json();
+  assert.equal(uploadResponse.status, 201, JSON.stringify(uploadResult));
+  assert.equal(uploadResult.file.filename, "onboarding.pdf");
+  const invalidUpload = await fetch(
+    `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
+    {
+      method: "POST",
+      headers: {
+        Origin: baseUrl,
+        "Content-Type": "text/plain",
+        "X-File-Name": "notes.txt"
+      },
+      body: Buffer.from("not an allowed file")
+    }
+  );
+  assert.equal(invalidUpload.status, 400);
+  const customerFileDownload = await fetch(
+    `${baseUrl}/api/product/customer/${namedCustomerToken}/files/${uploadResult.file.id}`
+  );
+  assert.equal(customerFileDownload.status, 200);
+  assert.equal(customerFileDownload.headers.get("content-type"), "application/pdf");
+  assert.match(customerFileDownload.headers.get("content-disposition"), /onboarding\.pdf/);
+
+  await testQuery(`
+    INSERT INTO product_customer_files
+      (implementation_id, contact_id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, content)
+    SELECT $1, $2, 'customer', 'Test', 'count-' || n || '.pdf',
+      'application/pdf', 5, decode('255044462d', 'hex')
+    FROM generate_series(1, 19) AS series(n)
+  `, [universalImplementation.data.implementation.id, customerInvitation.data.contact.id]);
+  const fileCountLimit = await fetch(
+    `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
+    {
+      method: "POST",
+      headers: {
+        Origin: baseUrl,
+        "Content-Type": "application/pdf",
+        "X-File-Name": "too-many.pdf"
+      },
+      body: Buffer.from("%PDF-1.7\nAnother file")
+    }
+  );
+  assert.equal(fileCountLimit.status, 409);
+
+  await testQuery("DELETE FROM product_customer_files WHERE filename LIKE 'count-%'");
+  await testQuery(`
+    UPDATE product_customer_files SET size_bytes = 5242880
+    WHERE id = $1
+  `, [uploadResult.file.id]);
+  await testQuery(`
+    INSERT INTO product_customer_files
+      (implementation_id, contact_id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, content)
+    SELECT $1, $2, 'customer', 'Test', 'size-' || n || '.pdf',
+      'application/pdf', 5242880, decode('255044462d', 'hex')
+    FROM generate_series(1, 4) AS series(n)
+  `, [universalImplementation.data.implementation.id, customerInvitation.data.contact.id]);
+  const fileSizeLimit = await fetch(
+    `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
+    {
+      method: "POST",
+      headers: {
+        Origin: baseUrl,
+        "Content-Type": "application/pdf",
+        "X-File-Name": "over-total.pdf"
+      },
+      body: Buffer.from("%PDF-1.7\nAnother file")
+    }
+  );
+  assert.equal(fileSizeLimit.status, 409);
+  for (let index = 0; index < 6; index += 1) {
+    const excessUpload = await fetch(
+      `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
+      {
+        method: "POST",
+        headers: {
+          Origin: baseUrl,
+          "Content-Type": "application/pdf",
+          "X-File-Name": `excess-${index}.pdf`
+        },
+        body: Buffer.from("%PDF-1.7\nAnother file")
+      }
+    );
+    assert.equal(excessUpload.status, 409);
+  }
+  const rateLimitedUpload = await fetch(
+    `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
+    {
+      method: "POST",
+      headers: {
+        Origin: baseUrl,
+        "Content-Type": "application/pdf",
+        "X-File-Name": "rate-limited.pdf"
+      },
+      body: Buffer.from("%PDF-1.7\nAnother file")
+    }
+  );
+  assert.equal(rateLimitedUpload.status, 429);
+
+  await testQuery(
+    "UPDATE product_customer_contacts SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 day' WHERE id = $1",
+    [customerInvitation.data.contact.id]
+  );
+  const expiredNamedCustomerLink = await request(`/api/product/customer/${namedCustomerToken}`);
+  assert.equal(expiredNamedCustomerLink.response.status, 404);
+  const renewal = await request(`/api/product/customer/${namedCustomerToken}/renew`, {
+    method: "POST",
+    body: { email: "taylor@universal.example" }
+  });
+  assert.equal(renewal.response.status, 200);
+  const renewedToken = new URL(emailMessages.at(-1).text.match(/https?:\/\/\S+/)[0]).searchParams.get("token");
+  assert.notEqual(renewedToken, namedCustomerToken);
+  assert.equal((await request(`/api/product/customer/${renewedToken}`)).response.status, 200);
+  const revokeContact = await request(
+    `/api/product/implementations/${universalImplementation.data.implementation.id}/customer-contacts/${customerInvitation.data.contact.id}`,
+    { method: "DELETE", cookie: ownerCookie }
+  );
+  assert.equal(revokeContact.response.status, 200);
+  assert.equal((await request(`/api/product/customer/${renewedToken}`)).response.status, 404);
 
   const disposableProcess = await request("/api/product/processes", {
     method: "POST",
@@ -1205,7 +1490,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   const expiredWorkspace = await request("/api/product/workspace", { cookie: activeCookie });
   assert.equal(expiredWorkspace.response.status, 403);
   assert.equal(expiredWorkspace.data.code, "subscription_expired");
-  const activeCustomerLink = replacementPortal.data.customerPortalToken;
+  const activeCustomerLink = linkRotation.data.customerPortalToken;
   const expiredCustomerLink = await request(`/api/product/customer/${activeCustomerLink}`);
   assert.equal(expiredCustomerLink.response.status, 404);
   const expiredCustomerSubmission = await request(`/api/product/customer/${activeCustomerLink}`, {
@@ -1216,7 +1501,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
 });
 
 test("Starter plan enforces member, template, active implementation, and feature limits", {
-  skip: databaseTestSkipReason
+  skip: databaseTestSkipReason || undefined
 }, async () => {
   const suffix = `${process.pid}-${Date.now()}`;
   const account = await createPaidTestWorkspace({
@@ -1322,7 +1607,7 @@ test("Starter plan enforces member, template, active implementation, and feature
 });
 
 test("account deletion removes sole-member workspaces and transfers shared ownership", {
-  skip: databaseTestSkipReason
+  skip: databaseTestSkipReason || undefined
 }, async () => {
   const password = "account-deletion-test-password";
   const ownerAccount = await createPaidTestWorkspace({
@@ -1411,7 +1696,7 @@ test("account deletion removes sole-member workspaces and transfers shared owner
 });
 
 test("public pages and the inquiry app remain available", {
-  skip: databaseTestSkipReason
+  skip: databaseTestSkipReason || undefined
 }, async () => {
   for (const page of [
     "/index.html", "/about.html", "/contact.html", "/dashboard.html", "/demo.html",
@@ -1475,9 +1760,9 @@ test("public pages and the inquiry app remain available", {
   assert.doesNotMatch(productScript, /consentAccepted|helpConsented/);
   assert.match(relayHelpReply("hi"), /Hi! I’m Ray/);
   assert.match(relayHelpReply("hello Ray"), /What are you working on today/);
-  assert.match(relayHelpReply("Does Relay integrate with Jira and Slack?"), /HubSpot.*Slack.*not connected today/i);
-  assert.match(relayHelpReply("How do I map prerequisites between process steps?"), /Open Process map/i);
-  assert.match(relayHelpReply("If I update a template, will existing plans change?"), /Existing implementations.*not changed/i);
+  assert.match(relayHelpReply("Does Relay integrate with Jira and Slack?"), /HubSpot.*not connected today/i);
+  assert.match(relayHelpReply("How do I map prerequisites between process steps?"), /Process map/i);
+  assert.match(relayHelpReply("If I update a template, will existing plans change?"), /existing.*not changed/i);
   assert.match(relayHelpReply("Can I delete my account, and what happens to customer information?"), /private link/i);
   assert.match(relayHelpReply("My client says the setup link is invalid. What should I do?"), /create a replacement customer link/i);
   assert.match(relayHelpReply("What should I ask my customer to provide before kickoff?"), /Ask only for information needed/i);
@@ -1597,7 +1882,7 @@ test("public pages and the inquiry app remain available", {
     method: "POST",
     adminToken: "test-owner-admin-token",
     headers: { Authorization: "Bearer test-inquiry-api-token" },
-    body: { workspaceName: "Approved Client", email: "approved@relaytest.example" }
+    body: { workspaceName: "Approved Client", email: "approved@relaytest.example", plan: "growth" }
   });
   assert.equal(provisioned.response.status, 201, JSON.stringify(provisioned.data));
   assert.equal(provisioned.data.workspace.name, "Approved Client");

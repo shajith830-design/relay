@@ -40,7 +40,7 @@ function relayHelpReply(message) {
     return "I’m Ray, Relay’s built-in product guide. I use prepared Relay-specific answers—not an external AI service—and can’t access private workspace records.";
   }
   if (/(jira|slack|integration|integrate|synchronize|sync with|external project)/.test(question)) {
-    return "Workspace owners can connect HubSpot to sync implementation progress and Slack to receive workspace updates. Salesforce, Microsoft Teams, Jira, Linear, and Asana are not connected today.";
+    return "Workspace owners can configure the HubSpot connection for Closed Won handoff and progress summaries. Slack, Salesforce, Microsoft Teams, Jira, Linear, and Asana are not connected today.";
   }
   if (/(?:relay.{0,35}(?:price|pricing|cost|subscription)|(?:price|pricing|cost|subscription).{0,35}relay|₹|rupee)/.test(question)) {
     return "Relay offers Starter at ₹2,999 per month (3 team members, 5 active implementations, 3 templates) and Growth at ₹3,999 per month (10 members, 20 active implementations, unlimited templates, plus prerequisites, blocker tracking, and template history/restore). Prices are before applicable taxes. Custom limits and pricing are agreed in advance. See the Pricing page for details.";
@@ -71,6 +71,9 @@ function relayHelpReply(message) {
   }
   if (/(?:what can|what does|what are).{0,40}\b(?:owner|member)\b.{0,30}\b(?:do|manage|permissions?)\b|what permissions?.{0,30}\b(?:owner|member)\b|(?:difference|differ).{0,25}\b(?:owner|member)\b|\b(?:owner|member)\b.{0,25}\b(?:difference|permissions?)\b/.test(question)) {
     return "Owners can invite teammates, revoke pending invitations, change workspace notification settings, and connect or disconnect integrations. Members can work in the workspace but cannot invite others or manage those owner-only settings. Relay currently has Owner and Member roles.";
+  }
+  if (/(?:update|change|refresh|edit|restore).{0,40}template.{0,50}(?:existing|future|plan|implementation)|template.{0,50}(?:existing implementation|existing plan|future implementation)/.test(question)) {
+    return "Refreshing or updating a template changes the version used by future implementations. Existing implementations keep their copied task plans and are not changed by template updates.";
   }
   if (/\b(?:reach|hit|exceed|maximum|max|limit|full|capacity|seat)\b.{0,40}\b(?:plan|workspace|member|seat|implementation|template|limit)\b|\b(?:plan|workspace|member|seat|implementation|template)\b.{0,40}\b(?:limit|full|maximum|max|capacity)\b|how many.{0,30}\b(?:members?|seats|implementations?|templates)\b|\b(?:add|create)\b.{0,25}\b(?:more|another|extra)\b.{0,15}\b(?:members?|teammates?|seats|implementations?|templates)\b/.test(question)) {
     return "Starter includes up to 3 members, 5 active implementations, and 3 templates; Growth includes up to 10 members, 20 active implementations, and unlimited templates. Custom limits are agreed in advance. If you reach a limit, review the Pricing page or contact Relay about changing plans; completing an implementation or removing an unused template may also free capacity.";
@@ -210,7 +213,7 @@ function relayHelpReply(message) {
   if (/(appearance|theme|dark mode|accent|color)/.test(question)) {
     return "Open Settings to choose light or dark mode and an accent color. Relay saves those appearance preferences to your account.";
   }
-  if (/(change|update|refresh|edit|restore).{0,40}template.{0,50}(existing|current|already|affect|implementation|plan)|template.{0,50}(existing implementation|existing plan|already started|future implementation)|(?:existing|current|already-created|already created).{0,40}(implementation|plan|customer work)/.test(question)) {
+  if (/(?:update|change|refresh|edit|restore)\s+(?:a\s+|the\s+)?template.*existing|template.{0,50}existing (?:implementation|plan|customer work)/.test(question)) {
     return "Refreshing a template changes the version used by future implementations. Growth and Custom plans keep revision history and allow restoring an earlier version. Existing implementations keep their copied task plans and are not changed by template updates.";
   }
   if (/(template|version|revision|restore)/.test(question)) {

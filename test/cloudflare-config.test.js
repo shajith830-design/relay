@@ -22,6 +22,9 @@ test("Cloudflare configuration routes production and backend requests through Re
   const worker = readFileSync(path.join(__dirname, "..", "cloudflare-worker.mjs"), "utf8");
   assert.match(worker, /006_customer_portal_notifications_integrations\.sql/);
   assert.match(worker, /007_customer_contact_escalation\.sql/);
+  assert.match(worker, /008_client_onboarding_collaboration\.sql/);
+  assert.match(worker, /009_launch_readiness\.sql/);
+  assert.match(worker, /010_onboarding_gap_resolution\.sql/);
   assert.match(worker, /"INQUIRY_NOTIFICATION_EMAIL"/);
 });
 

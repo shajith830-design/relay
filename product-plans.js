@@ -48,7 +48,17 @@ function getPlanDetails(code, customLimits = {}) {
     throw new Error(`Unknown Relay subscription plan: ${String(code)}.`);
   }
   const definition = PLAN_DEFINITIONS[code];
-  if (code !== "custom") return { ...definition, features: { ...definition.features } };
+  if (code !== "custom") {
+    return {
+      ...definition,
+      memberLimit: Number.isSafeInteger(customLimits.memberLimit) ? customLimits.memberLimit : definition.memberLimit,
+      activeImplementationLimit: Number.isSafeInteger(customLimits.activeImplementationLimit)
+        ? customLimits.activeImplementationLimit : definition.activeImplementationLimit,
+      templateLimit: Number.isSafeInteger(customLimits.templateLimit)
+        ? customLimits.templateLimit : definition.templateLimit,
+      features: { ...definition.features }
+    };
+  }
   return {
     ...definition,
     memberLimit: customLimits.memberLimit ?? null,

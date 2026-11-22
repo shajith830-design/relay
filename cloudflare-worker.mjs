@@ -7,6 +7,10 @@ import workspacePlansMigration from "./migrations/004_workspace_plans.sql";
 import inquiryContactFieldsMigration from "./migrations/005_inquiry_contact_fields.sql";
 import customerPortalMigration from "./migrations/006_customer_portal_notifications_integrations.sql";
 import customerEscalationMigration from "./migrations/007_customer_contact_escalation.sql";
+import clientOnboardingMigration from "./migrations/008_client_onboarding_collaboration.sql";
+import launchReadinessMigration from "./migrations/009_launch_readiness.sql";
+import onboardingGapMigration from "./migrations/010_onboarding_gap_resolution.sql";
+import competitiveCapabilitiesMigration from "./migrations/011_relay_competitive_capabilities.sql";
 
 const backendPaths = [
   "/api",
@@ -38,8 +42,6 @@ async function getBackendHandler(env) {
     "INTEGRATION_ENCRYPTION_KEY",
     "HUBSPOT_CLIENT_ID",
     "HUBSPOT_CLIENT_SECRET",
-    "SLACK_CLIENT_ID",
-    "SLACK_CLIENT_SECRET",
     "NOTIFICATIONS_CRON_SECRET"
   ]) {
     if (env[key]) process.env[key] = env[key];
@@ -51,7 +53,11 @@ async function getBackendHandler(env) {
     "004_workspace_plans.sql": workspacePlansMigration,
     "005_inquiry_contact_fields.sql": inquiryContactFieldsMigration,
     "006_customer_portal_notifications_integrations.sql": customerPortalMigration,
-    "007_customer_contact_escalation.sql": customerEscalationMigration
+    "007_customer_contact_escalation.sql": customerEscalationMigration,
+    "008_client_onboarding_collaboration.sql": clientOnboardingMigration,
+    "009_launch_readiness.sql": launchReadinessMigration,
+    "010_onboarding_gap_resolution.sql": onboardingGapMigration,
+    "011_relay_competitive_capabilities.sql": competitiveCapabilitiesMigration
   };
 
   handlerPromise ??= (async () => {

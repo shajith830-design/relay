@@ -148,10 +148,10 @@ test("marketing pages expose the sample demo and disclose current product bounda
     assert.equal(existsSync(path.join(publicDir, "assets", obsolete)), false);
   }
   assert.match(homePage, /HubSpot/);
-  assert.match(homePage, /Slack/);
-  assert.match(homePage, /separate onboarding deal/i);
-  assert.match(homePage, /does not start a Relay checklist from a HubSpot Closed Won deal/i);
-  assert.match(homePage, /customers continue using Relay and do not need HubSpot/i);
+  assert.match(homePage, /separate HubSpot onboarding deal/i);
+  assert.match(homePage, /one HubSpot pipeline, its Closed Won stage, and a Relay template/i);
+  assert.match(homePage, /does not modify the original sales deal or import unrelated CRM records/i);
+  assert.match(homePage, /customers use Relay’s secure portal and do not need HubSpot/i);
   assert.match(homePage, /Built by the founder/);
   assert.match(homePage, /three months of Relay access/i);
   assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-overview.mp4")));
@@ -165,13 +165,15 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
   assert.match(demoPage, /fictional data/i);
   assert.match(demoPage, /does not connect to your Relay account or backend/i);
-  assert.match(solutionsPage, /HubSpot Closed Won deals do not automatically start Relay checklists/i);
+  assert.match(solutionsPage, /newly matching deals start one implementation/i);
+  assert.match(solutionsPage, /revocable, expiring links/i);
   assert.doesNotMatch([aboutPage, solutionsPage, pricingPage].join("\n"), /Salesforce|Microsoft Teams|Jira|Linear|Asana/i);
   assert.match([homePage, solutionsPage].join("\n"), /portfolio health/i);
   assert.match([homePage, solutionsPage].join("\n"), /CSV/i);
   assert.match([homePage, solutionsPage].join("\n"), /daily reminders/i);
   assert.match(solutionsPage, /private portal/i);
-  assert.match(pricingPage, /HubSpot receives a separate onboarding deal/i);
+  assert.match(pricingPage, /newly matching deals start one implementation/i);
+  assert.match(pricingPage, /PDF, PNG, or JPG files up to 5 MB/i);
   assert.match(aboutPage, /does not currently publish customer case studies/i);
   assert.match(pricingPage, /₹2,999/);
   assert.match(pricingPage, /₹3,999/);
@@ -226,6 +228,55 @@ test("process map builder separates creation, saving, checking, and template cre
   assert.match(productScript, /function hasTemplateForProcess\(processId\)/);
   assert.match(productScript, /saveTemplate\.textContent = hasTemplate \? "Create another template" : "Create template"/);
   assert.match(productScript, /step-form-heading"\)\.textContent = "Edit a step"/);
+});
+
+test("workspace navigation is grouped and the overview routes to one next action", () => {
+  const publicDir = path.join(__dirname, "..", "public");
+  const productHtml = readFileSync(path.join(publicDir, "product.html"), "utf8");
+  const productScript = readFileSync(path.join(publicDir, "product.js"), "utf8");
+
+  assert.match(productHtml, /class="nav-group-label">Customer work/);
+  assert.match(productHtml, /class="nav-group-label">Reusable setup/);
+  assert.match(productHtml, /id="mobile-nav-toggle"/);
+  assert.match(productHtml, /id="sidebar-backdrop"/);
+  assert.match(productHtml, /id="overview-primary-action"[^>]*data-workflow-action=/);
+  assert.match(productScript, /primaryAction\.dataset\.workflowAction = next\.action/);
+  assert.match(productScript, /Use the main action above to continue/);
+});
+
+test("named customer resends rotate links and customer access resolves implementation IDs", () => {
+  const productScript = readFileSync(path.join(__dirname, "..", "public", "product.js"), "utf8");
+  const productRoutes = readFileSync(path.join(__dirname, "..", "product-routes.js"), "utf8");
+  assert.match(productScript, /Fresh portal invitation sent/);
+  assert.match(productScript, /method: "POST"/);
+  assert.match(productRoutes, /c\.implementation_id, c\.expires_at, i\.id, i\.workspace_id, i\.template_id/);
+});
+
+test("workspace exposes delivery operations and competitive capability controls", () => {
+  const productHtml = readFileSync(path.join(__dirname, "..", "public", "product.html"), "utf8");
+  for (const id of [
+    "delivery-operations-heading", "implementation-sow-form", "implementation-financial-form",
+    "time-entry-form", "approval-form", "implementation-onboarding-gap-plan"
+  ]) {
+    assert.match(productHtml, new RegExp(`id="${id}"`), `${id} must be present`);
+  }
+});
+
+test("public pages describe only verified product capabilities", () => {
+  const publicDir = path.join(__dirname, "..", "public");
+  const home = readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const about = readFileSync(path.join(publicDir, "about.html"), "utf8");
+  const solutions = readFileSync(path.join(publicDir, "features-services.html"), "utf8");
+  const pricing = readFileSync(path.join(publicDir, "pricing.html"), "utf8");
+  const publicCopy = [home, about, solutions, pricing].join("\n");
+
+  for (const supported of [
+    "Process maps", "named, revocable", "HubSpot", "email notifications",
+    "SOW scope", "team capacity", "invoice status", "Customer questions"
+  ]) {
+    assert.match(publicCopy, new RegExp(supported, "i"));
+  }
+  assert.doesNotMatch(publicCopy, /<li[^>]*>[^<]*(?:Slack|Salesforce|Jira|Zapier|Workato|native (?:iOS|Android|mobile)|SSO|SCIM|SOC 2|ISO certification)[^<]*<\/li>|generate invoices on the platform|automatically process payments/i);
 });
 
 test("password reset can reveal passwords and resets the form after submission", () => {
@@ -309,6 +360,186 @@ test("local customer links work across tabs, validate submissions, and rotate", 
   assert.equal(
     (await makeDemoAdapter(storage).adapter.request(`/api/product/customer/${replacementToken}`)).customerName,
     "Acme Example Co."
+  );
+});
+
+test("sample customer contacts can use launch plans, questions, and file sharing without sending email", async () => {
+  const { adapter } = makeDemoAdapter();
+  const launchPlan = await adapter.request("/api/product/implementations/9040/launch-plan", {
+    method: "PATCH",
+    body: {
+      customerOwnerName: "Morgan Demo",
+      customerOwnerEmail: "morgan@example.test",
+      targetLaunchDate: "2027-05-20"
+    }
+  });
+  assert.equal(launchPlan.targetLaunchDate, "2027-05-20");
+
+  const invitation = await adapter.request("/api/product/implementations/9040/customer-contacts", {
+    method: "POST",
+    body: { email: "morgan@example.test", displayName: "Morgan Demo" }
+  });
+  assert.equal(invitation.invitationSent, false);
+  assert.match(invitation.message, /No email was sent/);
+  const token = new URL(invitation.customerPortalUrl).searchParams.get("token");
+  assert.ok(token);
+  const portal = await adapter.request(`/api/product/customer/${token}`);
+  assert.equal(portal.contact.name, "Morgan Demo");
+  assert.equal(portal.targetLaunchDate, "2027-05-20");
+
+  await adapter.request(`/api/product/customer/${token}/messages`, {
+    method: "POST",
+    body: { body: "Can we review the launch date?" }
+  });
+  const upload = await adapter.request(`/api/product/customer/${token}/files`, {
+    method: "POST",
+    body: { filename: "plan.pdf", contentType: "application/pdf", size: 1200 }
+  });
+  assert.equal(upload.file.filename, "plan.pdf");
+  const implementation = (await adapter.request("/api/product/implementations/9040")).implementation;
+  assert.equal(implementation.customerMessages.at(-1).body, "Can we review the launch date?");
+  assert.equal(implementation.customerFiles[0].filename, "plan.pdf");
+
+  await adapter.request(`/api/product/implementations/9040/customer-contacts/${invitation.contact.id}`, {
+    method: "DELETE"
+  });
+  await assert.rejects(adapter.request(`/api/product/customer/${token}`), /no longer available/);
+});
+
+test("sample implementation tracks launch readiness, stakeholders, and risks", async () => {
+  const { adapter } = makeDemoAdapter();
+  await adapter.request("/api/product/implementations/9040/launch-readiness", {
+    method: "PATCH",
+    body: {
+      successCriteria: "Customer team completes acceptance testing.",
+      acceptanceStatus: "accepted",
+      testPlan: "Run end-to-end acceptance tests.",
+      trainingStatus: "complete",
+      supportOwnerName: "Alex Support",
+      supportOwnerEmail: "alex@example.test",
+      rollbackPlan: "Restore the previous configuration.",
+      goLiveStatus: "ready"
+    }
+  });
+  const stakeholder = await adapter.request("/api/product/implementations/9040/launch-stakeholders", {
+    method: "POST",
+    body: { displayName: "Finance Approver", email: "finance@example.test", role: "Finance", approvalStatus: "approved", nextAction: "" }
+  });
+  assert.equal(stakeholder.stakeholder.approval_status, "approved");
+  const risk = await adapter.request("/api/product/implementations/9040/launch-risks", {
+    method: "POST",
+    body: { title: "IT approval is pending", category: "Approval", severity: "high", ownerName: "IT Lead", ownerEmail: "it@example.test", status: "open", nextAction: "Schedule approval review", dueAt: "2027-01-15" }
+  });
+  assert.equal(risk.risk.severity, "high");
+  const implementation = (await adapter.request("/api/product/implementations/9040")).implementation;
+  assert.equal(implementation.go_live_status, "ready");
+  assert.equal(implementation.launchStakeholders.length, 1);
+  assert.equal(implementation.launchRisks.length, 1);
+});
+
+test("sample implementation tracks communication, approval, security, integration, adoption, validation, and support gaps", async () => {
+  const { adapter } = makeDemoAdapter();
+  await adapter.request("/api/product/implementations/9040/onboarding-gap-plan", {
+    method: "PATCH",
+    body: {
+      communicationChannel: "Weekly customer call",
+      communicationCadence: "Every Tuesday",
+      communicationOwnerName: "Jordan Lee",
+      communicationOwnerEmail: "jordan@example.test",
+      procurementStatus: "approved",
+      securityStatus: "in_progress",
+      securityNotes: "Data handling and access review",
+      integrationInventory: "API and third-party service inventory",
+      integrationStatus: "tested",
+      technicalSetupStatus: "ready",
+      technicalSetupNotes: "DNS, email authentication, sandbox, and user imports verified",
+      changeManagementStatus: "planned",
+      adoptionNotes: "Role-based training planned",
+      earlyValidationStatus: "passed",
+      earlyValidationNotes: "Configuration and data tests passed",
+      postLaunchSupportPlan: "Support owner and escalation route defined",
+      duplicateRequestControl: "Reuse the portal request record"
+    }
+  });
+  const implementation = (await adapter.request("/api/product/implementations/9040")).implementation;
+  assert.equal(implementation.procurement_status, "approved");
+  assert.equal(implementation.security_status, "in_progress");
+  assert.equal(implementation.integration_status, "tested");
+  assert.equal(implementation.technical_setup_status, "ready");
+  assert.equal(implementation.change_management_status, "planned");
+  assert.equal(implementation.early_validation_status, "passed");
+});
+
+test("sample delivery operations track SOW, financial plans, time, approvals, and stage gates", async () => {
+  const { adapter } = makeDemoAdapter();
+  await adapter.request("/api/product/implementations/9040/sow", {
+    method: "PATCH",
+    body: { sowScope: "Configure onboarding", sowMilestones: "Configure, test, launch", sowExclusions: "Custom development", stageGateStatus: "testing" }
+  });
+  await adapter.request("/api/product/implementations/9040/financial-plan", {
+    method: "PATCH",
+    body: { budgetAmount: 15000, forecastAmount: 14000, actualCost: 7000, invoiceStatus: "draft", invoiceReference: "INV-100", marginNote: "Margin healthy" }
+  });
+  const timeEntry = await adapter.request("/api/product/implementations/9040/time-entries", {
+    method: "POST",
+    body: { workDate: "2027-01-10", minutes: 90, hourlyRate: 100, billable: true, note: "Acceptance testing" }
+  });
+  assert.equal(timeEntry.entry.minutes, 90);
+  const approval = await adapter.request("/api/product/implementations/9040/approvals", {
+    method: "POST",
+    body: { title: "Security approval", approvalType: "security", approverName: "Security Lead", approverEmail: "security@example.test", dueAt: "2027-01-12" }
+  });
+  await adapter.request(`/api/product/implementations/9040/approvals/${approval.approval.id}`, {
+    method: "PATCH",
+    body: { status: "approved" }
+  });
+  const implementation = (await adapter.request("/api/product/implementations/9040")).implementation;
+  assert.equal(implementation.stage_gate_status, "testing");
+  assert.equal(implementation.financialPlan.invoice_status, "draft");
+  assert.equal(implementation.timeEntries[0].minutes, 90);
+  assert.equal(implementation.approvals[0].status, "approved");
+});
+
+test("sample customer uploads enforce per-file count and total storage limits", async () => {
+  const { adapter } = makeDemoAdapter();
+  const invitation = await adapter.request("/api/product/implementations/9040/customer-contacts", {
+    method: "POST",
+    body: { email: "file-limit@example.test", displayName: "File Limit" }
+  });
+  const token = new URL(invitation.customerPortalUrl).searchParams.get("token");
+
+  for (let index = 0; index < 20; index += 1) {
+    await adapter.request(`/api/product/customer/${token}/files`, {
+      method: "POST",
+      body: { filename: `file-${index}.pdf`, contentType: "application/pdf", size: 1 }
+    });
+  }
+  await assert.rejects(
+    adapter.request(`/api/product/customer/${token}/files`, {
+      method: "POST",
+      body: { filename: "too-many.pdf", contentType: "application/pdf", size: 1 }
+    }),
+    /up to 20 files and 25 MB total/
+  );
+
+  const secondAdapter = makeDemoAdapter().adapter;
+  const secondInvitation = await secondAdapter.request("/api/product/implementations/9040/customer-contacts", {
+    method: "POST",
+    body: { email: "size-limit@example.test", displayName: "Size Limit" }
+  });
+  const secondToken = new URL(secondInvitation.customerPortalUrl).searchParams.get("token");
+  for (let index = 0; index < 5; index += 1) {
+    await secondAdapter.request(`/api/product/customer/${secondToken}/files`, {
+      method: "POST",
+      body: { filename: `large-${index}.pdf`, contentType: "application/pdf", size: 5 * 1024 * 1024 }
+    });
+  }
+  await assert.rejects(
+    secondAdapter.request(`/api/product/customer/${secondToken}/files`, {
+      method: "POST",
+      body: { filename: "over-limit.pdf", contentType: "application/pdf", size: 1 }
+    }),
+    /up to 20 files and 25 MB total/
   );
 });
 

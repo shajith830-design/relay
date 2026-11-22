@@ -32,7 +32,9 @@ An empty local `.env` does not affect the deployed Worker: it gets its database 
 
 ## Customer portal, notifications, and integrations
 
-Migration `006_customer_portal_notifications_integrations.sql` is applied automatically at startup and by the Worker. Only tasks explicitly marked **Show this task to the customer in their portal** are visible through a customer link. Customer-visible task titles, instructions, stages, due dates, and completion state are public to anyone holding that link; never mark internal-only work visible.
+Migrations `006_customer_portal_notifications_integrations.sql` through `011_relay_competitive_capabilities.sql` are applied automatically at startup and by the Worker. These migrations add launch readiness, stakeholder approvals and risks, communication and setup plans, SOW scope and stage gates, capacity plans, time entries, budget/forecast/cost and invoice status, and timeline/calendar events. Only tasks explicitly marked **Show this task to the customer in their portal** are visible through a customer link. Customer-visible task titles, instructions, stages, due dates, and completion state are visible to the invited contact; never mark internal-only work visible.
+
+Invite named customer contacts from an implementation. Each contact gets a separate link that expires after 30 days and can be revoked independently. Configure `RESEND_API_KEY`, `AUTH_EMAIL_FROM`, and `PUBLIC_BASE_URL` to email invitations; otherwise copy the generated link and share it directly. Customers can request a renewed link by confirming the email address that received the invitation. The portal supports messages and PDF, PNG, or JPG uploads up to 5 MB per file, 20 files, and 25 MB total per implementation. File bytes are stored in PostgreSQL and removed when a staff member deletes the file or its implementation. Upload requests are limited to 10 per source IP per hour. Files are not malware-scanned; do not upload passwords, payment information, or other secrets.
 
 Workspace owners can enable email notifications in **Settings**. Configure `RESEND_API_KEY` and a verified `AUTH_EMAIL_FROM` first. Event emails go to workspace members; due-date reminders go to the assignee, or workspace members if the task is unassigned. Reminders are generated once per due date and then once per day for overdue tasks. Delivery failures are logged and retried up to five times.
 
@@ -42,9 +44,8 @@ To enable workspace OAuth connections, configure these secrets in Cloudflare (or
 
 | Variable | Purpose |
 | --- | --- |
-| `INTEGRATION_ENCRYPTION_KEY` | Base64-encoded random 32-byte key used to encrypt stored OAuth tokens and Slack webhook URLs. Keep it backed up securely; rotating it requires disconnecting and reconnecting integrations. |
-| `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET` | HubSpot OAuth app credentials. Request `crm.objects.deals.read` and `crm.objects.deals.write`. |
-| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | Slack OAuth app credentials with the `incoming-webhook` scope. |
+| `INTEGRATION_ENCRYPTION_KEY` | Base64-encoded random 32-byte key used to encrypt stored OAuth tokens. Keep it backed up securely; rotating it requires disconnecting and reconnecting integrations. |
+| `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET` | HubSpot OAuth app credentials. Request `crm.objects.deals.read`, `crm.objects.deals.write`, `crm.objects.contacts.read`, and `crm.schemas.deals.read`. |
 | `NOTIFICATIONS_CRON_SECRET` | High-entropy bearer secret for the scheduled event processor. |
 
 Generate the encryption key locally; do not commit it:
@@ -53,7 +54,7 @@ Generate the encryption key locally; do not commit it:
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 ```
 
-Set the HubSpot and Slack app redirect/callback URL to `https://relayautomation.tech/api/product/integrations/callback/hubspot` or `https://relayautomation.tech/api/product/integrations/callback/slack`, respectively (replace the hostname for non-production environments). Configure HubSpot as an OAuth app with the `crm.objects.deals.read` and `crm.objects.deals.write` permissions. HubSpot privately distributed OAuth apps are limited to 10 accounts; broader customer distribution requires Marketplace review. Workspace owners connect tools from the **Integrations** sidebar page. HubSpot receives Relay implementation deals with progress, overdue, and blocked-task summaries; Slack receives implementation/task updates and reminders. Relay does not import CRM records. OAuth tokens are encrypted at rest; do not change the encryption key after connections have been stored unless you plan to reconnect each integration.
+Set the HubSpot app redirect/callback URL to `https://relayautomation.tech/api/product/integrations/callback/hubspot` (replace the hostname for non-production environments). Configure HubSpot with the scopes listed above. Existing HubSpot connections must be disconnected and reconnected to grant the additional contact and pipeline-read scopes. HubSpot privately distributed OAuth apps are limited to 10 accounts; broader customer distribution requires Marketplace review. Workspace owners connect tools from the **Integrations** sidebar page. In the HubSpot handoff panel, select one deal pipeline, its Closed Won stage, and a Relay template. The five-minute event processor checks only deals in that configured pipeline and stage, creates at most one Relay implementation per deal, and records the last sync error in the workspace when a poll fails. It does not bulk-import historical deals or modify the original sales deal. If a matching deal has an associated contact, Relay reads that contact's name, company, and email; a portal invitation is emailed when Resend is configured. Separately, HubSpot receives Relay implementation deals with progress, overdue, and blocked-task summaries; OAuth tokens are encrypted at rest; do not change the encryption key after connections have been stored unless you plan to reconnect each integration.
 
 The **Portfolio** view shows task load, overdue work, implementation health, and a directional finish-date estimate based on completed-task pace. **Export CSV** downloads the current workspace portfolio. Treat the estimate as planning guidance, not a delivery commitment.
 
@@ -87,7 +88,6 @@ This is a low-cost pilot setup, not an uptime guarantee. Workers Free allows 100
 | `NOTIFICATIONS_CRON_SECRET` | Secret bearer token for the scheduled notification/event processor. |
 | `INTEGRATION_ENCRYPTION_KEY` | Base64-encoded random 32-byte AES key for connected-provider credentials. |
 | `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET` | HubSpot OAuth app credentials. |
-| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | Slack OAuth app credentials. |
 | `INQUIRY_NOTIFICATION_EMAIL` | Inbox for contact and demo inquiry notifications. |
 | `PUBLIC_BASE_URL` | Public HTTPS origin used in password recovery links. |
 | `TRUST_PROXY_HOPS` | Number of trusted reverse proxies in front of Relay. Configure only when appropriate for the host. |

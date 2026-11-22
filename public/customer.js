@@ -25,11 +25,79 @@ function renderPortalProgress(data) {
       <div><strong>${escapeHtml(task.title)}</strong><p>${escapeHtml(task.description || "")}</p>
         <small>${escapeHtml(task.stage)}${task.due_at ? ` · Due ${escapeHtml(task.due_at)}` : ""}</small>
         ${task.waiting ? '<small class="customer-waiting">Waiting for a prerequisite step.</small>' : ""}
+        ${task.is_blocked ? `<p class="customer-waiting"><strong>Blocked:</strong> ${escapeHtml(task.blocker_reason || "The team is working through a dependency.")}<br><strong>Next update:</strong> ${escapeHtml(task.blocker_next_action || "Your implementation contact will share an update.")}</p>` : ""}
       </div>
       ${task.status === "done"
         ? '<span class="badge ready">Complete</span>'
-        : `<button class="button secondary" type="button" data-complete-customer-task="${task.id}" ${task.waiting ? "disabled" : ""}>Mark complete</button>`}
+        : task.is_blocked
+          ? '<span class="badge attention">In progress</span>'
+          : `<button class="button secondary" type="button" data-complete-customer-task="${task.id}" ${task.waiting ? "disabled" : ""}>Mark complete</button>`}
     </article>`).join("");
+  const launchPlan = document.getElementById("customer-launch-plan");
+  launchPlan.hidden = !data.targetLaunchDate && !data.customerOwnerName && !data.customerOwnerEmail;
+  document.getElementById("customer-launch-date").textContent = data.targetLaunchDate
+    ? `Target launch: ${data.targetLaunchDate}`
+    : "Your implementation team will confirm the target launch date.";
+  document.getElementById("customer-owner").textContent = data.customerOwnerName
+    ? `Your implementation contact: ${data.customerOwnerName}${data.customerOwnerEmail ? ` · ${data.customerOwnerEmail}` : ""}`
+    : data.customerOwnerEmail ? `Your implementation contact: ${data.customerOwnerEmail}` : "";
+  const readiness = document.getElementById("customer-launch-readiness");
+  readiness.hidden = !data.successCriteria && !data.testPlan && data.trainingStatus === "not_started"
+    && data.goLiveStatus === "not_ready" && !data.supportOwnerName && !data.supportOwnerEmail;
+  document.getElementById("customer-launch-success").textContent = data.successCriteria
+    ? `Success criteria: ${data.successCriteria}` : "";
+  document.getElementById("customer-launch-test").textContent = data.testPlan
+    ? `Test and acceptance: ${data.testPlan} · ${data.acceptanceStatus?.replaceAll("_", " ") || "not started"}`
+    : "";
+  document.getElementById("customer-launch-training").textContent = data.trainingStatus
+    ? `Training: ${data.trainingStatus.replaceAll("_", " ")}` : "";
+  document.getElementById("customer-launch-support").textContent = data.supportOwnerName || data.supportOwnerEmail
+    ? `Post-launch support: ${data.supportOwnerName || "Support team"}${data.supportOwnerEmail ? ` · ${data.supportOwnerEmail}` : ""}`
+    : "";
+  document.getElementById("customer-launch-go-live").textContent = data.goLiveStatus
+    ? `Go-live status: ${data.goLiveStatus.replaceAll("_", " ")}` : "";
+  const gapPlan = document.getElementById("customer-onboarding-gap-plan");
+  gapPlan.hidden = !data.communicationChannel && !data.communicationCadence
+    && data.procurementStatus === "not_started" && data.securityStatus === "not_started"
+    && data.integrationStatus === "not_started" && data.technicalSetupStatus === "not_started"
+    && data.changeManagementStatus === "not_started" && data.earlyValidationStatus === "not_started"
+    && !data.postLaunchSupportPlan;
+  document.getElementById("customer-gap-communication").textContent =
+    data.communicationChannel || data.communicationCadence
+      ? `Communication: ${[data.communicationChannel, data.communicationCadence].filter(Boolean).join(" · ")}${data.communicationOwnerName || data.communicationOwnerEmail ? ` · Owner: ${data.communicationOwnerName || data.communicationOwnerEmail}${data.communicationOwnerName && data.communicationOwnerEmail ? ` · ${data.communicationOwnerEmail}` : ""}` : ""}`
+      : "";
+  document.getElementById("customer-gap-procurement").textContent = data.procurementStatus
+    ? `Procurement and approvals: ${data.procurementStatus.replaceAll("_", " ")}` : "";
+  document.getElementById("customer-gap-security").textContent = data.securityStatus
+    ? `Security and compliance: ${data.securityStatus.replaceAll("_", " ")}` : "";
+  document.getElementById("customer-gap-integration").textContent = data.integrationStatus
+    ? `Integrations: ${data.integrationStatus.replaceAll("_", " ")}` : "";
+  document.getElementById("customer-gap-technical").textContent = data.technicalSetupStatus
+    ? `Technical setup: ${data.technicalSetupStatus.replaceAll("_", " ")}` : "";
+  document.getElementById("customer-gap-adoption").textContent = data.changeManagementStatus
+    ? `Training and adoption: ${data.changeManagementStatus.replaceAll("_", " ")}` : "";
+  document.getElementById("customer-gap-validation").textContent = data.earlyValidationStatus
+    ? `Early validation: ${data.earlyValidationStatus.replaceAll("_", " ")}` : "";
+  document.getElementById("customer-gap-support").textContent = data.postLaunchSupportPlan
+    ? `Post-launch support: ${data.postLaunchSupportPlan}` : "";
+  const filesSection = document.getElementById("customer-files-section");
+  filesSection.hidden = false;
+  document.getElementById("customer-files").innerHTML = (data.files || []).length
+    ? data.files.map((file) => `
+      <article class="customer-file">
+        ${file.demo ? `<strong>${escapeHtml(file.filename)}</strong>` : `<a href="/api/product/customer/${encodeURIComponent(token)}/files/${file.id}">${escapeHtml(file.filename)}</a>`}
+        <small>${escapeHtml(file.uploaded_by_name || "Customer team")} · ${Math.ceil(file.size_bytes / 1024)} KB</small>
+      </article>`).join("")
+    : '<p class="muted">No files shared yet.</p>';
+  document.getElementById("customer-conversation-section").hidden = false;
+  document.getElementById("customer-messages").innerHTML = (data.messages || []).length
+    ? data.messages.map((message) => `
+      <article class="customer-message ${message.sender_role === "customer" ? "from-customer" : "from-team"}">
+        <strong>${escapeHtml(message.sender_name || (message.sender_role === "customer" ? "Customer" : "Implementation team"))}</strong>
+        <p>${escapeHtml(message.body)}</p>
+        <small>${escapeHtml(new Date(message.created_at).toLocaleString())}</small>
+      </article>`).join("")
+    : '<p class="muted">No messages yet. Send your implementation team a question here.</p>';
 }
 
 function escapeHtml(value) {
@@ -112,6 +180,103 @@ document.getElementById("customer-tasks").addEventListener("click", async (event
   }
 });
 
+document.getElementById("customer-message-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const statusElement = document.getElementById("customer-message-status");
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  const body = document.getElementById("customer-message").value.trim();
+  if (!body) {
+    statusElement.textContent = "Enter a message before sending.";
+    return;
+  }
+  button.disabled = true;
+  statusElement.textContent = "";
+  try {
+    await request(`/api/product/customer/${encodeURIComponent(token)}/messages`, {
+      method: "POST",
+      body: { body }
+    });
+    document.getElementById("customer-message").value = "";
+    await loadRequest();
+    statusElement.textContent = "Message sent to your implementation team.";
+  } catch (error) {
+    statusElement.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById("customer-file-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = document.getElementById("customer-file-input");
+  const statusElement = document.getElementById("customer-file-status");
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  const file = input.files[0];
+  if (!file) {
+    statusElement.textContent = "Choose a file first.";
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    statusElement.textContent = "Choose a file no larger than 5 MB.";
+    return;
+  }
+  button.disabled = true;
+  statusElement.textContent = "";
+  try {
+    let response;
+    let result;
+    if (window.relayWorkspaceDemo) {
+      result = await window.relayWorkspaceDemo.request(
+        `/api/product/customer/${encodeURIComponent(token)}/files`,
+        { method: "POST", body: { filename: file.name, contentType: file.type, size: file.size } }
+      );
+    } else {
+      try {
+      response = await fetch(`/api/product/customer/${encodeURIComponent(token)}/files`, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          "Content-Type": file.type,
+          "X-File-Name": encodeURIComponent(file.name)
+        },
+        body: file
+      });
+      } catch {
+        throw new Error("Could not connect. Check your connection and try again.");
+      }
+      result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || "The upload could not be completed.");
+    }
+    input.value = "";
+    await loadRequest();
+    statusElement.textContent = "File uploaded and shared with your implementation team.";
+  } catch (error) {
+    statusElement.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById("customer-access-recovery-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const statusElement = document.getElementById("customer-access-recovery-status");
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  button.disabled = true;
+  statusElement.textContent = "";
+  try {
+    const result = await request(`/api/product/customer/${encodeURIComponent(token)}/renew`, {
+      method: "POST",
+      body: { email: document.getElementById("customer-recovery-email").value }
+    });
+    statusElement.textContent = result.message;
+  } catch (error) {
+    statusElement.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   status.textContent = "";
@@ -142,4 +307,6 @@ form.addEventListener("submit", async (event) => {
 loadRequest().catch((error) => {
   loading.textContent = error.message;
   loading.classList.add("error");
+  document.getElementById("customer-access-recovery").hidden =
+    !/^[A-Za-z0-9_-]{40,60}$/.test(token);
 });

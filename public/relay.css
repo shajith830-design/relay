@@ -491,7 +491,6 @@ h1::after {
 .integration-list li { display: inline-flex; min-width: 150px; align-items: center; gap: 11px; border: 1px solid var(--line); border-radius: 12px; padding: 13px 17px; background: #fff; color: #334155; font-size: 16px; font-weight: 700; box-shadow: 0 8px 20px rgb(15 23 42 / 4%); }
 .integration-mark { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; color: #fff; font-size: 17px; font-weight: 800; }
 .hubspot-mark { background: #ff7a59; }
-.slack-mark { background: #4a154b; }
 .founder-grid { display: grid; align-items: stretch; gap: 26px; grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); }
 .founder-story, .design-partner-card { border: 1px solid var(--line); border-radius: 14px; padding: clamp(24px, 4vw, 40px); background: #fff; }
 .founder-story > p:not(.eyebrow) { max-width: 680px; color: #52525b; font-size: 16px; }
