@@ -15,6 +15,7 @@ const isWorkspaceDemo = Boolean(window.relayWorkspaceDemo);
 let appearanceSaveQueue = Promise.resolve();
 let subscriptionExpiryTimer;
 let processLoadRequestId = 0;
+let workspaceLoadRequestId = 0;
 const state = {
   authMode: "login",
   inviteToken: new URLSearchParams(window.location.search).get("invite") || "",
@@ -594,7 +595,10 @@ function showPasswordResetPanel(panelId) {
 
 async function loadWorkspace() {
   if (dirtyScopes.size && !confirmDiscardChanges()) return false;
+  const requestId = ++workspaceLoadRequestId;
   const data = await api("/api/product/workspace");
+  if (requestId !== workspaceLoadRequestId) return false;
+  if (dirtyScopes.size && !confirmDiscardChanges()) return false;
   state.data = data;
   renderWorkspace();
   const integrationResult = new URLSearchParams(window.location.search).get("integration");
@@ -1288,25 +1292,60 @@ function renderTemplates() {
     container.innerHTML = `<div class="empty-state"><strong>No templates yet</strong><p>A checked process becomes a reusable starting point for each new customer implementation.</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
     return;
   }
-  container.innerHTML = state.data.templates.map((template) => `
+  container.innerHTML = state.data.templates.map((template) => {
+    const implementationCount = state.data.implementations.filter((implementation) =>
+      Number(implementation.template_id) === Number(template.id)
+    ).length;
+    const selectedForHubSpot = state.data.integrations.some((integration) =>
+      integration.provider === "hubspot"
+      && Number(integration.hubspot_onboarding_template_id) === Number(template.id)
+    );
+    const deleteReasons = [];
+    if (implementationCount) {
+      deleteReasons.push(`Used by ${implementationCount} existing implementation${implementationCount === 1 ? "" : "s"}; Relay keeps it linked to preserve those records.`);
+    }
+    if (selectedForHubSpot) {
+      deleteReasons.push("Selected for HubSpot onboarding; choose a different template in Integrations first.");
+    }
+    const deleteReason = deleteReasons.join(" ");
+    const versionLabel = state.data.plan?.features.templateHistory
+      ? `Revision ${template.revision}`
+      : "Current version";
+    const implementationUsageLabel = implementationCount
+      ? ` · Used by ${implementationCount} implementation${implementationCount === 1 ? "" : "s"}`
+      : "";
+    const deleteButtonAttributes = deleteReason
+      ? `disabled aria-describedby="template-delete-note-${template.id}" title="${escapeHtml(deleteReason)}"`
+      : "";
+    return `
     <article class="template-card">
-      <span class="badge ready">Reusable workflow</span>
-      <form data-edit-template="${template.id}">
-        <label for="template-name-${template.id}">Template name</label>
-        <input id="template-name-${template.id}" name="name" maxlength="100" value="${escapeHtml(template.name)}" required>
-        <p>${template.step_count} process steps · ${state.data.plan?.features.templateHistory ? `Revision ${template.revision}` : "Current version"}</p>
-        <p>Starting an implementation copies this version into an independent customer work plan.</p>
-        <button class="button secondary" type="submit">Save name</button>
-      </form>
-      <button class="text-button" type="button" data-refresh-template="${template.id}">Refresh from tested process</button>
-      <details data-template-history="${template.id}" data-growth-only="templateHistory">
-        <summary>Version history</summary>
-        <button class="text-button" type="button" data-load-template-versions="${template.id}">Load versions</button>
-        <ol data-template-version-list="${template.id}"></ol>
+      <div class="template-card-summary">
+        <span class="badge ready">Reusable workflow</span>
+        <h3>${escapeHtml(template.name)}</h3>
+        <p>${template.step_count} steps · ${versionLabel}${implementationUsageLabel}</p>
+        <p>Customer work gets its own copy.</p>
+      </div>
+      <button class="button primary" type="button" data-start-template="${template.id}">Use template</button>
+      <details class="template-management">
+        <summary>Manage template</summary>
+        <div class="template-management-content">
+          <form data-edit-template="${template.id}">
+            <label for="template-name-${template.id}">Template name</label>
+            <input id="template-name-${template.id}" name="name" maxlength="100" value="${escapeHtml(template.name)}" required>
+            <button class="button secondary" type="submit">Save name</button>
+          </form>
+          <button class="text-button" type="button" data-refresh-template="${template.id}">Refresh from tested process</button>
+          <details data-template-history="${template.id}" data-growth-only="templateHistory">
+            <summary>Version history</summary>
+            <button class="text-button" type="button" data-load-template-versions="${template.id}">Load versions</button>
+            <ol data-template-version-list="${template.id}"></ol>
+          </details>
+          ${deleteReason ? `<p id="template-delete-note-${template.id}" class="template-delete-note" role="note">${escapeHtml(deleteReason)}</p>` : ""}
+          <button class="text-button" type="button" data-delete-template="${template.id}" ${deleteButtonAttributes}>${deleteReason ? "Delete unavailable" : "Delete template"}</button>
+        </div>
       </details>
-      <button class="text-button" type="button" data-delete-template="${template.id}">Delete template</button>
-      <button class="button secondary" type="button" data-start-template="${template.id}">Use template</button>
-    </article>`).join("");
+    </article>`;
+  }).join("");
 }
 
 function renderImplementations() {
@@ -1380,11 +1419,19 @@ function renderWorkspace() {
 async function openImplementation(implementationId) {
   if (dirtyScopes.size && !confirmDiscardChanges()) return false;
   const { implementation } = await api(`/api/product/implementations/${implementationId}`);
+  if (state.selectedImplementationId !== implementation.id) {
+    document.querySelectorAll("#implementation-detail details").forEach((section) => {
+      section.open = false;
+    });
+  }
   state.selectedImplementationId = implementation.id;
   const panel = document.getElementById("implementation-detail");
   panel.hidden = false;
   document.getElementById("implementation-detail-title").textContent = implementation.customer_name;
   document.getElementById("implementation-detail-subtitle").textContent = `Started from ${implementation.template_name}`;
+  const customerAccessSummary = document.getElementById("customer-access-summary");
+  customerAccessSummary.hidden = !implementation.has_customer_link;
+  customerAccessSummary.textContent = implementation.has_customer_link ? "Shared link active" : "";
   document.getElementById("implementation-plan-owner").value = implementation.customer_owner_name || "";
   document.getElementById("implementation-plan-email").value = implementation.customer_owner_email || "";
   document.getElementById("implementation-plan-date").value = implementation.target_launch_date || "";
@@ -1470,8 +1517,21 @@ async function openImplementation(implementationId) {
       </article>`;
     }).join("")
     : '<p class="muted">No named customer contacts invited yet.</p>';
+  const completedSteps = implementation.steps.filter((step) => step.status === "done").length;
+  document.getElementById("implementation-step-summary").textContent = implementation.steps.length
+    ? `${completedSteps} of ${implementation.steps.length} tasks done`
+    : "No tasks yet";
+  const taskStatuses = {
+    not_started: { label: "Not started", className: "status-not_started" },
+    in_progress: { label: "In progress", className: "status-in_progress" },
+    done: { label: "Done", className: "ready" }
+  };
   document.getElementById("implementation-step-list").innerHTML = implementation.steps.length
-    ? implementation.steps.map((step, index) => `
+    ? implementation.steps.map((step, index) => {
+      const taskStatus = Object.hasOwn(taskStatuses, step.status)
+        ? taskStatuses[step.status]
+        : taskStatuses.not_started;
+      return `
       <article class="step-card">
         <span class="step-number">${index + 1}</span>
         <div class="task-main"><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.description)}</p>
@@ -1480,29 +1540,34 @@ async function openImplementation(implementationId) {
           ${state.data.plan?.features.dependencies && step.waiting_on ? `<small>Waiting on: ${escapeHtml(step.waiting_on)}</small>` : ""}
           ${state.data.plan?.features.blockers && step.is_blocked ? `<p class="status warning"><strong>Blocked:</strong> ${escapeHtml(step.blocker_reason)}<br><strong>Next action:</strong> ${escapeHtml(step.blocker_next_action)}</p>` : ""}
         </div>
-        <div class="task-controls">
-          <label>Status
-            <select class="status-select" data-step-status="${step.id}" aria-label="Status for ${escapeHtml(step.title)}">
-              <option value="not_started" ${step.status === "not_started" ? "selected" : ""}>Not started</option>
-              <option value="in_progress" ${step.status === "in_progress" ? "selected" : ""}>In progress</option>
-              <option value="done" ${step.status === "done" ? "selected" : ""}>Done</option>
-            </select>
-          </label>
-          <label>Responsible role<input data-task-owner="${step.id}" maxlength="120" value="${escapeHtml(step.owner)}"></label>
-          <label>Assigned member
-            <select data-task-assignee="${step.id}">
-              <option value="">Unassigned</option>
-              ${state.data.members.map((member) => `<option value="${member.id}" ${member.id === step.assignee_user_id ? "selected" : ""}>${escapeHtml(member.email)}</option>`).join("")}
-            </select>
-          </label>
-          <label>Due date<input data-task-due="${step.id}" type="date" value="${escapeHtml(step.due_at)}"></label>
-          <label class="check-field"><input data-task-customer-visible="${step.id}" type="checkbox" ${step.customer_visible ? "checked" : ""}> Show to customer in portal</label>
-          <label class="check-field" data-growth-only="blockers"><input data-task-blocked="${step.id}" type="checkbox" ${step.is_blocked ? "checked" : ""}> Blocked</label>
-          <label data-growth-only="blockers">Blocker reason<textarea data-task-reason="${step.id}" maxlength="500">${escapeHtml(step.blocker_reason)}</textarea></label>
-          <label data-growth-only="blockers">Next action<textarea data-task-action="${step.id}" maxlength="500">${escapeHtml(step.blocker_next_action)}</textarea></label>
-          <button class="button secondary" type="button" data-save-task="${step.id}">Save task details</button>
-        </div>
-      </article>`).join("")
+        <span class="badge task-status-badge ${taskStatus.className}">${taskStatus.label}</span>
+        <details class="task-edit-details">
+          <summary aria-label="Edit task: ${escapeHtml(step.title)}">Edit task</summary>
+          <div class="task-controls">
+            <label>Status
+              <select class="status-select" data-step-status="${step.id}" aria-label="Status for ${escapeHtml(step.title)}">
+                <option value="not_started" ${step.status === "not_started" ? "selected" : ""}>Not started</option>
+                <option value="in_progress" ${step.status === "in_progress" ? "selected" : ""}>In progress</option>
+                <option value="done" ${step.status === "done" ? "selected" : ""}>Done</option>
+              </select>
+            </label>
+            <label>Responsible role<input data-task-owner="${step.id}" maxlength="120" value="${escapeHtml(step.owner)}"></label>
+            <label>Assigned member
+              <select data-task-assignee="${step.id}">
+                <option value="">Unassigned</option>
+                ${state.data.members.map((member) => `<option value="${member.id}" ${member.id === step.assignee_user_id ? "selected" : ""}>${escapeHtml(member.email)}</option>`).join("")}
+              </select>
+            </label>
+            <label>Due date<input data-task-due="${step.id}" type="date" value="${escapeHtml(step.due_at)}"></label>
+            <label class="check-field"><input data-task-customer-visible="${step.id}" type="checkbox" ${step.customer_visible ? "checked" : ""}> Show to customer in portal</label>
+            <label class="check-field" data-growth-only="blockers"><input data-task-blocked="${step.id}" type="checkbox" ${step.is_blocked ? "checked" : ""}> Blocked</label>
+            <label data-growth-only="blockers">Blocker reason<textarea data-task-reason="${step.id}" maxlength="500">${escapeHtml(step.blocker_reason)}</textarea></label>
+            <label data-growth-only="blockers">Next action<textarea data-task-action="${step.id}" maxlength="500">${escapeHtml(step.blocker_next_action)}</textarea></label>
+            <button class="button secondary" type="button" data-save-task="${step.id}">Save changes</button>
+          </div>
+        </details>
+      </article>`;
+    }).join("")
     : '<p class="empty-state">This implementation has no work steps. Start a new one from a template with steps.</p>';
   document.getElementById("implementation-requirements").innerHTML = implementation.requirements.length
     ? implementation.requirements.map((requirement) => `
@@ -2441,7 +2506,9 @@ document.getElementById("template-list").addEventListener("click", async (event)
   }
   const deleteButton = event.target.closest("[data-delete-template]");
   if (deleteButton) {
-    if (!window.confirm("Delete this template? Existing implementations cannot be deleted with it.")
+    if (deleteButton.disabled) return;
+    const template = state.data.templates.find((item) => String(item.id) === deleteButton.dataset.deleteTemplate);
+    if (!window.confirm(`Delete "${template?.name || "this template"}"? Existing customer implementations will not be deleted.`)
       || !confirmDiscardChanges()) return;
     const deleteLabel = deleteButton.textContent;
     deleteButton.disabled = true;
@@ -2479,6 +2546,7 @@ document.getElementById("implementation-form").addEventListener("submit", async 
       }
     });
     event.target.reset();
+    event.target.querySelector(".implementation-start-optional").open = false;
     await loadWorkspace();
     setView("implementations");
     await openImplementation(result.implementation.id);

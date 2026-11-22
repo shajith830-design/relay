@@ -97,6 +97,46 @@ test("sample workspace previews portfolio health, notification settings, and int
   assert.equal(integrations.length, 0);
 });
 
+test("sample template deletion explains when existing implementation history requires keeping it", async () => {
+  const { adapter } = makeDemoAdapter();
+  const workspace = await adapter.request("/api/product/workspace");
+  const template = workspace.templates[0];
+  assert.ok(workspace.implementations.some((implementation) => implementation.template_id === template.id));
+  const { template: unusedTemplate } = await adapter.request("/api/product/templates", {
+    method: "POST",
+    body: { processId: workspace.processes[0].id, name: "Unused deletion test" }
+  });
+  await adapter.request(`/api/product/templates/${unusedTemplate.id}`, { method: "DELETE" });
+  assert.equal((await adapter.request("/api/product/workspace")).templates.some((item) => item.id === unusedTemplate.id), false);
+  await assert.rejects(
+    adapter.request(`/api/product/templates/${template.id}`, { method: "DELETE" }),
+    /template is used by customer implementations/
+  );
+
+  const productScript = readFileSync(path.join(__dirname, "..", "public", "product.js"), "utf8");
+  assert.match(productScript, /const implementationCount = state\.data\.implementations\.filter/);
+  assert.match(productScript, /selectedForHubSpot/);
+  assert.match(productScript, /Delete unavailable/);
+  assert.match(productScript, /template-delete-note-/);
+  assert.match(productScript, /class="button primary" type="button" data-start-template=/);
+  assert.match(productScript, /class="template-management"/);
+});
+
+test("starting an implementation requires only its company and template", () => {
+  const publicDir = path.join(__dirname, "..", "public");
+  const productHtml = readFileSync(path.join(publicDir, "product.html"), "utf8");
+  const productScript = readFileSync(path.join(publicDir, "product.js"), "utf8");
+  const startForm = productHtml.match(/<form id="implementation-form"[\s\S]*?<\/form>/)?.[0];
+
+  assert.ok(startForm);
+  assert.match(startForm, /id="implementation-customer"[^>]*required/);
+  assert.match(startForm, /id="implementation-template"[^>]*required/);
+  assert.match(startForm, /<details class="implementation-start-optional">/);
+  assert.match(startForm, /id="implementation-contact-email"[^>]*placeholder="client@example\.com">/);
+  assert.doesNotMatch(startForm, /id="implementation-contact-email"[^>]*required/);
+  assert.match(productScript, /querySelector\("\.implementation-start-optional"\)\.open = false/);
+});
+
 test("marketing pages expose the sample demo and disclose current product boundaries", () => {
   const publicDir = path.join(__dirname, "..", "public");
   const homePage = readFileSync(path.join(publicDir, "index.html"), "utf8");
@@ -371,6 +411,41 @@ test("workspace exposes delivery operations and competitive capability controls"
   ]) {
     assert.match(productHtml, new RegExp(`id="${id}"`), `${id} must be present`);
   }
+});
+
+test("implementation planning forms are grouped into accessible collapsed sections", () => {
+  const publicDir = path.join(__dirname, "..", "public");
+  const productHtml = readFileSync(path.join(publicDir, "product.html"), "utf8");
+  const productCss = readFileSync(path.join(publicDir, "product.css"), "utf8");
+  const productScript = readFileSync(path.join(publicDir, "product.js"), "utf8");
+  const sections = [...productHtml.matchAll(/<details class="panel implementation-collapsible"[^>]*data-implementation-section="([^"]+)"[^>]*>([\s\S]*?)<\/details>/g)];
+  const implementationDetail = productHtml.slice(
+    productHtml.indexOf('<div class="panel" id="implementation-detail"'),
+    productHtml.indexOf('<section class="view" id="view-requirements">')
+  );
+
+  assert.deepEqual(sections.map((section) => section[1]), [
+    "customer-access",
+    "communication",
+    "delivery",
+    "launch-readiness",
+    "customer-collaboration"
+  ]);
+  assert.ok(implementationDetail.indexOf('id="implementation-step-list"') < implementationDetail.indexOf('data-implementation-section="customer-access"'));
+  assert.ok(implementationDetail.indexOf('id="implementation-requirements"') < implementationDetail.indexOf('data-implementation-section="communication"'));
+  assert.match(productHtml, /id="customer-access-summary"/);
+  for (const section of sections) {
+    assert.doesNotMatch(section[0], /\sopen(?:\s|>)/);
+    assert.match(section[2], /<summary class="implementation-collapsible-summary">/);
+    assert.match(section[2], /<h3 id="[^"]+">/);
+  }
+  assert.match(productCss, /\.implementation-field-grid\s*\{[^}]*display: grid/);
+  assert.match(productCss, /\.implementation-field-grid input,[\s\S]*?\{[^}]*min-height: 40px/);
+  assert.match(productCss, /\.communication-form-layout, \.implementation-field-grid \{ grid-template-columns: 1fr; \}/);
+  assert.match(productHtml, /id="implementation-step-summary"/);
+  assert.match(productScript, /<details class="task-edit-details">\s*<summary aria-label="Edit task:/);
+  assert.match(productScript, /class="badge task-status-badge \$\{taskStatus\.className\}"/);
+  assert.match(productScript, /implementation-step-summary"\)\.textContent = implementation\.steps\.length/);
 });
 
 test("public pages describe only verified product capabilities", () => {

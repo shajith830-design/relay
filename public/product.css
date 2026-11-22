@@ -278,7 +278,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .step-card { display: grid; min-width: 0; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: start; gap: 11px; border: 1px solid var(--line-soft); border-radius: 9px; padding: 12px; overflow-wrap: anywhere; }
 .step-card .button-row { grid-column: 2 / -1; margin-top: 0; }
 .task-main { min-width: 0; }
-.task-controls { display: grid; width: min(100%, 300px); gap: 9px; }
+.task-status-badge { align-self: start; margin-top: 2px; }
+.task-edit-details { grid-column: 2 / -1; min-width: 0; }
+.task-edit-details > summary { display: inline-flex; align-items: center; gap: 6px; color: var(--blue-dark); font-size: 11px; font-weight: 700; cursor: pointer; list-style: none; }
+.task-edit-details > summary::-webkit-details-marker { display: none; }
+.task-edit-details > summary::before { display: grid; width: 17px; height: 17px; place-items: center; border: 1px solid var(--line); border-radius: 50%; content: "+"; }
+.task-edit-details[open] > summary { margin-bottom: 10px; }
+.task-edit-details[open] > summary::before { content: "-"; }
+.task-edit-details > summary:focus-visible { border-radius: 3px; outline: 3px solid rgb(2 132 199 / 36%); outline-offset: 3px; }
+.task-controls { display: grid; width: min(100%, 560px); gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 9px; padding: 12px; background: var(--surface-muted); }
+.task-controls > button { grid-column: 1 / -1; justify-self: start; }
 .task-controls label, .info-row label { display: grid; gap: 4px; color: var(--ink-subtle); font-size: 11px; font-weight: 700; }
 .task-controls input, .task-controls textarea, .info-row input, .info-row textarea, .info-row select {
   width: 100%; min-height: 36px; border: 1px solid var(--input-border); border-radius: 7px; padding: 8px 9px; background: var(--surface); color: var(--ink); font: inherit;
@@ -307,6 +316,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .template-card h3 { margin: 0; font-size: 14px; }
 .template-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .template-card .button { justify-self: start; }
+.template-card-summary { display: grid; justify-items: start; gap: 7px; }
+.template-management { border-top: 1px solid var(--line); padding-top: 9px; }
+.template-management > summary, .implementation-start-optional > summary { color: var(--blue-dark); font-size: 12px; font-weight: 700; cursor: pointer; }
+.template-management-content { display: grid; gap: 10px; padding-top: 10px; }
+.template-management-content > form { display: grid; gap: 8px; }
+.template-management-content > form > label { color: var(--ink-subtle); font-size: 11px; font-weight: 700; }
+.template-management-content > form > input { width: 100%; min-height: 38px; border: 1px solid var(--input-border); border-radius: 7px; padding: 8px 9px; background: var(--surface); color: var(--ink); font: inherit; }
+.template-management-content > form > .button { justify-self: start; }
+.template-delete-note { border-left: 3px solid #f59e0b; padding: 8px 10px; background: var(--surface-muted); }
+.text-button:disabled { cursor: not-allowed; opacity: .58; text-decoration: none; }
+.implementation-start-form { display: grid; align-items: end; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.implementation-start-form .field { min-width: 0; margin: 0; }
+.implementation-start-form > .button { justify-self: start; }
+.implementation-start-optional { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 10px; }
+.implementation-start-optional-grid { display: grid; gap: 12px; margin-top: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.implementation-start-optional-grid .field { min-width: 0; margin: 0; }
 .table-wrap { width: 100%; overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; text-align: left; }
 .data-table th { padding: 9px 10px; color: var(--muted); font-size: 10px; font-weight: 700; white-space: nowrap; }
@@ -355,11 +380,52 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .customer-message p { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .customer-message.from-customer { border-left: 3px solid var(--blue); }
 .customer-message.from-team { border-left: 3px solid var(--teal); }
+#implementation-detail > .implementation-primary-section,
+#implementation-detail > .implementation-collapsible { margin-top: 12px; }
+#implementation-detail > .implementation-primary-section { padding: 16px; }
+.implementation-primary-section .panel-heading { margin-bottom: 12px; }
+.implementation-primary-section .panel-heading h3 { margin: 0; font-size: 15px; }
+.implementation-primary-section .panel-heading p { margin: 4px 0 0; font-size: 11px; line-height: 1.5; }
 .implementation-plan-grid, .implementation-collaboration { margin-top: 16px; }
 .implementation-plan-grid > *, .implementation-collaboration > * { min-width: 0; }
 .implementation-plan-grid .info-row { display: grid; gap: 9px; }
 .implementation-plan-grid .info-row h3, .implementation-plan-grid .info-row p { margin: 0; }
 .implementation-plan-grid .info-row label { font-size: 12px; font-weight: 700; }
+.implementation-collapsible { overflow: hidden; padding: 0; }
+.implementation-collapsible-summary { display: flex; min-height: 82px; align-items: center; justify-content: space-between; gap: 18px; padding: 17px 20px; cursor: pointer; list-style: none; }
+.implementation-collapsible-summary::-webkit-details-marker { display: none; }
+.implementation-collapsible-summary::marker { content: ""; }
+.implementation-collapsible-summary:focus-visible { outline: 3px solid rgb(2 132 199 / 36%); outline-offset: -3px; }
+.implementation-collapsible-summary::after { width: 9px; height: 9px; flex: 0 0 auto; transform: rotate(45deg); border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); margin: 0 5px 5px 0; content: ""; }
+.implementation-collapsible[open] > .implementation-collapsible-summary { border-bottom: 1px solid var(--line); }
+.implementation-collapsible[open] > .implementation-collapsible-summary::after { transform: rotate(225deg); margin-bottom: -4px; }
+.implementation-collapsible-copy { display: grid; min-width: 0; flex: 1; gap: 4px; }
+.implementation-section-kicker { color: var(--blue-dark); font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.implementation-collapsible-summary h3 { margin: 0; font-size: 16px; letter-spacing: -.025em; }
+.implementation-section-description { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.implementation-disclosure-label { flex: 0 0 auto; color: var(--blue-dark); font-size: 11px; font-weight: 700; }
+.implementation-summary-status { flex: 0 0 auto; border-radius: 99px; padding: 5px 8px; background: var(--accent-soft); color: var(--accent-ink); font-size: 10px; font-weight: 700; white-space: nowrap; }
+.implementation-collapsible[open] .implementation-disclosure-label { font-size: 0; }
+.implementation-collapsible[open] .implementation-disclosure-label::after { font-size: 11px; content: "Hide details"; }
+.implementation-collapsible-content { padding: 18px; }
+.implementation-collapsible-content > .implementation-collapsible + .implementation-collapsible { margin-top: 10px; }
+.implementation-form-layout { display: grid; gap: 13px; }
+.communication-form-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.delivery-form-grid { display: grid; min-width: 0; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.delivery-form-grid > * { min-width: 0; margin: 0; }
+.implementation-form-group { display: grid; min-width: 0; align-content: start; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 15px; background: var(--surface); }
+.implementation-form-group h4 { margin: 0; font-size: 13px; letter-spacing: -.01em; }
+.implementation-group-description { margin: -5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.implementation-field-grid { display: grid; min-width: 0; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.implementation-field-grid > label { display: grid; min-width: 0; align-content: start; gap: 6px; color: var(--ink-subtle); font-size: 11px; font-weight: 700; line-height: 1.4; }
+.implementation-field-grid input, .implementation-field-grid textarea, .implementation-field-grid select { width: 100%; min-width: 0; min-height: 40px; border: 1px solid var(--input-border); border-radius: 7px; padding: 9px 10px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 400; }
+.implementation-field-grid textarea { min-height: 78px; resize: vertical; }
+.implementation-field-grid .implementation-field-wide { grid-column: 1 / -1; }
+.implementation-field-grid > .implementation-checkbox { display: flex; min-height: 40px; align-items: center; gap: 8px; }
+.implementation-checkbox input { width: 16px; min-height: 16px; accent-color: var(--blue); }
+.implementation-form-actions { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.implementation-form-actions .status { min-height: 18px; margin: 0; }
+.delivery-form-grid .list-stack { margin-top: 0; }
 #customer-contact-list { margin-top: 12px; }
 #customer-files-section, #customer-conversation-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
 #customer-file-form, #customer-message-form { display: grid; gap: 10px; margin: 12px 0; }
@@ -452,6 +518,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .sidebar { width: 210px; }
   .main-content { margin-left: 210px; padding-inline: 20px; }
   .two-column { grid-template-columns: 1fr; }
+  .communication-form-layout,
+  .delivery-form-grid { grid-template-columns: 1fr; }
   .process-workspace { grid-template-columns: minmax(0, 1fr); }
   .implementation-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -478,6 +546,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .appearance-controls { grid-template-columns: 1fr; }
   .implementation-filters { grid-template-columns: 1fr; }
   .process-intro { grid-template-columns: 1fr; }
+  .implementation-collapsible-summary { min-height: 0; gap: 12px; padding: 15px 13px; }
+  .implementation-disclosure-label { display: none; }
+  .implementation-collapsible-content { padding: 12px; }
+  #implementation-detail > .implementation-primary-section { padding: 13px 12px; }
+  .communication-form-layout, .implementation-field-grid { grid-template-columns: 1fr; }
+  .implementation-start-form, .implementation-start-optional-grid { grid-template-columns: 1fr; }
+  .implementation-field-grid .implementation-field-wide { grid-column: auto; }
+  .implementation-form-group { padding: 13px; }
   .process-progress { grid-template-columns: 1fr; gap: 6px; }
   .process-progress-step { min-height: 43px; padding: 8px 11px; }
   .process-step-fields, .process-details-fields { grid-template-columns: 1fr; }
@@ -497,8 +573,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .inline-form .button { justify-self: start; }
   .data-table th, .data-table td { padding-inline: 7px; }
   .step-card { grid-template-columns: 26px minmax(0, 1fr); }
+  .step-card .task-status-badge { grid-column: 2; justify-self: start; }
+  .step-card .task-edit-details { grid-column: 2; }
   .step-card .task-controls, .step-card .button-row { grid-column: 2; width: 100%; }
   .step-card > :last-child { grid-column: 2; justify-self: stretch; }
+  .task-controls { grid-template-columns: 1fr; }
   .help-widget { right: 12px; bottom: 12px; left: 12px; }
   .help-launcher { width: 48px; min-height: 48px; justify-content: center; gap: 0; padding: 0; font-size: 0; }
   .help-launcher .ray-logo { width: 32px; height: 32px; }
