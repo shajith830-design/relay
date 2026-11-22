@@ -103,6 +103,7 @@ test("marketing pages expose the sample demo and disclose current product bounda
   const demoPage = readFileSync(path.join(publicDir, "demo.html"), "utf8");
   const solutionsPage = readFileSync(path.join(publicDir, "features-services.html"), "utf8");
   const aboutPage = readFileSync(path.join(publicDir, "about.html"), "utf8");
+  const founderPage = readFileSync(path.join(publicDir, "founder.html"), "utf8");
   const contactPage = readFileSync(path.join(publicDir, "contact.html"), "utf8");
   const pricingPage = readFileSync(path.join(publicDir, "pricing.html"), "utf8");
   const sitemapXml = readFileSync(path.join(publicDir, "sitemap.xml"), "utf8");
@@ -115,11 +116,16 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.equal(favicon[25], 6);
   assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/<\/loc>/);
   assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/pricing\.html<\/loc>/);
+  assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/founder\.html<\/loc>/);
   assert.doesNotMatch(sitemapXml, /dashboard\.html|customer\.html|relay-owner-console\.html/);
   assert.match(homePage, /product\.html\?demo=workspace/);
   assert.match(homePage, /Try the Sample Workspace/);
   assert.match(homePage, /B2B SaaS customer onboarding/i);
   assert.match(aboutPage, /B2B SaaS customer onboarding teams/i);
+  assert.match(homePage, /Relay Automation builds Relay/);
+  assert.match(aboutPage, /Mohamed Shajith is the founder of Relay Automation/);
+  assert.match(founderPage, /Mohamed Shajith, Founder of Relay Automation/);
+  assert.match(founderPage, /B2B SaaS customer onboarding workspace/i);
   assert.match(solutionsPage, /B2B SaaS customer onboarding/i);
   assert.match(demoPage, /B2B SaaS customer onboarding/i);
   assert.match(contactPage, /B2B SaaS customer onboarding/i);
@@ -152,7 +158,7 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(homePage, /one HubSpot pipeline, its Closed Won stage, and a Relay template/i);
   assert.match(homePage, /does not modify the original sales deal or import unrelated CRM records/i);
   assert.match(homePage, /customers use Relay’s secure portal and do not need HubSpot/i);
-  assert.match(homePage, /<p class="eyebrow">Founder<\/p>/);
+  assert.match(homePage, /<p class="eyebrow">Founder of Relay Automation<\/p>/);
   assert.match(homePage, /Mohamed Shajith/);
   assert.match(homePage, /<a href="https:\/\/www\.linkedin\.com\/in\/mohamed-shajith-relay\/"[^>]*>LinkedIn<\/a>/);
   assert.match(homePage, /three months of Relay access/i);
@@ -184,6 +190,85 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(pricingPage, /before applicable taxes/i);
   assert.match(pricingPage, /class="plan-grid"/);
   assert.match(readFileSync(path.join(publicDir, "relay-motion.js"), "utf8"), /\.plan-card/);
+});
+
+test("public marketing pages expose canonical SEO metadata and factual GEO content", () => {
+  const publicDir = path.join(__dirname, "..", "public");
+  const canonicalPages = [
+    ["/", "index.html"],
+    ["/about.html", "about.html"],
+    ["/founder.html", "founder.html"],
+    ["/features-services.html", "features-services.html"],
+    ["/pricing.html", "pricing.html"],
+    ["/demo.html", "demo.html"],
+    ["/contact.html", "contact.html"],
+    ["/privacy.html", "privacy.html"],
+    ["/terms.html", "terms.html"]
+  ];
+
+  for (const [urlPath, file] of canonicalPages) {
+    const html = readFileSync(path.join(publicDir, file), "utf8");
+    const canonical = html.match(/<link rel="canonical" href="([^"]+)">/);
+    assert.equal(canonical?.[1], `https://relayautomation.tech${urlPath}`, `${file} canonical URL`);
+    assert.match(html, /<meta name="description" content="[^"]+">/, `${file} description`);
+  }
+
+  const socialPages = ["index.html", "about.html", "founder.html", "features-services.html", "pricing.html", "demo.html", "contact.html"];
+  for (const file of socialPages) {
+    const html = readFileSync(path.join(publicDir, file), "utf8");
+    assert.match(html, /<meta property="og:title" content="[^"]+">/, `${file} Open Graph title`);
+    assert.match(html, /<meta property="og:description" content="[^"]+">/, `${file} Open Graph description`);
+    assert.match(html, /<meta property="og:image" content="https:\/\/relayautomation\.tech\/assets\/relay-home-video-poster\.png">/, `${file} share image`);
+    assert.match(html, /<meta property="og:image:alt" content="[^"]+">/, `${file} share image alt`);
+    assert.match(html, /<meta name="twitter:card" content="summary_large_image">/, `${file} Twitter card`);
+  }
+
+  const homePage = readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const homeSchema = homePage.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  assert.ok(homeSchema, "home page JSON-LD");
+  const homeGraph = JSON.parse(homeSchema[1])["@graph"];
+  assert.deepEqual(homeGraph.map(({ "@type": type }) => type), ["Organization", "WebSite", "SoftwareApplication", "Person"]);
+  assert.match(homeSchema[1], /Mohamed Shajith/);
+  assert.match(homeSchema[1], /linkedin\.com\/in\/mohamed-shajith-relay/);
+  assert.match(homeSchema[1], /"name": "Relay Automation"/);
+  assert.match(homeSchema[1], /"name": "Relay"/);
+
+  const founderPage = readFileSync(path.join(publicDir, "founder.html"), "utf8");
+  const founderSchema = founderPage.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  assert.ok(founderSchema, "founder page profile JSON-LD");
+  const profile = JSON.parse(founderSchema[1]);
+  assert.equal(profile["@type"], "ProfilePage");
+  assert.equal(profile.mainEntity["@type"], "Person");
+  assert.equal(profile.mainEntity.name, "Mohamed Shajith");
+  assert.equal(profile.mainEntity.sameAs, "https://www.linkedin.com/in/mohamed-shajith-relay/");
+
+  const solutionsPage = readFileSync(path.join(publicDir, "features-services.html"), "utf8");
+  const faqSchema = solutionsPage.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  assert.ok(faqSchema, "solutions page FAQ JSON-LD");
+  const faq = JSON.parse(faqSchema[1]);
+  assert.equal(faq["@type"], "FAQPage");
+  assert.equal(faq.mainEntity.length, 5);
+  for (const { name, acceptedAnswer } of faq.mainEntity) {
+    assert.ok(solutionsPage.includes(name), `visible FAQ question: ${name}`);
+    assert.ok(solutionsPage.includes(acceptedAnswer.text), `visible FAQ answer: ${name}`);
+  }
+
+  const pricingPage = readFileSync(path.join(publicDir, "pricing.html"), "utf8");
+  const pricingFaqSchema = pricingPage.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  assert.ok(pricingFaqSchema, "pricing page FAQ JSON-LD");
+  const pricingFaq = JSON.parse(pricingFaqSchema[1]);
+  assert.equal(pricingFaq["@type"], "FAQPage");
+  for (const { name, acceptedAnswer } of pricingFaq.mainEntity) {
+    assert.ok(pricingPage.includes(name), `visible pricing FAQ question: ${name}`);
+    assert.ok(pricingPage.includes(acceptedAnswer.text), `visible pricing FAQ answer: ${name}`);
+  }
+
+  const robots = readFileSync(path.join(publicDir, "robots.txt"), "utf8");
+  assert.match(robots, /User-agent: \*/);
+  assert.match(robots, /Sitemap: https:\/\/relayautomation\.tech\/sitemap\.xml/);
+  assert.match(readFileSync(path.join(publicDir, "llms.txt"), "utf8"), /Verified product boundaries/);
+  assert.match(readFileSync(path.join(publicDir, "product.html"), "utf8"), /<meta name="robots" content="noindex, nofollow">/);
+  assert.match(readFileSync(path.join(publicDir, "customer.html"), "utf8"), /<meta name="robots" content="noindex, nofollow">/);
 });
 
 test("workspace views are siblings so each navigation target can render independently", () => {

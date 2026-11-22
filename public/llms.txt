@@ -1,0 +1,31 @@
+# Relay Automation and Relay
+
+> Relay Automation is the organization behind Relay, a B2B SaaS customer onboarding workspace founded by Mohamed Shajith.
+
+## Product and audience
+
+Relay is the product name. Relay Automation is the distinct organization and official website at relayautomation.tech. Its founder is Mohamed Shajith.
+
+Relay is for implementation, onboarding, and professional-services teams at B2B SaaS companies. Teams can map onboarding processes, reuse templates, coordinate customer information and tasks through a customer portal, track readiness and delivery operations, configure email reminders, and review portfolio status.
+
+Relay organizes onboarding work; it does not automatically configure a customer's software.
+
+## Verified product boundaries
+
+- HubSpot handoff is optional and requires provider setup and workspace-owner configuration for a pipeline, Closed Won stage, and Relay template.
+- Email reminders depend on email delivery and scheduled processing being configured.
+- Relay tracks budget, forecast, actual cost, margin notes, invoice status, and invoice reference. It does not generate invoices, accept payments, or connect to accounting systems.
+- The public sample workspace uses fictional data.
+- Relay does not claim customer outcomes, certifications, or unsupported integrations.
+
+## Official pages
+
+- [Home](https://relayautomation.tech/)
+- [Solutions](https://relayautomation.tech/features-services.html)
+- [About](https://relayautomation.tech/about.html)
+- [Founder: Mohamed Shajith](https://relayautomation.tech/founder.html)
+- [Pricing](https://relayautomation.tech/pricing.html)
+- [Book a demo](https://relayautomation.tech/demo.html)
+- [Contact](https://relayautomation.tech/contact.html)
+- [Privacy](https://relayautomation.tech/privacy.html)
+- [Terms](https://relayautomation.tech/terms.html)
