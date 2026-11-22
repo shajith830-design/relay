@@ -570,6 +570,26 @@ test("local customer links work across tabs, validate submissions, and rotate", 
   );
 });
 
+test("customer portal wizard keeps Relay launch details and prevents lost or misleading actions", () => {
+  const publicDir = path.join(__dirname, "..", "public");
+  const customerHtml = readFileSync(path.join(publicDir, "customer.html"), "utf8");
+  const customerScript = readFileSync(path.join(publicDir, "customer.js"), "utf8");
+  const routes = readFileSync(path.join(__dirname, "..", "product-routes.js"), "utf8");
+
+  assert.match(customerHtml, /id="wizard-steps"/);
+  assert.match(customerHtml, /id="wizard-body"/);
+  assert.match(customerHtml, /id="customer-conversation-section"/);
+  assert.match(customerScript, /sessionStorage\.setItem\(draftKey, JSON\.stringify\(store\.drafts\)\)/);
+  assert.match(customerScript, /Rollback plan/);
+  assert.match(customerScript, /Adoption and change management/);
+  assert.match(customerScript, /Early validation/);
+  assert.match(customerScript, /blocked \? '<span class="badge attention">Blocked<\/span>'/);
+  assert.match(customerScript, /el\.body\.querySelectorAll\("button, input, select, textarea"\)/);
+  assert.match(customerScript, /el\.steps\.querySelectorAll\("button"\)/);
+  assert.match(routes, /const implementationId = implementation\.implementation_id \|\| implementation\.id/);
+  assert.match(routes, /if \(completed\.changes\)[\s\S]*count: completed\.changes/);
+});
+
 test("sample customer contacts can use launch plans, questions, and file sharing without sending email", async () => {
   const { adapter } = makeDemoAdapter();
   const launchPlan = await adapter.request("/api/product/implementations/9040/launch-plan", {

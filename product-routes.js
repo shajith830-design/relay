@@ -3463,7 +3463,8 @@ function installProductRoutes(app, db, isProduction) {
     const access = await resolveCustomerAccess(token);
     if (!access) return sendError(res, 404, "Customer link not found or no longer available.");
     const { implementation, contact } = access;
-    const requirements = await (implementationRequirements(implementation.id, implementation.workspace_id, implementation.template_id));
+    const implementationId = implementation.implementation_id || implementation.id;
+    const requirements = await (implementationRequirements(implementationId, implementation.workspace_id, implementation.template_id));
     const tasks = await database.prepare(`
       SELECT s.id, s.title, s.description, s.stage, s.status, s.due_at,
         s.is_blocked, s.blocker_reason, s.blocker_next_action,
@@ -3476,7 +3477,7 @@ function installProductRoutes(app, db, isProduction) {
       FROM product_implementation_steps s
       WHERE s.implementation_id = $1 AND s.customer_visible = TRUE
       ORDER BY s.position, s.id
-    `).all(implementation.id);
+    `).all(implementationId);
     const milestones = [...new Set(tasks.map((task) => task.stage))].map((stage) => {
       const stageTasks = tasks.filter((task) => task.stage === stage);
       return {
@@ -3489,12 +3490,12 @@ function installProductRoutes(app, db, isProduction) {
       SELECT id, sender_role, sender_name, body, created_at
       FROM product_customer_messages WHERE implementation_id = $1
       ORDER BY created_at, id
-    `).all(implementation.id);
+    `).all(implementationId);
     const files = await database.prepare(`
       SELECT id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, created_at
       FROM product_customer_files WHERE implementation_id = $1
       ORDER BY created_at DESC, id DESC
-    `).all(implementation.id);
+    `).all(implementationId);
     if (contact) {
       await database.prepare(`
         UPDATE product_customer_contacts SET last_activity_at = CURRENT_TIMESTAMP WHERE id = $1
@@ -3619,13 +3620,16 @@ function installProductRoutes(app, db, isProduction) {
       `);
       for (const entry of entries) await (save.run(implementationId, entry.requirementId, entry.value));
       if (stepIds.length) {
-        await database.prepare(`
+        const completed = await database.prepare(`
           UPDATE product_implementation_steps SET status = 'done', updated_at = CURRENT_TIMESTAMP
-          WHERE implementation_id = $1 AND customer_visible = TRUE AND id = ANY($2::integer[])
+          WHERE implementation_id = $1 AND customer_visible = TRUE AND status != 'done'
+            AND id = ANY($2::integer[])
         `).run(implementationId, stepIds);
-        await enqueueWorkspaceEvent(authorizedImplementation.workspace_id, implementationId, "customer.tasks_completed", {
-          count: stepIds.length
-        });
+        if (completed.changes) {
+          await enqueueWorkspaceEvent(authorizedImplementation.workspace_id, implementationId, "customer.tasks_completed", {
+            count: completed.changes
+          });
+        }
       }
       if (entries.length) {
         await enqueueWorkspaceEvent(authorizedImplementation.workspace_id, implementationId, "customer.information_submitted");

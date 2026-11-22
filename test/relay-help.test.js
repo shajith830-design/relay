@@ -30,9 +30,32 @@ test("Ray answers supported Relay workflows", () => {
   assert.match(relayHelpReply("How does HubSpot Closed Won handoff work?"), /HubSpot.*pipeline.*Closed Won stage.*template/i);
   assert.match(relayHelpReply("How do invoice status and margin tracking work?"), /budget.*forecast.*invoice status/i);
   assert.match(relayHelpReply("Does Relay connect to Slack?"), /HubSpot.*not connected today/i);
-  assert.match(relayHelpReply("How do I add a process step?"), /Open Process map/);
+  assert.match(relayHelpReply("How do I add a process step?"), /Open Process map; Relay opens your selected map automatically/);
   assert.match(relayHelpReply("How do I update a template without changing existing work?"), /Existing implementations.*not changed/i);
   assert.match(relayHelpReply("My customer's link is invalid. What can I do?"), /create a replacement customer link/i);
+});
+
+test("Ray guides users through the updated process map flow", () => {
+  assert.match(
+    relayHelpReply("How do I add a process step?"),
+    /step name, instructions, and responsible role.*Save step.*teammate is optional.*More options/
+  );
+  assert.match(
+    relayHelpReply("Where are due dates and prerequisites?"),
+    /More options.*due timing.*prerequisites/
+  );
+  assert.match(
+    relayHelpReply("How do I set a due date for a process step?"),
+    /More options.*due timing/
+  );
+  assert.match(
+    relayHelpReply("Do I have to assign every process step to a teammate?"),
+    /responsible role is required.*teammate is optional/
+  );
+  assert.match(
+    relayHelpReply("How do I create a new process map?"),
+    /expand Create a new map.*start with one step/
+  );
 });
 
 test("Ray answers additional client questions without promising unsupported features", () => {
@@ -103,7 +126,7 @@ test("Ray explains what Relay features are for, not only how to configure them",
     assert.match(relayHelpReply(question), expected, question);
   }
   assert.match(relayHelpReply("What is this used for?"), /which Relay feature you mean.*Process map.*Templates/i);
-  assert.match(relayHelpReply("How do I add a process step?"), /Open Process map, create a process/);
+  assert.match(relayHelpReply("How do I add a process step?"), /Open Process map.*More options/);
 });
 
 test("Ray stays within Relay and handles unsafe or unsupported questions clearly", () => {

@@ -227,8 +227,15 @@ function relayHelpReply(message) {
   if (/(how|when).{0,30}(know|mark|consider|set).{0,30}(onboard|implementation|customer).{0,30}(complete|ready)|(?:complete|ready).{0,30}(onboard|implementation|customer)/.test(question)) {
     return "Relay marks an implementation complete when all its tasks are done. Review the attention indicators too: required customer information can still be missing, so confirm those answers before treating onboarding as finished.";
   }
+  if (/(?:where|how).{0,35}(?:find|open|use|show).{0,35}(?:more options|advanced options|step options|prerequisites?|dependencies|due dates?|customer visibility)|where.{0,30}(?:prerequisites?|dependencies|due dates?|customer visibility)|(?:more options|advanced options|step options).{0,35}(?:prerequisite|due date|customer visibility|step)|(?:process step|step).{0,40}(?:more options|due dates?|timing|customer visibility|prerequisites?|dependencies)|(?:more options|due dates?|timing|customer visibility|prerequisites?|dependencies).{0,40}(?:process step|step)/.test(question)) {
+    return "While adding or editing a process step, open More options to set its stage, due timing, customer visibility, or prerequisites. Relay opens More options automatically when you edit a step that already uses those settings.";
+  }
+  if (/(?:must|need to|required|have to).{0,25}(?:assign|teammate)|(?:assign|assignee).{0,25}(?:optional|required|every|each)/.test(question)
+    && /(?:process step|step|process map)/.test(question)) {
+    return "A responsible role is required for a process step, but assigning a workspace teammate is optional. Leave the teammate unassigned or choose someone from the list; you can assign implementation tasks later.";
+  }
   if (/(map|add|set|configure|define|choose).{0,35}(prerequisite|dependency)|(?:prerequisite|dependency).{0,35}(map|add|set|configure|define)|process.{0,30}(prerequisite|dependency)/.test(question)) {
-    return "In Process map, edit a step and select the earlier steps it depends on. Relay uses these prerequisites to show the required order and flag implementation tasks waiting on unfinished work.";
+    return "In Process map, add or edit a step and open More options. Select the earlier steps it depends on. Relay uses prerequisites to show the required order and flag implementation tasks waiting on unfinished work.";
   }
   if (/(prerequisite|blocked|blocker|waiting on)/.test(question)) {
     return "Open the implementation task, record the blocker and a next action, then review its prerequisites. Relay highlights tasks waiting on unfinished prerequisites.";
@@ -247,13 +254,19 @@ function relayHelpReply(message) {
     return "Refreshing a template changes the version used by future implementations. Growth and Custom plans keep revision history and allow restoring an earlier version. Existing implementations keep their copied task plans and are not changed by template updates.";
   }
   if (/(template|version|revision|restore)/.test(question)) {
-    return "To create a template, map your process, add clear steps and owners, run the process check, and save the checked process as a template. Growth and Custom plans also keep revision history and allow restoring an earlier version.";
+    return "To create a template, open Process map, add clear steps and responsible roles, run the process check, then choose Create template. You can start with one step and add more later. Growth and Custom plans also keep revision history and allow restoring an earlier version.";
+  }
+  if (/(?:add|create|write|edit).{0,35}(?:process )?(?:step|task)|(?:process )?(?:step|task).{0,35}(?:add|create|write|edit)|where.{0,25}(?:add|create).{0,20}(?:step|task)/.test(question)) {
+    return "Open Process map; Relay opens your selected map automatically. If you need a new one, choose Create a new map. Add a step name, instructions, and responsible role, then choose Save step. Assigning a teammate is optional; timing, prerequisites, and customer visibility are under More options.";
+  }
+  if (/(?:create|start|make|new).{0,35}(?:process )?(?:map|workflow)|(?:process|workflow).{0,25}(?:map|workflow).{0,25}(?:create|start|make|new)|where.{0,25}(?:new map|process map)/.test(question)) {
+    return "Open Process map. If you already have maps, expand Create a new map; if you have none, Relay opens the form for you. Name the map, then add its steps. You can start with one step and add more later.";
   }
   if (/(customer|implementation|task|assignee|due date)/.test(question)) {
     return "Open Implementations, choose a saved template, and enter the customer’s company name. Open the new implementation to assign teammates, set due dates, track prerequisites, and create a private customer-information link.";
   }
   if (/(process|map|step|readiness|check)/.test(question)) {
-    return "Open Process map, create a process, and add ordered steps with instructions, responsible roles, and any prerequisites. Run the setup check before saving it as a reusable template.";
+    return "Open Process map; Relay selects your current map automatically. Add steps with instructions and responsible roles, run the check, then choose Create template. The progress steps at the top are clickable, and optional timing, prerequisites, and customer visibility are under More options.";
   }
   if (/(what can you do|what can you help|who are you|what is relay|what does relay|can you help me|help me get started|^help$)/.test(question)) {
     return "I’m Ray, Relay’s built-in product guide. I can help with process maps, templates, customer implementation tasks, customer-information requests, workspace settings, and safe deletion or cleanup steps. What are you trying to do?";
