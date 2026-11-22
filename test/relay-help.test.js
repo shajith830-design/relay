@@ -30,6 +30,7 @@ test("Ray answers supported Relay workflows", () => {
   assert.match(relayHelpReply("How does HubSpot Closed Won handoff work?"), /HubSpot.*pipeline.*Closed Won stage.*template/i);
   assert.match(relayHelpReply("How do invoice status and margin tracking work?"), /budget.*forecast.*invoice status/i);
   assert.match(relayHelpReply("Does Relay connect to Slack?"), /HubSpot.*not connected today/i);
+  assert.match(relayHelpReply("How do I jump to launch readiness?"), /Implementation sections row.*Launch readiness.*without closing.*unsaved details/i);
   assert.match(relayHelpReply("How do I add a process step?"), /Open Process map; Relay opens your selected map automatically/);
   assert.match(relayHelpReply("How do I update a template without changing existing work?"), /Existing implementations.*not changed/i);
   assert.match(relayHelpReply("My customer's link is invalid. What can I do?"), /create a replacement customer link/i);

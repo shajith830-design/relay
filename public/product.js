@@ -2659,6 +2659,23 @@ document.getElementById("close-implementation").addEventListener("click", () => 
   state.selectedImplementationId = null;
   document.getElementById("implementation-detail").hidden = true;
 });
+document.getElementById("implementation-section-nav").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-implementation-jump]");
+  if (!button) return;
+  const target = document.getElementById(button.dataset.implementationJump);
+  if (!target || !document.getElementById("implementation-detail").contains(target)) {
+    showError(new Error("This implementation section is unavailable. Refresh and try again."));
+    return;
+  }
+  if (target.matches("details")) target.open = true;
+  document.querySelectorAll("#implementation-section-nav [data-implementation-jump]").forEach((item) => {
+    if (item === button) item.setAttribute("aria-current", "location");
+    else item.removeAttribute("aria-current");
+  });
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (target.matches("details")) target.querySelector("summary")?.focus({ preventScroll: true });
+  else target.focus({ preventScroll: true });
+});
 document.getElementById("implementation-step-list").addEventListener("click", async (event) => {
   const save = event.target.closest("[data-save-task]");
   if (!save || !state.selectedImplementationId) return;

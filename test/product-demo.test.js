@@ -411,6 +411,32 @@ test("workspace navigation is grouped and the overview routes to one next action
   assert.match(productScript, /Use the main action above to continue/);
 });
 
+test("implementation details provide quick navigation to customer workflow sections", () => {
+  const publicDir = path.join(__dirname, "..", "public");
+  const productHtml = readFileSync(path.join(publicDir, "product.html"), "utf8");
+  const productScript = readFileSync(path.join(publicDir, "product.js"), "utf8");
+  const productCss = readFileSync(path.join(publicDir, "product.css"), "utf8");
+  const sectionIds = [
+    "implementation-work-section",
+    "implementation-information-section",
+    "customer-access-section",
+    "communication-section",
+    "delivery-section",
+    "launch-readiness-section",
+    "collaboration-section"
+  ];
+
+  assert.match(productHtml, /<nav id="implementation-section-nav"[^>]*aria-label="Implementation sections">/);
+  for (const id of sectionIds) {
+    assert.match(productHtml, new RegExp(`data-implementation-jump="${id}"[^>]*aria-controls="${id}"`));
+    assert.match(productHtml, new RegExp(`id="${id}"`));
+  }
+  assert.match(productScript, /implementation-section-nav"\)\.addEventListener\("click"/);
+  assert.match(productScript, /if \(target\.matches\("details"\)\) target\.open = true/);
+  assert.match(productScript, /target\.scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/);
+  assert.match(productCss, /\.implementation-section-nav button\[aria-current="location"\]/);
+});
+
 test("named customer resends rotate links and customer access resolves implementation IDs", () => {
   const productScript = readFileSync(path.join(__dirname, "..", "public", "product.js"), "utf8");
   const productRoutes = readFileSync(path.join(__dirname, "..", "product-routes.js"), "utf8");

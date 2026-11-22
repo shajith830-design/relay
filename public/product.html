@@ -396,15 +396,24 @@
         </div>
         <div class="panel" id="implementation-detail" hidden>
           <div class="panel-heading"><div><h2 id="implementation-detail-title">Implementation details</h2><p id="implementation-detail-subtitle"></p></div><button class="text-button" id="close-implementation" type="button">Close</button></div>
-          <section class="panel implementation-primary-section" aria-labelledby="implementation-work-heading">
+          <nav id="implementation-section-nav" class="implementation-section-nav" aria-label="Implementation sections">
+            <button type="button" data-implementation-jump="implementation-work-section" aria-controls="implementation-work-section">Work plan</button>
+            <button type="button" data-implementation-jump="implementation-information-section" aria-controls="implementation-information-section">Customer information</button>
+            <button type="button" data-implementation-jump="customer-access-section" aria-controls="customer-access-section">Portal access</button>
+            <button type="button" data-implementation-jump="communication-section" aria-controls="communication-section">Communication &amp; setup</button>
+            <button type="button" data-implementation-jump="delivery-section" aria-controls="delivery-section">Delivery</button>
+            <button type="button" data-implementation-jump="launch-readiness-section" aria-controls="launch-readiness-section">Launch readiness</button>
+            <button type="button" data-implementation-jump="collaboration-section" aria-controls="collaboration-section">Messages &amp; files</button>
+          </nav>
+          <section class="panel implementation-primary-section" id="implementation-work-section" tabindex="-1" aria-labelledby="implementation-work-heading">
             <div class="panel-heading"><div><h3 id="implementation-work-heading">Work plan</h3><p>Tasks, owners, and due dates for this customer.</p></div><span id="implementation-step-summary" class="badge" role="status" aria-live="polite">No tasks yet</span></div>
             <div id="implementation-step-list" class="step-list"></div>
           </section>
-          <section class="panel implementation-primary-section" aria-labelledby="implementation-information-heading">
+          <section class="panel implementation-primary-section" id="implementation-information-section" tabindex="-1" aria-labelledby="implementation-information-heading">
             <div class="panel-heading"><div><h3 id="implementation-information-heading">Customer information</h3><p>See what the customer has submitted and what is still needed.</p></div></div>
             <div id="implementation-requirements" class="step-list"></div>
           </section>
-          <details class="panel implementation-collapsible" aria-labelledby="customer-access-heading" data-implementation-section="customer-access">
+          <details class="panel implementation-collapsible" id="customer-access-section" aria-labelledby="customer-access-heading" data-implementation-section="customer-access">
             <summary class="implementation-collapsible-summary">
               <span class="implementation-collapsible-copy">
                 <span class="implementation-section-kicker">Customer details</span>
@@ -440,7 +449,7 @@
               <div class="share-box" id="customer-link-box" hidden></div>
             </div>
           </details>
-          <details class="panel implementation-collapsible" aria-labelledby="onboarding-gap-heading" data-implementation-section="communication">
+          <details class="panel implementation-collapsible" id="communication-section" aria-labelledby="onboarding-gap-heading" data-implementation-section="communication">
             <summary class="implementation-collapsible-summary">
               <span class="implementation-collapsible-copy">
                 <span class="implementation-section-kicker">Customer coordination</span>
@@ -503,7 +512,7 @@
               </form>
             </div>
           </details>
-          <details class="panel implementation-collapsible" aria-labelledby="delivery-operations-heading" data-implementation-section="delivery">
+          <details class="panel implementation-collapsible" id="delivery-section" aria-labelledby="delivery-operations-heading" data-implementation-section="delivery">
             <summary class="implementation-collapsible-summary">
               <span class="implementation-collapsible-copy">
                 <span class="implementation-section-kicker">Project tracking</span>
@@ -603,7 +612,7 @@
               </div>
             </div>
           </details>
-          <details class="panel implementation-collapsible" aria-labelledby="launch-readiness-heading" data-implementation-section="launch-readiness">
+          <details class="panel implementation-collapsible" id="launch-readiness-section" aria-labelledby="launch-readiness-heading" data-implementation-section="launch-readiness">
             <summary class="implementation-collapsible-summary">
               <span class="implementation-collapsible-copy">
                 <span class="implementation-section-kicker">Go-live planning</span>
@@ -679,7 +688,7 @@
               </div>
             </div>
           </details>
-          <details class="panel implementation-collapsible" aria-labelledby="customer-collaboration-heading" data-implementation-section="customer-collaboration">
+          <details class="panel implementation-collapsible" id="collaboration-section" aria-labelledby="customer-collaboration-heading" data-implementation-section="customer-collaboration">
             <summary class="implementation-collapsible-summary">
               <span class="implementation-collapsible-copy">
                 <span class="implementation-section-kicker">Customer collaboration</span>

@@ -404,6 +404,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 #implementation-detail > .implementation-primary-section,
 #implementation-detail > .implementation-collapsible { margin-top: 12px; }
 #implementation-detail > .implementation-primary-section { padding: 16px; }
+#implementation-detail > .implementation-section-nav { margin: 0 0 10px; }
+.implementation-section-nav { position: sticky; top: 104px; z-index: 2; display: flex; min-width: 0; gap: 7px; overflow-x: auto; border-bottom: 1px solid var(--line); padding: 8px 0 10px; background: var(--surface); scrollbar-width: none; }
+.implementation-section-nav::-webkit-scrollbar { display: none; }
+.implementation-section-nav button { min-height: 34px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 999px; padding: 0 11px; background: var(--surface); color: var(--ink-subtle); font-size: 11px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.implementation-section-nav button:hover { border-color: color-mix(in srgb, var(--blue) 40%, var(--line)); background: var(--surface-hover); color: var(--ink); }
+.implementation-section-nav button[aria-current="location"] { border-color: var(--blue); background: var(--accent-soft); color: var(--accent-ink); }
+.implementation-section-nav button:focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 48%, transparent); outline-offset: 2px; }
+#implementation-detail > .implementation-primary-section,
+#implementation-detail > .implementation-collapsible { scroll-margin-top: 150px; }
+#implementation-detail > .implementation-primary-section { scroll-margin-top: 150px; }
 .implementation-primary-section .panel-heading { margin-bottom: 12px; }
 .implementation-primary-section .panel-heading h3 { margin: 0; font-size: 15px; }
 .implementation-primary-section .panel-heading p { margin: 4px 0 0; font-size: 11px; line-height: 1.5; }
@@ -589,6 +599,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .implementation-disclosure-label { display: none; }
   .implementation-collapsible-content { padding: 12px; }
   #implementation-detail > .implementation-primary-section { padding: 13px 12px; }
+  .implementation-section-nav { margin-right: -6px; padding-bottom: 8px; }
+  .implementation-section-nav button { min-height: 32px; padding-inline: 9px; font-size: 10px; }
   .communication-form-layout, .implementation-field-grid { grid-template-columns: 1fr; }
   .implementation-start-form, .implementation-start-optional-grid { grid-template-columns: 1fr; }
   .implementation-field-grid .implementation-field-wide { grid-column: auto; }

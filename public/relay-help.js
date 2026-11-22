@@ -114,8 +114,11 @@ function relayHelpReply(message) {
   if (/(budget|forecast|actual cost|margin|invoice status|invoice reference)/.test(question)) {
     return "Open an implementation’s Delivery operations section to record budget, forecast, actual cost, margin/risk notes, invoice status, and an invoice reference. Relay tracks this status but does not generate invoices, accept payments, or connect to accounting systems.";
   }
+  if (/(?:where|how).{0,35}(?:find|jump|navigate|open|go to|get to).{0,35}(?:implementation|work plan|customer information|portal access|communication|delivery|launch readiness|messages|files)|implementation sections?/.test(question)) {
+    return "Open the customer’s implementation and use the Implementation sections row to jump to Work plan, Customer information, Portal access, Communication and setup, Delivery, Launch readiness, or Messages and files. It opens the destination without closing other sections or discarding unsaved details.";
+  }
   if (/(launch readiness|success criteria|acceptance status|test plan|rollback|training status|go-live|support handoff|post-launch)/.test(question)) {
-    return "Open an implementation to save success criteria, test/acceptance plans, acceptance status, training status, go-live status, rollback plans, and post-launch support ownership. The customer portal can show the target launch date and published readiness details.";
+    return "Open an implementation and choose Launch readiness in the Implementation sections row. There you can save success criteria, test/acceptance plans, acceptance status, training status, go-live status, rollback plans, and post-launch support ownership. The customer portal can show published readiness details.";
   }
   if (/(stakeholder|procurement|security review|compliance|technical setup|adoption|early validation|blocker risk)/.test(question)) {
     return "Use the implementation’s Launch readiness and stakeholder/risk sections to record stakeholders, procurement and security status, technical setup, change/adoption progress, early validation, and risks. Give each risk or blocker an owner, severity, due date, and next action.";
