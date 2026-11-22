@@ -867,18 +867,78 @@ function updateSaveTemplateButton() {
   const templateFull = templateLimit !== null && templateLimit !== undefined
     && state.data.templates.length >= templateLimit;
   const selectedProcess = state.data.processes.find((process) => process.id === state.selectedProcessId);
+  const hasDraft = hasUnsavedProcessDraft();
+  const hasSteps = Boolean(state.process?.steps?.length);
   const processChecked = state.process?.checked === true && selectedProcess?.checked === true
-    && !hasUnsavedProcessDraft();
+    && !hasDraft;
   const saveTemplate = document.getElementById("save-template");
   saveTemplate.disabled = templateFull || !processChecked;
   saveTemplate.title = templateFull
     ? "Template limit reached. Upgrade your plan or remove an unused template."
     : processChecked ? "" : "Run a successful process check before saving a template.";
+  const actionHelp = document.getElementById("process-action-help");
+  if (!state.selectedProcessId) {
+    actionHelp.textContent = "Choose or create a process map to get started.";
+  } else if (hasDraft) {
+    actionHelp.textContent = "Save or cancel your current edits before checking or saving a template.";
+  } else if (!hasSteps) {
+    actionHelp.textContent = "Add and save at least one step. One step is enough to start.";
+  } else if (templateFull) {
+    actionHelp.textContent = "Your workspace has reached its template limit.";
+  } else if (processChecked) {
+    actionHelp.textContent = "Check passed. This process is ready to save as a reusable template.";
+  } else {
+    actionHelp.textContent = "Check your saved steps. Relay will explain anything that needs attention.";
+  }
 }
 
 function hasUnsavedProcessDraft() {
   return dirtyScopes.has(document.getElementById("process-meta-form"))
     || dirtyScopes.has(document.getElementById("step-form"));
+}
+
+function renderProcessProgress() {
+  const container = document.getElementById("process-progress");
+  if (!container) return;
+
+  const selectedProcess = state.data.processes.find((process) => process.id === state.selectedProcessId);
+  const process = state.process?.id === state.selectedProcessId ? state.process : null;
+  const stepCount = process?.steps?.length ?? selectedProcess?.steps_count ?? selectedProcess?.steps?.length ?? 0;
+  const hasDraft = hasUnsavedProcessDraft();
+  const checked = process?.checked === true && selectedProcess?.checked === true && !hasDraft;
+  const currentStep = !state.selectedProcessId ? 0 : stepCount === 0 ? 1 : checked ? -1 : 2;
+  const steps = [
+    { title: "Create a process", detail: "Name the workflow" },
+    { title: "Add steps", detail: "Save the work in order" },
+    { title: "Check the process", detail: "Fix findings, then save a template" }
+  ];
+
+  container.innerHTML = steps.map((step, index) => {
+    const complete = index < currentStep || (currentStep === -1);
+    const current = index === currentStep;
+    const stateClass = complete ? "is-complete" : current ? "is-current" : "is-upcoming";
+    const status = complete ? "Done" : current ? "Next" : "Up next";
+    const number = complete ? "✓" : index + 1;
+    return `<li class="process-progress-step ${stateClass}" ${current ? 'aria-current="step"' : ""}>
+      <span class="process-progress-number" aria-hidden="true">${number}</span>
+      <span class="process-progress-copy"><strong>${step.title}</strong><small>${current ? step.detail : status}</small></span>
+    </li>`;
+  }).join("");
+
+  const count = document.getElementById("process-step-count");
+  count.hidden = !process;
+  if (process) count.textContent = `${stepCount} ${stepCount === 1 ? "step" : "steps"}`;
+
+  const subtitle = document.getElementById("process-editor-subtitle");
+  if (process) {
+    subtitle.textContent = !stepCount
+      ? "Start with one clear task. Add and save a step before checking this process."
+      : checked
+        ? "The check passed. You can save this workflow as a reusable template."
+        : "Your saved steps are here. Check the process when you’re ready.";
+  } else {
+    subtitle.textContent = "Choose a map or create your first one to begin.";
+  }
 }
 
 function showUnsavedProcessDraftNotice() {
@@ -904,6 +964,7 @@ function updateProcessActionButtons() {
     result.textContent = "";
   }
   updateSaveTemplateButton();
+  renderProcessProgress();
 }
 
 function renderImplementationTable(implementations, compact = false) {
@@ -953,13 +1014,29 @@ function renderProcesses() {
   const container = document.getElementById("process-list");
   if (!state.data.processes.length) {
     container.innerHTML = `<div class="empty-state"><strong>No process maps yet</strong><p>Capture the steps your team already follows. You can check the workflow before reusing it for customers.</p><button class="button secondary" type="button" data-workflow-action="create-process">Create your first process map</button></div>`;
+    renderProcessProgress();
     return;
   }
-  container.innerHTML = state.data.processes.map((process) => `
-    <div class="list-row ${process.id === state.selectedProcessId ? "selected" : ""}">
-      <div><strong>${escapeHtml(process.name)}</strong><small>${escapeHtml(process.description || "Onboarding process")}</small></div>
-      <div><button type="button" class="text-button" data-select-process="${process.id}">Open</button> <button type="button" class="text-button" data-delete-process="${process.id}">Delete</button></div>
-    </div>`).join("");
+  container.innerHTML = state.data.processes.map((process) => {
+    const stepCount = Number(process.steps_count ?? process.steps?.length ?? 0);
+    const checked = process.checked === true;
+    return `
+      <article class="process-list-card ${process.id === state.selectedProcessId ? "selected" : ""}">
+        <div class="process-list-main">
+          <strong>${escapeHtml(process.name)}</strong>
+          <small>${escapeHtml(process.description || "Onboarding process")}</small>
+          <div class="process-card-meta">
+            <span>${stepCount} ${stepCount === 1 ? "step" : "steps"}</span>
+            <span class="process-card-status ${checked ? "ready" : ""}">${checked ? "Check passed" : stepCount ? "Needs a check" : "Add a step"}</span>
+          </div>
+        </div>
+        <div class="process-card-actions">
+          <button type="button" class="process-open-button" data-select-process="${process.id}" aria-current="${process.id === state.selectedProcessId ? "true" : "false"}">Open</button>
+          <button type="button" class="text-button process-delete-button" data-delete-process="${process.id}" aria-label="Delete ${escapeHtml(process.name)} process map">Delete</button>
+        </div>
+      </article>`;
+  }).join("");
+  renderProcessProgress();
 }
 
 function renderTeam() {
@@ -992,6 +1069,7 @@ function renderTeam() {
 
 async function loadProcess(processId) {
   if (dirtyScopes.size && !confirmDiscardChanges()) return false;
+  if (state.selectedProcessId !== Number(processId)) state.editingStepId = null;
   const requestId = ++processLoadRequestId;
   const { process } = await api(`/api/product/processes/${processId}`);
   if (requestId !== processLoadRequestId) return false;
@@ -999,6 +1077,7 @@ async function loadProcess(processId) {
   state.selectedProcessId = process.id;
   renderProcesses();
   document.getElementById("process-editor-title").textContent = process.name;
+  document.getElementById("step-form-heading").textContent = state.editingStepId ? "Edit step" : "Add a step";
   document.getElementById("process-meta-form").hidden = false;
   document.getElementById("process-edit-name").value = process.name;
   document.getElementById("process-edit-description").value = process.description || "";
@@ -1730,10 +1809,12 @@ document.getElementById("process-list").addEventListener("click", (event) => {
       if (state.selectedProcessId === Number(deleteButton.dataset.deleteProcess)) {
         state.selectedProcessId = null;
         state.process = null;
+        state.editingStepId = null;
         document.getElementById("process-meta-form").hidden = true;
         document.getElementById("step-form").hidden = true;
         document.getElementById("process-actions").hidden = true;
         document.getElementById("process-editor-title").textContent = "Select a process";
+        document.getElementById("process-test-result").hidden = true;
         document.getElementById("process-step-list").innerHTML = '<strong>No process selected</strong><p>Choose an existing process map or create your first one to start outlining the work.</p><button class="button secondary" type="button" data-workflow-action="create-process">Create a process map</button>';
       }
       await loadWorkspace();
@@ -1789,6 +1870,7 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
     document.getElementById("step-stage").value = "Implementation";
     document.getElementById("step-due-offset").value = "0";
     document.getElementById("step-customer-visible").checked = false;
+    document.getElementById("step-form-heading").textContent = "Add a step";
     document.getElementById("step-submit").textContent = "Add step";
     document.getElementById("cancel-step-edit").hidden = true;
     await loadProcess(state.selectedProcessId);
@@ -1812,6 +1894,7 @@ document.getElementById("cancel-step-edit").addEventListener("click", () => {
   document.getElementById("step-stage").value = "Implementation";
   document.getElementById("step-due-offset").value = "0";
   document.getElementById("step-customer-visible").checked = false;
+  document.getElementById("step-form-heading").textContent = "Add a step";
   document.getElementById("step-submit").textContent = "Add step";
   document.getElementById("cancel-step-edit").hidden = true;
   if (state.selectedProcessId) loadProcess(state.selectedProcessId).catch(showError);
@@ -1831,6 +1914,7 @@ document.getElementById("process-step-list").addEventListener("click", async (ev
     document.getElementById("step-stage").value = step.stage;
     document.getElementById("step-due-offset").value = step.due_offset_days;
     document.getElementById("step-customer-visible").checked = step.customer_visible === true;
+    document.getElementById("step-form-heading").textContent = "Edit step";
     [...document.querySelectorAll("#step-dependencies input")].forEach((input) => {
       input.disabled = Number(input.value) === step.id;
       input.checked = step.dependsOn.includes(Number(input.value));
@@ -1912,6 +1996,7 @@ document.getElementById("test-process").addEventListener("click", async () => {
     const processSummary = state.data.processes.find((process) => process.id === state.selectedProcessId);
     if (processSummary) processSummary.checked = state.process.checked;
     updateSaveTemplateButton();
+    renderProcesses();
     renderOverview();
     showToast(check.result === "ready" ? "Setup check passed." : "Setup check found items to fix.", check.result !== "ready");
   } catch (error) {

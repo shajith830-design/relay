@@ -169,52 +169,88 @@
       </section>
 
       <section class="view" id="view-processes">
-        <div class="section-intro"><h2>Map the way your team works</h2><p>Write down stages, ordered steps, instructions, responsible roles, prerequisites, and due-date offsets. Check the workflow before saving it as a reusable template.</p></div>
-        <div class="two-column">
-          <div class="panel">
-            <div class="panel-heading"><div><h2>Your process maps</h2><p>Start with the way your team works today.</p></div></div>
-            <form id="process-form" class="inline-form">
+        <div class="section-intro process-intro">
+          <div>
+            <p class="eyebrow">Workflow builder</p>
+            <h2>Build a process your team can reuse</h2>
+            <p>Create a map, save each step, and check the workflow before turning it into a template. Your saved steps stay with the process.</p>
+          </div>
+          <div class="process-intro-note"><strong>Simple, safe workflow</strong><span>Save one step at a time. A successful check unlocks template saving.</span></div>
+        </div>
+        <ol id="process-progress" class="process-progress" aria-label="Process setup progress"></ol>
+        <div class="process-workspace">
+          <aside class="panel process-sidebar" aria-label="Process maps">
+            <div class="panel-heading"><div><h2>Your process maps</h2><p>Choose a map to edit or start a new one.</p></div></div>
+            <form id="process-form" class="process-create-form">
+              <h3>Start a new map</h3>
               <div class="field"><label for="process-name">Process name</label><input id="process-name" maxlength="100" placeholder="e.g. Standard SaaS onboarding" required></div>
               <div class="field"><label for="process-description">What is this for? <span class="optional">Optional</span></label><input id="process-description" maxlength="500" placeholder="A short note for your team"></div>
-              <button class="button primary" type="submit">Create process</button>
+              <button class="button primary" type="submit">Create process map</button>
             </form>
-            <div id="process-list" class="list-stack"></div>
-          </div>
-          <div class="panel" id="process-editor">
-            <div class="panel-heading"><div><h2 id="process-editor-title">Select a process</h2><p>Add the real steps your team needs to complete.</p></div></div>
-            <form id="process-meta-form" class="subform" hidden>
-              <h3>Process details</h3>
-              <div class="field"><label for="process-edit-name">Process name</label><input id="process-edit-name" maxlength="100" required></div>
-              <div class="field"><label for="process-edit-description">Description</label><input id="process-edit-description" maxlength="500"></div>
-              <button class="button secondary" type="submit">Save process details</button>
-              <button class="text-button" id="delete-process" type="button">Delete process</button>
-            </form>
-            <div id="process-step-list" class="step-list empty-state" tabindex="-1"><strong>No process selected</strong><p>Choose an existing process map or create your first one to start outlining the work.</p><button class="button secondary" type="button" data-workflow-action="create-process">Create a process map</button></div>
-            <form id="step-form" class="subform" hidden>
-              <h3>Add a process step</h3>
-              <div class="field"><label for="step-title">Step</label><input id="step-title" maxlength="120" placeholder="e.g. Configure the workspace" required></div>
-              <div class="field"><label for="step-description">What needs to happen?</label><textarea id="step-description" maxlength="500" placeholder="A short instruction the team can follow" required></textarea></div>
-              <div class="field"><label for="step-owner">Responsible role</label><input id="step-owner" maxlength="120" placeholder="e.g. Implementation lead" required></div>
-              <div class="field"><label for="step-assignee">Assigned workspace member</label><select id="step-assignee" required></select></div>
-              <div class="field"><label for="step-stage">Stage</label><input id="step-stage" maxlength="100" value="Implementation" required></div>
-              <div class="field"><label for="step-due-offset">Due after start (days)</label><input id="step-due-offset" type="number" min="0" max="3650" value="0" required></div>
-              <label class="check-field"><input id="step-customer-visible" type="checkbox"> Show this task to the customer in their portal</label>
-              <div class="field" data-growth-only="dependencies">
-                <label for="step-dependencies-search">Prerequisite steps (optional)</label>
-                <small>Choose steps that must be completed before this step can be marked done.</small>
-                <input id="step-dependencies-search" type="search" placeholder="Find a process step">
-                <div id="step-dependencies" class="dependency-options" role="group" aria-label="Prerequisite steps"></div>
-                <small id="step-dependencies-empty">Add another process step first to set prerequisites.</small>
-                <small id="step-dependencies-no-results" hidden>No matching steps.</small>
+            <div id="process-list" class="process-list"></div>
+          </aside>
+          <div class="process-builder-column">
+            <div class="panel process-builder" id="process-editor">
+              <div class="process-builder-heading">
+                <div>
+                  <p class="eyebrow">Selected process</p>
+                  <h2 id="process-editor-title">Select a process map</h2>
+                  <p id="process-editor-subtitle">Choose a map or create your first one to begin.</p>
+                </div>
+                <span id="process-step-count" class="process-step-count" hidden></span>
               </div>
-              <button class="button primary" id="step-submit" type="submit">Add step</button>
-              <button class="text-button" id="cancel-step-edit" type="button" hidden>Cancel edit</button>
-            </form>
-            <div id="process-actions" class="button-row" hidden>
-              <button class="button secondary" id="test-process" type="button">Test this process</button>
-              <button class="button primary" id="save-template" type="button">Save as template</button>
+              <form id="process-meta-form" class="process-details-form" hidden>
+                <details class="process-details">
+                  <summary><span>Process details</span><small>Edit the name or description</small></summary>
+                  <div class="process-details-content">
+                    <div class="process-details-fields">
+                      <div class="field"><label for="process-edit-name">Process name</label><input id="process-edit-name" maxlength="100" required></div>
+                      <div class="field"><label for="process-edit-description">Description</label><input id="process-edit-description" maxlength="500"></div>
+                    </div>
+                    <div class="process-details-actions">
+                      <button class="button secondary" type="submit">Save details</button>
+                      <button class="text-button danger-text" id="delete-process" type="button">Delete process map</button>
+                    </div>
+                  </div>
+                </details>
+              </form>
+              <div class="process-section-heading">
+                <div><h3>Ordered steps</h3><p>Each step becomes a task when you start customer work.</p></div>
+              </div>
+              <div id="process-step-list" class="step-list empty-state" tabindex="-1"><strong>No process selected</strong><p>Choose an existing process map or create your first one to start outlining the work.</p><button class="button secondary" type="button" data-workflow-action="create-process">Create a process map</button></div>
+              <form id="step-form" class="subform process-step-form" hidden>
+                <div class="process-form-heading"><div><h3 id="step-form-heading">Add a step</h3><p>Use a clear action, instructions, and a responsible role. Save before checking the process.</p></div></div>
+                <div class="process-step-fields">
+                  <div class="field"><label for="step-title">Step name</label><input id="step-title" maxlength="120" placeholder="e.g. Confirm project goals" required></div>
+                  <div class="field"><label for="step-owner">Responsible role</label><input id="step-owner" maxlength="120" placeholder="e.g. Implementation lead" required></div>
+                  <div class="field field-wide"><label for="step-description">What needs to happen?</label><textarea id="step-description" maxlength="500" placeholder="Write the instructions someone needs to complete this step" required></textarea></div>
+                  <div class="field"><label for="step-assignee">Assigned workspace member</label><select id="step-assignee" required></select></div>
+                  <div class="field"><label for="step-stage">Stage</label><input id="step-stage" maxlength="100" value="Implementation" required></div>
+                  <div class="field"><label for="step-due-offset">Due after start (days)</label><input id="step-due-offset" type="number" min="0" max="3650" value="0" required></div>
+                  <label class="check-field process-customer-visible"><input id="step-customer-visible" type="checkbox"> Show this task to the customer in their portal</label>
+                  <div class="field field-wide" data-growth-only="dependencies">
+                    <label for="step-dependencies-search">Prerequisite steps <span class="optional">Optional</span></label>
+                    <small>Choose steps that must be completed before this one.</small>
+                    <input id="step-dependencies-search" type="search" placeholder="Find a process step">
+                    <div id="step-dependencies" class="dependency-options" role="group" aria-label="Prerequisite steps"></div>
+                    <small id="step-dependencies-empty">Add another process step first to set prerequisites.</small>
+                    <small id="step-dependencies-no-results" hidden>No matching steps.</small>
+                  </div>
+                </div>
+                <div class="process-step-form-actions">
+                  <button class="button primary" id="step-submit" type="submit">Add step</button>
+                  <button class="text-button" id="cancel-step-edit" type="button" hidden>Cancel edit</button>
+                </div>
+              </form>
+              <div id="process-actions" class="process-action-bar" hidden>
+                <div><strong>Ready for the next step?</strong><p id="process-action-help">Save your steps, then check the workflow before saving a template.</p></div>
+                <div class="process-action-buttons">
+                  <button class="button secondary" id="test-process" type="button">Check process</button>
+                  <button class="button primary" id="save-template" type="button">Save as template</button>
+                </div>
+              </div>
+              <div class="result-box" id="process-test-result" hidden></div>
             </div>
-            <div class="result-box" id="process-test-result" hidden></div>
           </div>
         </div>
       </section>

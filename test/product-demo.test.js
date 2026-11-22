@@ -203,6 +203,23 @@ test("workspace views are siblings so each navigation target can render independ
   }
 });
 
+test("process map builder exposes guided setup and keeps its existing editor hooks", () => {
+  const publicDir = path.join(__dirname, "..", "public");
+  const productHtml = readFileSync(path.join(publicDir, "product.html"), "utf8");
+  const productScript = readFileSync(path.join(publicDir, "product.js"), "utf8");
+
+  for (const id of [
+    "process-progress", "process-list", "process-form", "process-editor-subtitle",
+    "process-step-count", "step-form-heading", "process-action-help", "test-process", "save-template"
+  ]) {
+    assert.match(productHtml, new RegExp(`id="${id}"`), `${id} must be present in the process builder`);
+  }
+  assert.match(productHtml, /class="process-workspace"/);
+  assert.match(productScript, /function renderProcessProgress\(\)/);
+  assert.match(productScript, /steps_count \?\? process\.steps\?\.length/);
+  assert.match(productScript, /step-form-heading"\)\.textContent = "Edit step"/);
+});
+
 test("password reset can reveal passwords and resets the form after submission", () => {
   const publicDir = path.join(__dirname, "..", "public");
   const productHtml = readFileSync(path.join(publicDir, "product.html"), "utf8");
