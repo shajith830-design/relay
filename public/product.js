@@ -1680,6 +1680,21 @@ async function openImplementation(implementationId) {
   return true;
 }
 
+function openImplementationFromButton(button) {
+  const label = button.textContent;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "Opening...";
+  openImplementation(button.dataset.openImplementation)
+    .catch(showError)
+    .finally(() => {
+      if (!button.isConnected) return;
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      button.textContent = label;
+    });
+}
+
 async function refreshWorkspace() {
   if (!await loadWorkspace()) return false;
   if (state.selectedImplementationId && !document.getElementById("implementation-detail").hidden) {
@@ -2645,13 +2660,13 @@ document.getElementById("implementation-form").addEventListener("submit", async 
 
 document.getElementById("implementation-list").addEventListener("click", (event) => {
   const button = event.target.closest("[data-open-implementation]");
-  if (button) openImplementation(button.dataset.openImplementation).catch(showError);
+  if (button) openImplementationFromButton(button);
 });
 document.getElementById("overview-implementations").addEventListener("click", (event) => {
   const button = event.target.closest("[data-open-implementation]");
   if (button) {
     if (!setView("implementations")) return;
-    openImplementation(button.dataset.openImplementation).catch(showError);
+    openImplementationFromButton(button);
   }
 });
 document.getElementById("close-implementation").addEventListener("click", () => {

@@ -1459,8 +1459,25 @@ function installProductRoutes(app, db, isProduction) {
       WHERE i.workspace_id = $1
       ORDER BY i.created_at DESC, i.id DESC
     `).all(workspaceId));
+    const requirementsByImplementation = new Map();
+    if (implementations.length) {
+      const inputRows = await database.prepare(`
+        SELECT i.id AS implementation_id, r.name, r.input_type, COALESCE(c.value, '') AS value
+        FROM product_implementations i
+        JOIN product_requirements r ON r.workspace_id = i.workspace_id
+          AND (r.template_id IS NULL OR r.template_id = i.template_id)
+        LEFT JOIN product_customer_inputs c
+          ON c.requirement_id = r.id AND c.implementation_id = i.id
+        WHERE i.workspace_id = $1
+      `).all(workspaceId);
+      for (const row of inputRows) {
+        const scopedRequirements = requirementsByImplementation.get(row.implementation_id) || [];
+        scopedRequirements.push(row);
+        requirementsByImplementation.set(row.implementation_id, scopedRequirements);
+      }
+    }
     for (const implementation of implementations) {
-      const scopedRequirements = await (implementationRequirements(implementation.id, workspaceId, implementation.template_id));
+      const scopedRequirements = requirementsByImplementation.get(implementation.id) || [];
       const invalid = scopedRequirements.filter((requirement) => {
         const value = requirement.value.trim();
         return value && inputValueError(requirement.input_type, value);
@@ -2747,69 +2764,96 @@ function installProductRoutes(app, db, isProduction) {
       WHERE i.id = $1 AND i.workspace_id = $2
     `).get(implementationId, req.product.workspaceId));
     if (!implementation) return sendError(res, 404, "Implementation not found.");
-    implementation.steps = await (database.prepare(`
-      SELECT s.id, s.title, s.description, s.owner, s.position, s.status, s.updated_at, s.stage,
-        s.assignee_user_id, s.customer_visible, u.email AS assignee_email,
-        s.due_at, s.is_blocked, s.blocker_reason, s.blocker_next_action,
-        COALESCE((SELECT string_agg(parent.title, ', ')
-          FROM product_implementation_step_dependencies d
-          JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id
-          WHERE d.implementation_step_id = s.id AND parent.status != 'done'), '') AS waiting_on
-      FROM product_implementation_steps s
-      LEFT JOIN product_users u ON u.id = s.assignee_user_id
-      WHERE s.implementation_id = $1
-      ORDER BY s.position, s.id
-    `).all(implementationId));
-    implementation.requirements = await (implementationRequirements(implementationId, req.product.workspaceId, implementation.template_id));
-    implementation.customerContacts = await database.prepare(`
-      SELECT id, email, display_name, expires_at, invitation_sent_at, revoked_at, last_activity_at, created_at
-      FROM product_customer_contacts
-      WHERE implementation_id = $1
-      ORDER BY created_at DESC, id DESC
-    `).all(implementationId);
-    implementation.customerMessages = await database.prepare(`
-      SELECT id, sender_role, sender_name, sender_email, body, created_at
-      FROM product_customer_messages WHERE implementation_id = $1
-      ORDER BY created_at, id
-    `).all(implementationId);
-    implementation.customerFiles = await database.prepare(`
-      SELECT id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, created_at
-      FROM product_customer_files WHERE implementation_id = $1
-      ORDER BY created_at DESC, id DESC
-    `).all(implementationId);
-    implementation.launchStakeholders = await database.prepare(`
-      SELECT id, display_name, email, role, approval_status, next_action, created_at
-      FROM product_launch_stakeholders WHERE implementation_id = $1
-      ORDER BY created_at, id
-    `).all(implementationId);
-    implementation.launchRisks = await database.prepare(`
-      SELECT id, category, title, owner_name, owner_email, severity, status, next_action, due_at, created_at
-      FROM product_launch_risks WHERE implementation_id = $1
-      ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
-        created_at DESC, id DESC
-    `).all(implementationId);
-    implementation.approvals = await database.prepare(`
-      SELECT id, title, approval_type, approver_name, approver_email, status, due_at, created_at
-      FROM product_approval_requests WHERE implementation_id = $1
-      ORDER BY created_at DESC, id DESC
-    `).all(implementationId);
-    implementation.timeEntries = await database.prepare(`
-      SELECT t.id, t.user_id, u.email AS user_email, t.work_date, t.minutes, t.billable, t.note, t.hourly_rate, t.created_at
-      FROM product_time_entries t LEFT JOIN product_users u ON u.id = t.user_id
-      WHERE t.implementation_id = $1 ORDER BY t.work_date DESC, t.id DESC
-    `).all(implementationId);
-    implementation.financialPlan = await database.prepare(`
-      SELECT budget_amount, forecast_amount, actual_cost, invoice_status, invoice_reference, margin_note, updated_at
-      FROM product_financial_plans WHERE implementation_id = $1
-    `).get(implementationId) || {
-      budget_amount: 0, forecast_amount: 0, actual_cost: 0, invoice_status: "not_started",
-      invoice_reference: "", margin_note: ""
-    };
-    implementation.calendarEvents = await database.prepare(`
-      SELECT id, title, start_at, end_at, event_type, external_url, created_at
-      FROM product_calendar_events WHERE implementation_id = $1
-      ORDER BY start_at, id
-    `).all(implementationId);
+    const [
+      steps,
+      requirements,
+      customerContacts,
+      customerMessages,
+      customerFiles,
+      launchStakeholders,
+      launchRisks,
+      approvals,
+      timeEntries,
+      financialPlan,
+      calendarEvents
+    ] = await Promise.all([
+      database.prepare(`
+        SELECT s.id, s.title, s.description, s.owner, s.position, s.status, s.updated_at, s.stage,
+          s.assignee_user_id, s.customer_visible, u.email AS assignee_email,
+          s.due_at, s.is_blocked, s.blocker_reason, s.blocker_next_action,
+          COALESCE((SELECT string_agg(parent.title, ', ')
+            FROM product_implementation_step_dependencies d
+            JOIN product_implementation_steps parent ON parent.id = d.depends_on_step_id
+            WHERE d.implementation_step_id = s.id AND parent.status != 'done'), '') AS waiting_on
+        FROM product_implementation_steps s
+        LEFT JOIN product_users u ON u.id = s.assignee_user_id
+        WHERE s.implementation_id = $1
+        ORDER BY s.position, s.id
+      `).all(implementationId),
+      implementationRequirements(implementationId, req.product.workspaceId, implementation.template_id),
+      database.prepare(`
+        SELECT id, email, display_name, expires_at, invitation_sent_at, revoked_at, last_activity_at, created_at
+        FROM product_customer_contacts
+        WHERE implementation_id = $1
+        ORDER BY created_at DESC, id DESC
+      `).all(implementationId),
+      database.prepare(`
+        SELECT id, sender_role, sender_name, sender_email, body, created_at
+        FROM product_customer_messages WHERE implementation_id = $1
+        ORDER BY created_at, id
+      `).all(implementationId),
+      database.prepare(`
+        SELECT id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, created_at
+        FROM product_customer_files WHERE implementation_id = $1
+        ORDER BY created_at DESC, id DESC
+      `).all(implementationId),
+      database.prepare(`
+        SELECT id, display_name, email, role, approval_status, next_action, created_at
+        FROM product_launch_stakeholders WHERE implementation_id = $1
+        ORDER BY created_at, id
+      `).all(implementationId),
+      database.prepare(`
+        SELECT id, category, title, owner_name, owner_email, severity, status, next_action, due_at, created_at
+        FROM product_launch_risks WHERE implementation_id = $1
+        ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+          created_at DESC, id DESC
+      `).all(implementationId),
+      database.prepare(`
+        SELECT id, title, approval_type, approver_name, approver_email, status, due_at, created_at
+        FROM product_approval_requests WHERE implementation_id = $1
+        ORDER BY created_at DESC, id DESC
+      `).all(implementationId),
+      database.prepare(`
+        SELECT t.id, t.user_id, u.email AS user_email, t.work_date, t.minutes, t.billable, t.note, t.hourly_rate, t.created_at
+        FROM product_time_entries t LEFT JOIN product_users u ON u.id = t.user_id
+        WHERE t.implementation_id = $1 ORDER BY t.work_date DESC, t.id DESC
+      `).all(implementationId),
+      database.prepare(`
+        SELECT budget_amount, forecast_amount, actual_cost, invoice_status, invoice_reference, margin_note, updated_at
+        FROM product_financial_plans WHERE implementation_id = $1
+      `).get(implementationId),
+      database.prepare(`
+        SELECT id, title, start_at, end_at, event_type, external_url, created_at
+        FROM product_calendar_events WHERE implementation_id = $1
+        ORDER BY start_at, id
+      `).all(implementationId)
+    ]);
+    Object.assign(implementation, {
+      steps,
+      requirements,
+      customerContacts,
+      customerMessages,
+      customerFiles,
+      launchStakeholders,
+      launchRisks,
+      approvals,
+      timeEntries,
+      financialPlan: financialPlan || {
+        budget_amount: 0, forecast_amount: 0, actual_cost: 0, invoice_status: "not_started",
+        invoice_reference: "", margin_note: ""
+      },
+      calendarEvents
+    });
     return res.json({ implementation });
   });
 

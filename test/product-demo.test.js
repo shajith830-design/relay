@@ -437,12 +437,42 @@ test("implementation details provide quick navigation to customer workflow secti
   assert.match(productCss, /\.implementation-section-nav button\[aria-current="location"\]/);
 });
 
+test("opening an implementation immediately shows its loading state", () => {
+  const productScript = readFileSync(path.join(__dirname, "..", "public", "product.js"), "utf8");
+  assert.match(productScript, /function openImplementationFromButton\(button\) \{[\s\S]*button\.disabled = true;[\s\S]*button\.setAttribute\("aria-busy", "true"\);[\s\S]*button\.textContent = "Opening\.\.\.";/);
+  assert.match(productScript, /button\.removeAttribute\("aria-busy"\);[\s\S]*button\.textContent = label;/);
+});
+
 test("named customer resends rotate links and customer access resolves implementation IDs", () => {
   const productScript = readFileSync(path.join(__dirname, "..", "public", "product.js"), "utf8");
   const productRoutes = readFileSync(path.join(__dirname, "..", "product-routes.js"), "utf8");
   assert.match(productScript, /Fresh portal invitation sent/);
   assert.match(productScript, /method: "POST"/);
   assert.match(productRoutes, /c\.implementation_id, c\.expires_at, i\.id, i\.workspace_id, i\.template_id/);
+});
+
+test("workspace refresh validates customer inputs in one batch instead of per implementation", () => {
+  const routes = readFileSync(path.join(__dirname, "..", "product-routes.js"), "utf8");
+  const start = routes.indexOf('app.get("/api/product/workspace"');
+  const end = routes.indexOf('app.patch("/api/product/notifications"', start);
+  assert.ok(start >= 0 && end > start, "workspace endpoint boundaries must exist");
+  const workspaceRoute = routes.slice(start, end);
+
+  assert.match(workspaceRoute, /const requirementsByImplementation = new Map\(\)/);
+  assert.match(workspaceRoute, /FROM product_implementations i[\s\S]*?JOIN product_requirements r[\s\S]*?LEFT JOIN product_customer_inputs c/);
+  assert.match(workspaceRoute, /requirementsByImplementation\.get\(implementation\.id\) \|\| \[\]/);
+  assert.doesNotMatch(workspaceRoute, /for \(const implementation of implementations\) \{\s*const scopedRequirements = await implementationRequirements/);
+});
+
+test("implementation detail loads independent sections concurrently", () => {
+  const routes = readFileSync(path.join(__dirname, "..", "product-routes.js"), "utf8");
+  const start = routes.indexOf('app.get("/api/product/implementations/:implementationId"');
+  const end = routes.indexOf('app.patch("/api/product/implementations/:implementationId/launch-plan"', start);
+  assert.ok(start >= 0 && end > start, "implementation detail endpoint boundaries must exist");
+  const detailRoute = routes.slice(start, end);
+
+  assert.match(detailRoute, /const \[\s*steps,[\s\S]*?calendarEvents\s*\] = await Promise\.all\(\[/);
+  assert.match(detailRoute, /implementationRequirements\(implementationId, req\.product\.workspaceId, implementation\.template_id\)/);
 });
 
 test("workspace exposes delivery operations and competitive capability controls", () => {
