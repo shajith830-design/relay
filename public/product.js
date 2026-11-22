@@ -704,7 +704,12 @@ function setView(name) {
   if (activeView?.id !== `view-${name}` && !confirmDiscardChanges()) return false;
   const mobileNavigationWasOpen = document.getElementById("mobile-nav-toggle").getAttribute("aria-expanded") === "true";
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
-  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === name));
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    const isActive = item.dataset.view === name;
+    item.classList.toggle("active", isActive);
+    if (isActive) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
   setMobileNavigationOpen(false);
   document.getElementById("view-eyebrow").textContent = titles[name][0];
   document.getElementById("view-title").textContent = titles[name][1];
@@ -713,6 +718,23 @@ function setView(name) {
   globalStatus.textContent = "";
   if (name === "settings") loadAccountDeletionChoices().catch(showError);
   return true;
+}
+
+async function showProcessWorkspace() {
+  if (!setView("processes")) return false;
+  const process = state.data.processes.find((item) => item.id === state.selectedProcessId)
+    || state.data.processes[0];
+  if (!process) {
+    focusProcessCreation();
+    return true;
+  }
+  if (state.process?.id !== process.id) await loadProcess(process.id);
+  return true;
+}
+
+function focusProcessCreation() {
+  document.getElementById("process-create-details").open = true;
+  document.getElementById("process-name").focus();
 }
 
 function showError(error) {
@@ -1051,8 +1073,8 @@ function renderProcessProgress() {
   const currentStep = !state.selectedProcessId ? 0 : stepCount === 0 ? 1 : templateCreated ? -1 : 2;
   const steps = [
     { title: "Create a process map", detail: "Name the workflow" },
-    { title: "Save process steps", detail: "Save the work in order" },
-    { title: "Create a template", detail: templateCreated ? "Template created" : checked ? "Ready to create" : "Check the process first" }
+    { title: "Add and order steps", detail: stepCount ? `${stepCount} ${stepCount === 1 ? "step" : "steps"} saved` : "Add the first task" },
+    { title: "Check and create a template", detail: templateCreated ? "Template created" : checked ? "Ready to create" : "Check the process first" }
   ];
 
   container.innerHTML = steps.map((step, index) => {
@@ -1062,8 +1084,10 @@ function renderProcessProgress() {
     const status = complete ? "Done" : current ? "Next" : "Up next";
     const number = complete ? "✓" : index + 1;
     return `<li class="process-progress-step ${stateClass}" ${current ? 'aria-current="step"' : ""}>
-      <span class="process-progress-number" aria-hidden="true">${number}</span>
-      <span class="process-progress-copy"><strong>${step.title}</strong><small>${current ? step.detail : status}</small></span>
+      <button class="process-progress-action" type="button" data-process-stage="${index}" aria-label="${escapeHtml(step.title)}. ${escapeHtml(current ? step.detail : status)}">
+        <span class="process-progress-number" aria-hidden="true">${number}</span>
+        <span class="process-progress-copy"><strong>${step.title}</strong><small>${current ? step.detail : status}</small></span>
+      </button>
     </li>`;
   }).join("");
 
@@ -1082,6 +1106,45 @@ function renderProcessProgress() {
         : "Save any changes, then check the process before creating a template.";
   } else {
     subtitle.textContent = "Choose a map or create your first one to begin.";
+  }
+}
+
+async function focusProcessStage(stage) {
+  const process = state.data.processes.find((item) => item.id === state.selectedProcessId)
+    || state.data.processes[0];
+  if (stage === 0) {
+    if (!process) {
+      focusProcessCreation();
+    } else if (state.process?.id === process.id) {
+      document.getElementById("process-edit-name").focus();
+    } else {
+      document.querySelector(`[data-select-process="${process.id}"]`)?.focus();
+    }
+    return;
+  }
+  if (!process) {
+    focusProcessCreation();
+    return;
+  }
+  if (state.process?.id !== process.id && !await loadProcess(process.id)) return;
+  if (dirtyScopes.has(document.getElementById("process-meta-form"))) {
+    document.getElementById("process-edit-name").focus();
+    return;
+  }
+  if (dirtyScopes.has(document.getElementById("step-form"))) {
+    document.getElementById("step-title").focus();
+    return;
+  }
+  if (stage === 1) {
+    document.getElementById(state.process.steps.length ? "process-step-list" : "step-title").focus();
+    return;
+  }
+  if (!state.process.steps.length) {
+    document.getElementById("step-title").focus();
+  } else if (!state.process.checked) {
+    document.getElementById("test-process").focus();
+  } else {
+    document.getElementById("save-template").focus();
   }
 }
 
@@ -1164,8 +1227,9 @@ function renderProcesses() {
   container.innerHTML = state.data.processes.map((process) => {
     const stepCount = Number(process.steps_count ?? process.steps?.length ?? 0);
     const checked = process.checked === true;
+    const selected = process.id === state.selectedProcessId;
     return `
-      <article class="process-list-card ${process.id === state.selectedProcessId ? "selected" : ""}">
+      <article class="process-list-card ${selected ? "selected" : ""}">
         <div class="process-list-main">
           <strong>${escapeHtml(process.name)}</strong>
           <small>${escapeHtml(process.description || "Onboarding process")}</small>
@@ -1175,7 +1239,7 @@ function renderProcesses() {
           </div>
         </div>
         <div class="process-card-actions">
-          <button type="button" class="process-open-button" data-select-process="${process.id}" aria-current="${process.id === state.selectedProcessId ? "true" : "false"}">Open</button>
+          <button type="button" class="process-open-button" data-select-process="${process.id}" aria-current="${selected ? "true" : "false"}" ${selected ? "disabled" : ""}>${selected ? "Selected" : "Open"}</button>
           <button type="button" class="text-button process-delete-button" data-delete-process="${process.id}" aria-label="Delete ${escapeHtml(process.name)} process map">Delete</button>
         </div>
       </article>`;
@@ -1899,7 +1963,10 @@ window.addEventListener("resize", () => {
   setMobileNavigationOpen(isMobile && isOpen);
 });
 setMobileNavigationOpen(false);
-document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
+document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => {
+  if (button.dataset.view === "processes") showProcessWorkspace().catch(showError);
+  else setView(button.dataset.view);
+}));
 document.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.go)));
 document.getElementById("refresh-button").addEventListener("click", () => refreshWorkspace().catch(showError));
 document.getElementById("implementation-search").addEventListener("input", (event) => {
@@ -1958,7 +2025,7 @@ appShell.addEventListener("click", async (event) => {
   const action = actionButton.dataset.workflowAction;
   if (action === "create-process") {
     if (!setView("processes")) return;
-    document.getElementById("process-name").focus();
+    focusProcessCreation();
     return;
   }
   if (action === "map-process" || action === "focus-step" || action === "check-process" || action === "save-template") {
@@ -1972,7 +2039,7 @@ appShell.addEventListener("click", async (event) => {
           || state.data.processes[0];
     if (!process) {
       if (!setView("processes")) return;
-      document.getElementById("process-name").focus();
+      focusProcessCreation();
       return;
     }
     try {
@@ -1995,7 +2062,7 @@ appShell.addEventListener("click", async (event) => {
   if (action === "start-implementation") {
     if (!state.data.templates.length) {
       if (!setView("processes")) return;
-      document.getElementById("process-name").focus();
+      focusProcessCreation();
       return;
     }
     if (!setView("implementations")) return;
@@ -2162,6 +2229,7 @@ document.getElementById("process-form").addEventListener("submit", async (event)
   try {
     const { process } = await api("/api/product/processes", { method: "POST", body: { name, description } });
     event.target.reset();
+    document.getElementById("process-create-details").open = false;
     await loadWorkspace();
     await loadProcess(process.id);
     document.getElementById("step-title").focus();
@@ -2169,6 +2237,14 @@ document.getElementById("process-form").addEventListener("submit", async (event)
   } catch (error) {
     showError(error);
   }
+});
+
+document.getElementById("process-progress").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-process-stage]");
+  if (!button) return;
+  const stage = Number(button.dataset.processStage);
+  if (!Number.isInteger(stage) || stage < 0 || stage > 2) return;
+  focusProcessStage(stage).catch(showError);
 });
 
 document.getElementById("process-list").addEventListener("click", (event) => {
@@ -2277,6 +2353,7 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
     const displayedStepId = savedStepId || result.step.id;
     state.editingStepId = null;
     form.reset();
+    document.getElementById("step-options").open = false;
     document.getElementById("step-stage").value = "Implementation";
     document.getElementById("step-due-offset").value = "0";
     document.getElementById("step-customer-visible").checked = false;
@@ -2303,6 +2380,7 @@ document.getElementById("cancel-step-edit").addEventListener("click", () => {
   state.editingStepId = null;
   const form = document.getElementById("step-form");
   form.reset();
+  document.getElementById("step-options").open = false;
   document.getElementById("step-stage").value = "Implementation";
   document.getElementById("step-due-offset").value = "0";
   document.getElementById("step-customer-visible").checked = false;
@@ -2326,6 +2404,10 @@ document.getElementById("process-step-list").addEventListener("click", async (ev
     document.getElementById("step-stage").value = step.stage;
     document.getElementById("step-due-offset").value = step.due_offset_days;
     document.getElementById("step-customer-visible").checked = step.customer_visible === true;
+    document.getElementById("step-options").open = step.stage !== "Implementation"
+      || Number(step.due_offset_days) > 0
+      || step.customer_visible === true
+      || Boolean(step.dependsOn?.length);
     document.getElementById("step-form-heading").textContent = "Edit a step";
     [...document.querySelectorAll("#step-dependencies input")].forEach((input) => {
       input.disabled = Number(input.value) === step.id;
@@ -2452,7 +2534,7 @@ document.getElementById("template-list").addEventListener("submit", async (event
 document.getElementById("template-list").addEventListener("click", async (event) => {
   const startButton = event.target.closest("[data-start-template]");
   if (startButton) {
-    setView("implementations");
+    if (!setView("implementations")) return;
     document.getElementById("implementation-template").value = startButton.dataset.startTemplate;
     document.getElementById("implementation-customer").focus();
     return;

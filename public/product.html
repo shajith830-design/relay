@@ -110,11 +110,11 @@
       <div class="workspace-label"><img class="workspace-avatar" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span id="workspace-name-display"></span></div>
       <nav class="side-nav" aria-label="Workspace">
         <div class="nav-group">
-          <span class="nav-group-label">Dashboard</span>
-          <button class="nav-item active" data-view="overview"><span aria-hidden="true">◫</span> Overview</button>
+          <span class="nav-group-label">Workspace</span>
+          <button class="nav-item active" data-view="overview" aria-current="page"><span aria-hidden="true">◫</span> Overview</button>
         </div>
         <div class="nav-group">
-          <span class="nav-group-label">Onboarding workflow</span>
+          <span class="nav-group-label">Run onboarding</span>
           <button class="nav-item" data-view="processes"><span aria-hidden="true">≋</span> Process maps</button>
           <button class="nav-item" data-view="templates"><span aria-hidden="true">▤</span> Templates</button>
           <button class="nav-item" data-view="implementations"><span aria-hidden="true">◷</span> Implementations</button>
@@ -122,7 +122,7 @@
           <button class="nav-item" data-view="portfolio"><span aria-hidden="true">◧</span> Team workload</button>
         </div>
         <div class="nav-group">
-          <span class="nav-group-label">Workspace settings</span>
+          <span class="nav-group-label">Manage workspace</span>
           <button class="nav-item" data-view="integrations"><span aria-hidden="true">⇄</span> Integrations</button>
           <button class="nav-item" data-view="settings"><span aria-hidden="true">⚙</span> Settings</button>
         </div>
@@ -266,20 +266,21 @@
           <div>
             <p class="eyebrow">Workflow builder</p>
             <h2>Build a process your team can reuse</h2>
-            <p>Create a map, save each step, and check the workflow before turning it into a template. Your saved steps stay with the process.</p>
+            <p>Add your team's tasks, check the process, then save it as a template. Start with one task and add more later.</p>
           </div>
-          <div class="process-intro-note"><strong>Simple, safe workflow</strong><span>Save one step at a time. A successful check unlocks template creation.</span></div>
         </div>
         <ol id="process-progress" class="process-progress" aria-label="Process setup progress"></ol>
         <div class="process-workspace">
           <aside class="panel process-sidebar" aria-label="Process maps">
             <div class="panel-heading"><div><h2>Your process maps</h2><p>Choose a map to edit or start a new one.</p></div></div>
-            <form id="process-form" class="process-create-form">
-              <h3>Start a new map</h3>
-              <div class="field"><label for="process-name">Process name</label><input id="process-name" maxlength="100" placeholder="e.g. Standard SaaS onboarding" required></div>
-              <div class="field"><label for="process-description">What is this for? <span class="optional">Optional</span></label><input id="process-description" maxlength="500" placeholder="A short note for your team"></div>
-              <button class="button primary" type="submit">Create process map</button>
-            </form>
+            <details id="process-create-details" class="process-create-details">
+              <summary>Create a new map</summary>
+              <form id="process-form" class="process-create-form">
+                <div class="field"><label for="process-name">Process name</label><input id="process-name" maxlength="100" placeholder="e.g. Standard SaaS onboarding" required></div>
+                <div class="field"><label for="process-description">What is this for? <span class="optional">Optional</span></label><input id="process-description" maxlength="500" placeholder="A short note for your team"></div>
+                <button class="button primary" type="submit">Create process map</button>
+              </form>
+            </details>
             <div id="process-list" class="process-list"></div>
           </aside>
           <div class="process-builder-column">
@@ -317,9 +318,13 @@
                   <div class="field"><label for="step-title">Step name</label><input id="step-title" maxlength="120" placeholder="e.g. Confirm project goals" required></div>
                   <div class="field"><label for="step-owner">Responsible role</label><input id="step-owner" maxlength="120" placeholder="e.g. Implementation lead" required></div>
                   <div class="field field-wide"><label for="step-description">What needs to happen?</label><textarea id="step-description" maxlength="500" placeholder="Write the instructions someone needs to complete this step" required></textarea></div>
-                  <div class="field"><label for="step-assignee">Assigned workspace member</label><select id="step-assignee" required></select></div>
-                  <div class="field"><label for="step-stage">Stage</label><input id="step-stage" maxlength="100" value="Implementation" required></div>
-                  <div class="field"><label for="step-due-offset">Due after start (days)</label><input id="step-due-offset" type="number" min="0" max="3650" value="0" required></div>
+                  <div class="field"><label for="step-assignee">Assign to a teammate <span class="optional">Optional</span></label><select id="step-assignee"></select></div>
+                </div>
+                <details id="step-options" class="process-step-options">
+                  <summary>More options <span>Timing, prerequisites and customer visibility</span></summary>
+                  <div class="process-step-fields">
+                  <div class="field"><label for="step-stage">Stage</label><input id="step-stage" maxlength="100" value="Implementation"></div>
+                  <div class="field"><label for="step-due-offset">Due after start (days)</label><input id="step-due-offset" type="number" min="0" max="3650" value="0"></div>
                   <label class="check-field process-customer-visible"><input id="step-customer-visible" type="checkbox"> Show this task to the customer in their portal</label>
                   <div class="field field-wide" data-growth-only="dependencies">
                     <label for="step-dependencies-search">Prerequisite steps <span class="optional">Optional</span></label>
@@ -329,7 +334,8 @@
                     <small id="step-dependencies-empty">Add another process step first to set prerequisites.</small>
                     <small id="step-dependencies-no-results" hidden>No matching steps.</small>
                   </div>
-                </div>
+                  </div>
+                </details>
                 <div class="process-step-form-actions">
                   <button class="button primary" id="step-submit" type="submit">Save step</button>
                   <button class="text-button" id="cancel-step-edit" type="button" hidden>Cancel edit</button>
@@ -445,34 +451,41 @@
             </summary>
             <div class="implementation-collapsible-content">
               <form id="implementation-onboarding-gap-plan" class="implementation-form-layout communication-form-layout">
-                <section class="implementation-form-group" aria-labelledby="communication-plan-heading">
-                  <h4 id="communication-plan-heading">Communication plan</h4>
+                <details class="implementation-subsection" aria-labelledby="communication-plan-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="communication-plan-heading">Communication plan</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <div class="implementation-subsection-content">
                   <div class="implementation-field-grid">
                     <label>Channel<input id="gap-communication-channel" maxlength="400" placeholder="Email, portal, weekly call"></label>
                     <label>How often?<input id="gap-communication-cadence" maxlength="400" placeholder="Every Tuesday and at every blocker"></label>
                     <label>Owner name<input id="gap-communication-owner-name" maxlength="120"></label>
                     <label>Owner email<input id="gap-communication-owner-email" type="email" maxlength="254"></label>
                   </div>
-                </section>
-                <section class="implementation-form-group" aria-labelledby="security-approval-heading">
-                  <h4 id="security-approval-heading">Approvals and security</h4>
+                  </div>
+                </details>
+                <details class="implementation-subsection" aria-labelledby="security-approval-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="security-approval-heading">Approvals and security</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <div class="implementation-subsection-content">
                   <div class="implementation-field-grid">
                     <label>Procurement status<select id="gap-procurement-status"><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="approved">Approved</option><option value="blocked">Blocked</option></select></label>
                     <label>Security and compliance status<select id="gap-security-status"><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="approved">Approved</option><option value="blocked">Blocked</option></select></label>
                     <label class="implementation-field-wide">Security/compliance notes<textarea id="gap-security-notes" maxlength="4000" placeholder="Policies, questionnaires, data handling, access controls"></textarea></label>
                   </div>
-                </section>
-                <section class="implementation-form-group" aria-labelledby="technical-setup-heading">
-                  <h4 id="technical-setup-heading">Integrations and technical setup</h4>
+                  </div>
+                </details>
+                <details class="implementation-subsection" aria-labelledby="technical-setup-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="technical-setup-heading">Integrations and technical setup</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <div class="implementation-subsection-content">
                   <div class="implementation-field-grid">
                     <label class="implementation-field-wide">Integration inventory<textarea id="gap-integration-inventory" maxlength="4000" placeholder="APIs, domains, permissions, data mapping, third-party tools"></textarea></label>
                     <label>Integration status<select id="gap-integration-status"><option value="not_started">Not started</option><option value="discovering">Discovering</option><option value="in_progress">In progress</option><option value="tested">Tested</option><option value="blocked">Blocked</option></select></label>
                     <label>Technical setup status<select id="gap-technical-status"><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="tested">Tested</option><option value="ready">Ready</option><option value="blocked">Blocked</option></select></label>
                     <label class="implementation-field-wide">Technical setup details<textarea id="gap-technical-notes" maxlength="4000" placeholder="DNS, email authentication, sandbox, user imports, credentials"></textarea></label>
                   </div>
-                </section>
-                <section class="implementation-form-group" aria-labelledby="training-handoff-heading">
-                  <h4 id="training-handoff-heading">Training and handoff</h4>
+                  </div>
+                </details>
+                <details class="implementation-subsection" aria-labelledby="training-handoff-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="training-handoff-heading">Training and handoff</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <div class="implementation-subsection-content">
                   <div class="implementation-field-grid">
                     <label>Adoption status<select id="gap-change-status"><option value="not_started">Not started</option><option value="planned">Planned</option><option value="in_progress">In progress</option><option value="adopted">Adopted</option></select></label>
                     <label>Validation status<select id="gap-validation-status"><option value="not_started">Not started</option><option value="planned">Planned</option><option value="in_progress">In progress</option><option value="passed">Passed</option><option value="failed">Failed</option></select></label>
@@ -481,7 +494,8 @@
                     <label class="implementation-field-wide">Post-launch support plan<textarea id="gap-support-plan" maxlength="4000" placeholder="Support owner, hours, escalation route, handoff package, ongoing reviews"></textarea></label>
                     <label class="implementation-field-wide">Avoid repeat requests<textarea id="gap-duplicate-control" maxlength="4000" placeholder="Single source of truth, document owner, and request/reuse rule"></textarea></label>
                   </div>
-                </section>
+                  </div>
+                </details>
                 <div class="implementation-form-actions">
                   <button class="button secondary" type="submit">Save communication and setup plan</button>
                   <p id="gap-plan-status" class="status" role="status" aria-live="polite"></p>
@@ -500,8 +514,9 @@
             </summary>
             <div class="implementation-collapsible-content">
               <div class="delivery-form-grid">
-                <form id="implementation-sow-form" class="implementation-form-group">
-                  <h4>Scope and stage</h4>
+                <details class="implementation-subsection" aria-labelledby="delivery-scope-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="delivery-scope-heading">Scope and stage</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <form id="implementation-sow-form" class="implementation-form-group">
                   <div class="implementation-field-grid">
                     <label class="implementation-field-wide">SOW scope<textarea id="sow-scope" maxlength="4000"></textarea></label>
                     <label>Milestones<textarea id="sow-milestones" maxlength="4000"></textarea></label>
@@ -512,9 +527,11 @@
                     <button class="button secondary" type="submit">Save scope and stage</button>
                     <p id="sow-status" class="status" role="status" aria-live="polite"></p>
                   </div>
-                </form>
-                <form id="implementation-financial-form" class="implementation-form-group">
-                  <h4>Budget and invoice</h4>
+                  </form>
+                </details>
+                <details class="implementation-subsection" aria-labelledby="delivery-budget-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="delivery-budget-heading">Budget and invoice</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <form id="implementation-financial-form" class="implementation-form-group">
                   <div class="implementation-field-grid">
                     <label>Budget amount<input id="finance-budget" type="number" min="0" step="0.01"></label>
                     <label>Forecast amount<input id="finance-forecast" type="number" min="0" step="0.01"></label>
@@ -527,9 +544,11 @@
                     <button class="button secondary" type="submit">Save budget and invoice</button>
                     <p id="finance-status" class="status" role="status" aria-live="polite"></p>
                   </div>
-                </form>
-                <form id="time-entry-form" class="implementation-form-group">
-                  <h4>Log time</h4>
+                  </form>
+                </details>
+                <details class="implementation-subsection" aria-labelledby="delivery-time-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="delivery-time-heading">Log time</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <form id="time-entry-form" class="implementation-form-group">
                   <div class="implementation-field-grid">
                     <label>Work date<input id="time-work-date" type="date" required></label>
                     <label>Minutes<input id="time-minutes" type="number" min="1" max="1440" required></label>
@@ -541,9 +560,11 @@
                     <button class="button secondary" type="submit">Log time</button>
                     <p id="time-status" class="status" role="status" aria-live="polite"></p>
                   </div>
-                </form>
-                <form id="approval-form" class="implementation-form-group">
-                  <h4>Request approval</h4>
+                  </form>
+                </details>
+                <details class="implementation-subsection" aria-labelledby="delivery-approval-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="delivery-approval-heading">Request approval</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <form id="approval-form" class="implementation-form-group">
                   <div class="implementation-field-grid">
                     <label class="implementation-field-wide">Approval title<input id="approval-title" maxlength="240" required></label>
                     <label>Type<input id="approval-type" maxlength="80" placeholder="Security, contract, launch"></label>
@@ -555,13 +576,17 @@
                     <button class="button secondary" type="submit">Create approval</button>
                     <p id="approval-status" class="status" role="status" aria-live="polite"></p>
                   </div>
-                </form>
-                <section class="implementation-form-group" aria-labelledby="delivery-activity-heading">
-                  <h4 id="delivery-activity-heading">Recent activity</h4>
-                  <div id="delivery-operations-summary" class="list-stack"></div>
-                </section>
-                <form id="calendar-event-form" class="implementation-form-group">
-                  <h4>Important dates</h4>
+                  </form>
+                </details>
+                <details class="implementation-subsection" aria-labelledby="delivery-activity-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="delivery-activity-heading">Recent activity</h4><span class="implementation-subsection-toggle">View activity</span></summary>
+                  <section class="implementation-form-group">
+                    <div id="delivery-operations-summary" class="list-stack"></div>
+                  </section>
+                </details>
+                <details class="implementation-subsection" aria-labelledby="delivery-dates-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="delivery-dates-heading">Important dates</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <form id="calendar-event-form" class="implementation-form-group">
                   <div class="implementation-field-grid">
                     <label class="implementation-field-wide">Event title<input id="calendar-event-title" maxlength="240" required></label>
                     <label>Start<input id="calendar-event-start" type="datetime-local" required></label>
@@ -573,7 +598,8 @@
                     <button class="button secondary" type="submit">Add timeline event</button>
                     <p id="calendar-event-status" class="status" role="status" aria-live="polite"></p>
                   </div>
-                </form>
+                  </form>
+                </details>
               </div>
             </div>
           </details>
@@ -588,8 +614,9 @@
             </summary>
             <div class="implementation-collapsible-content">
               <div class="delivery-form-grid">
-                <form id="implementation-launch-readiness" class="implementation-form-group">
-                  <h4>Readiness checklist</h4>
+                <details class="implementation-subsection" aria-labelledby="launch-checklist-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="launch-checklist-heading">Readiness checklist</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <form id="implementation-launch-readiness" class="implementation-form-group">
                   <div class="implementation-field-grid">
                     <label class="implementation-field-wide">Success criteria<textarea id="launch-success-criteria" maxlength="4000" placeholder="What outcome proves the customer is ready?"></textarea></label>
                     <label class="implementation-field-wide">Test and acceptance plan<textarea id="launch-test-plan" maxlength="4000" placeholder="Acceptance scenarios, test owner, and sign-off process"></textarea></label>
@@ -604,9 +631,11 @@
                     <button class="button secondary" type="submit">Save launch readiness</button>
                     <p id="launch-readiness-status" class="status" role="status" aria-live="polite"></p>
                   </div>
-                </form>
-                <section class="implementation-form-group" aria-labelledby="launch-stakeholders-heading">
-                  <h4 id="launch-stakeholders-heading">Approvals and stakeholders</h4>
+                  </form>
+                </details>
+                <details class="implementation-subsection" aria-labelledby="launch-stakeholders-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="launch-stakeholders-heading">Approvals and stakeholders</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <section class="implementation-form-group">
                   <p class="implementation-group-description">Track people whose approval or participation can block launch.</p>
                   <form id="launch-stakeholder-form" class="implementation-form-layout">
                     <div class="implementation-field-grid">
@@ -622,9 +651,11 @@
                     </div>
                   </form>
                   <div id="launch-stakeholder-list" class="list-stack"></div>
-                </section>
-                <section class="implementation-form-group" aria-labelledby="launch-risks-heading">
-                  <h4 id="launch-risks-heading">Risks and blockers</h4>
+                  </section>
+                </details>
+                <details class="implementation-subsection" aria-labelledby="launch-risks-heading">
+                  <summary class="implementation-subsection-summary"><h4 id="launch-risks-heading">Risks and blockers</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <section class="implementation-form-group">
                   <p class="implementation-group-description">Record an owner, severity, due date, and next action for each risk.</p>
                   <form id="launch-risk-form" class="implementation-form-layout">
                     <div class="implementation-field-grid">
@@ -643,7 +674,8 @@
                     </div>
                   </form>
                   <div id="launch-risk-list" class="list-stack"></div>
-                </section>
+                  </section>
+                </details>
               </div>
             </div>
           </details>

@@ -339,7 +339,8 @@ test("process map builder separates creation, saving, checking, and template cre
 
   for (const id of [
     "process-progress", "process-list", "process-form", "process-editor-subtitle",
-    "process-step-count", "step-form-heading", "process-action-help", "test-process", "save-template"
+    "process-create-details", "step-options", "process-step-count", "step-form-heading",
+    "process-action-help", "test-process", "save-template"
   ]) {
     assert.match(productHtml, new RegExp(`id="${id}"`), `${id} must be present in the process builder`);
   }
@@ -349,8 +350,20 @@ test("process map builder separates creation, saving, checking, and template cre
   assert.match(productHtml, /id="step-submit" type="submit">Save step/);
   assert.match(productHtml, /id="test-process" type="button">Check process/);
   assert.match(productHtml, /id="save-template" type="button">Create template/);
+  assert.match(productHtml, /<details id="process-create-details" class="process-create-details">/);
+  assert.match(productHtml, /<details id="step-options" class="process-step-options">/);
+  assert.match(productHtml, /Assign to a teammate <span class="optional">Optional<\/span><\/label><select id="step-assignee">/);
+  assert.match(productHtml, /More options <span>Timing, prerequisites and customer visibility<\/span>/);
   assert.doesNotMatch(productHtml, /<details class="process-details">/);
   assert.match(productScript, /function renderProcessProgress\(\)/);
+  assert.match(productScript, /class="process-progress-action" type="button" data-process-stage=/);
+  assert.match(productScript, /const stage = Number\(button\.dataset\.processStage\);[\s\S]*?focusProcessStage\(stage\)\.catch\(showError\)/);
+  assert.match(productScript, /async function showProcessWorkspace\(\)/);
+  assert.match(productScript, /function focusProcessCreation\(\)/);
+  assert.match(productScript, /aria-current="\$\{selected \? "true" : "false"\}" \$\{selected \? "disabled" : ""\}>\$\{selected \? "Selected" : "Open"\}/);
+  assert.match(productScript, /document\.getElementById\("process-create-details"\)\.open = false/);
+  assert.match(productScript, /document\.getElementById\("step-options"\)\.open = false/);
+  assert.match(productScript, /if \(button\.dataset\.view === "processes"\) showProcessWorkspace\(\)\.catch\(showError\)/);
   assert.match(productScript, /steps_count \?\? process\.steps\?\.length/);
   assert.match(productScript, /function hasTemplateForProcess\(processId\)/);
   assert.match(productScript, /saveTemplate\.textContent = hasTemplate \? "Create another template" : "Create template"/);
@@ -384,14 +397,17 @@ test("workspace navigation is grouped and the overview routes to one next action
     "settings",
     "guide"
   ]);
-  assert.match(productHtml, /class="nav-group-label">Dashboard/);
-  assert.match(productHtml, /class="nav-group-label">Onboarding workflow/);
-  assert.match(productHtml, /class="nav-group-label">Workspace settings/);
+  assert.match(productHtml, /class="nav-group-label">Workspace/);
+  assert.match(productHtml, /class="nav-group-label">Run onboarding/);
+  assert.match(productHtml, /class="nav-group-label">Manage workspace/);
   assert.match(productHtml, /class="nav-group-label">Help/);
+  assert.match(productHtml, /class="nav-item active" data-view="overview" aria-current="page"/);
+  assert.match(productScript, /if \(isActive\) item\.setAttribute\("aria-current", "page"\);[\s\S]*?else item\.removeAttribute\("aria-current"\);/);
   assert.match(productHtml, /id="mobile-nav-toggle"/);
   assert.match(productHtml, /id="sidebar-backdrop"/);
   assert.match(productHtml, /id="overview-primary-action"[^>]*data-workflow-action=/);
   assert.match(productScript, /primaryAction\.dataset\.workflowAction = next\.action/);
+  assert.match(productScript, /if \(!setView\("implementations"\)\) return;\s*document\.getElementById\("implementation-template"\)\.value/);
   assert.match(productScript, /Use the main action above to continue/);
 });
 
@@ -419,6 +435,7 @@ test("implementation planning forms are grouped into accessible collapsed sectio
   const productCss = readFileSync(path.join(publicDir, "product.css"), "utf8");
   const productScript = readFileSync(path.join(publicDir, "product.js"), "utf8");
   const sections = [...productHtml.matchAll(/<details class="panel implementation-collapsible"[^>]*data-implementation-section="([^"]+)"[^>]*>([\s\S]*?)<\/details>/g)];
+  const subsections = [...productHtml.matchAll(/<details class="implementation-subsection"[^>]*>/g)];
   const implementationDetail = productHtml.slice(
     productHtml.indexOf('<div class="panel" id="implementation-detail"'),
     productHtml.indexOf('<section class="view" id="view-requirements">')
@@ -439,8 +456,12 @@ test("implementation planning forms are grouped into accessible collapsed sectio
     assert.match(section[2], /<summary class="implementation-collapsible-summary">/);
     assert.match(section[2], /<h3 id="[^"]+">/);
   }
+  assert.equal(subsections.length, 13, "optional delivery forms should be grouped into focused, collapsed subsections");
+  assert.ok(subsections.every((section) => !/\sopen(?:\s|>)/.test(section[0])));
+  assert.match(productHtml, /id="implementation-onboarding-gap-plan"/);
   assert.match(productCss, /\.implementation-field-grid\s*\{[^}]*display: grid/);
-  assert.match(productCss, /\.implementation-field-grid input,[\s\S]*?\{[^}]*min-height: 40px/);
+  assert.match(productCss, /\.implementation-field-grid input,[\s\S]*?\{[^}]*min-height: 44px/);
+  assert.match(productCss, /\.implementation-subsection\s*\{[^}]*overflow: hidden/);
   assert.match(productCss, /\.communication-form-layout, \.implementation-field-grid \{ grid-template-columns: 1fr; \}/);
   assert.match(productHtml, /id="implementation-step-summary"/);
   assert.match(productScript, /<details class="task-edit-details">\s*<summary aria-label="Edit task:/);
