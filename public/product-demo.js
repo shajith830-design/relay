@@ -27,8 +27,8 @@
     integrations: [],
     onboardingDismissed: false,
     members: [
-      { id: ownerId, email: "owner@demo.invalid", role: "owner" },
-      { id: memberId, email: "teammate@demo.invalid", role: "member" }
+      { id: ownerId, email: "owner@demo.invalid", role: "owner", default_internal_cost_rate: 70, default_billable_rate: 150 },
+      { id: memberId, email: "teammate@demo.invalid", role: "contributor", default_internal_cost_rate: 45, default_billable_rate: 110 }
     ],
     invites: [{
       id: 9003,
@@ -47,17 +47,20 @@
         {
           id: 9011, title: "Confirm project goals", description: "Agree on success measures and the project owner.",
           owner: "Implementation lead", position: 1, stage: "Kickoff", due_offset_days: 0,
-          assignee_user_id: ownerId, assignee_email: "owner@demo.invalid", customer_visible: true, dependsOn: []
+          assignee_user_id: ownerId, assignee_email: "owner@demo.invalid", customer_visible: true,
+          estimated_duration_days: 1, responsible_party: "client", dependsOn: []
         },
         {
           id: 9012, title: "Configure the workspace", description: "Set up the workspace using the confirmed project requirements.",
           owner: "Setup specialist", position: 2, stage: "Configuration", due_offset_days: 3,
-          assignee_user_id: memberId, assignee_email: "teammate@demo.invalid", customer_visible: true, dependsOn: [9011]
+          assignee_user_id: memberId, assignee_email: "teammate@demo.invalid", customer_visible: true,
+          estimated_duration_days: 2, responsible_party: "relay", dependsOn: [9011]
         },
         {
           id: 9013, title: "Review launch readiness", description: "Review configuration with the customer and record open questions.",
           owner: "Implementation lead", position: 3, stage: "Launch", due_offset_days: 7,
-          assignee_user_id: ownerId, assignee_email: "owner@demo.invalid", customer_visible: false, dependsOn: [9012]
+          assignee_user_id: ownerId, assignee_email: "owner@demo.invalid", customer_visible: false,
+          estimated_duration_days: 1, responsible_party: "relay", dependsOn: [9012]
         }
       ]
     }],
@@ -73,6 +76,9 @@
     implementations: [{
       id: 9040, template_id: 9020, customer_name: "Acme Example Co.", template_name: "Standard onboarding",
       created_at: dateOffset(-5), has_customer_link: true, escalation_email: "", escalation_delay_days: 5,
+      base_onboarding_fee: 12000,       budget_type: "fixed_hours", budget_limit: 120,
+      hard_lock_on_exceed: false, budgetBurn: { burn_pct: 50, logged_minutes: 3600, delivery_cost: 4200 },
+      budgetOverrides: [], changeOrders: [{ id: 9050, status: "approved", additional_fee: 1500, task_ids: [9043] }],
       target_launch_date: dateOffset(15), customer_owner_name: "Jordan Lee", customer_owner_email: "jordan@acme.example",
       success_criteria: "Customer team completes a successful test and confirms the launch workflow.",
       acceptance_status: "in_progress",
@@ -104,7 +110,9 @@
       sow_exclusions: "Custom development and third-party system support.",
       stage_gate_status: "configuration",
       financialPlan: { budget_amount: 12000, forecast_amount: 12000, actual_cost: 4200, invoice_status: "draft", invoice_reference: "SAMPLE-INV-100", margin_note: "Status and reference are fictional planning fields; Relay does not generate or send invoices." },
-      timeEntries: [],
+      timeEntries: [
+        { id: 9051, task_id: 9041, minutes: 3600, billable: false, work_date: dateOffset(-1), note: "Sample setup and validation", user_email: "teammate@demo.invalid", internal_cost_rate_snapshot: 70, client_bill_rate_snapshot: 150, labor_cost: 4200, logged_at: new Date().toISOString() }
+      ],
       approvals: [],
       calendarEvents: [],
       launchStakeholders: [],
@@ -160,6 +168,94 @@
 
   function findImplementation(id) {
     return data.implementations.find((implementation) => implementation.id === Number(id));
+  }
+
+  function calculateDemoBurn(implementation) {
+    const limit = Number(implementation.budget_limit) || 0;
+    if (limit <= 0 || !["fixed_hours", "fixed_fee"].includes(implementation.budget_type)) return null;
+    const loggedMinutes = (implementation.timeEntries || []).reduce((total, entry) => total + Number(entry.minutes || 0), 0);
+    const deliveryCost = (implementation.timeEntries || []).reduce(
+      (total, entry) => total + Number(entry.minutes || 0) / 60 * Number(entry.internal_cost_rate_snapshot || 0), 0
+    );
+    return (implementation.budget_type === "fixed_hours" ? loggedMinutes / 60 : deliveryCost) / limit * 100;
+  }
+
+  function updateDemoBurn(implementation) {
+    const loggedMinutes = (implementation.timeEntries || []).reduce((total, entry) => total + Number(entry.minutes || 0), 0);
+    const deliveryCost = (implementation.timeEntries || []).reduce(
+      (total, entry) => total + Number(entry.minutes || 0) / 60 * Number(entry.internal_cost_rate_snapshot || 0), 0
+    );
+    implementation.budgetBurn = {
+      burn_pct: calculateDemoBurn(implementation),
+      logged_minutes: loggedMinutes,
+      delivery_cost: deliveryCost,
+      hard_lock_on_exceed: implementation.hard_lock_on_exceed
+    };
+  }
+
+  function demoPortfolioMargins() {
+    const projects = data.implementations.filter((implementation) => !implementation.archived_at).map((implementation) => {
+      const approvedChangeOrders = (implementation.changeOrders || []).filter((order) => order.status === "approved");
+      const approvedTotal = approvedChangeOrders.reduce((total, order) => total + Number(order.additional_fee || 0), 0);
+      const contractValue = Number(implementation.base_onboarding_fee || 0) + approvedTotal;
+      const coveredTasks = new Set(approvedChangeOrders.flatMap((order) => order.task_ids || []));
+      const deliveryCost = (implementation.timeEntries || []).reduce(
+        (total, entry) => total + Number(entry.minutes || 0) / 60 * Number(entry.internal_cost_rate_snapshot || 0), 0
+      );
+      const budgetLimit = Number(implementation.budget_limit || 0);
+      const uncoveredEntries = (implementation.timeEntries || [])
+        .filter((entry) => !coveredTasks.has(entry.task_id))
+        .sort((left, right) => String(left.logged_at || "").localeCompare(String(right.logged_at || "")));
+      let overageLeakage = 0;
+      if (implementation.budget_type === "fixed_hours" && budgetLimit > 0) {
+        let consumedMinutes = 0;
+        for (const entry of uncoveredEntries) {
+          const priorOverage = Math.max(0, consumedMinutes - budgetLimit * 60);
+          consumedMinutes += Number(entry.minutes || 0);
+          const currentOverage = Math.max(0, consumedMinutes - budgetLimit * 60);
+          overageLeakage += (currentOverage - priorOverage) / 60 * Number(entry.client_bill_rate_snapshot || 0);
+        }
+      } else if (implementation.budget_type === "fixed_fee" && budgetLimit > 0) {
+        let consumedCost = 0;
+        for (const entry of uncoveredEntries) {
+          const rate = Number(entry.internal_cost_rate_snapshot || 0);
+          const cost = Number(entry.minutes || 0) / 60 * rate;
+          const priorOverage = Math.max(0, consumedCost - budgetLimit);
+          consumedCost += cost;
+          const currentOverage = Math.max(0, consumedCost - budgetLimit);
+          if (rate > 0) overageLeakage += (currentOverage - priorOverage) / rate * Number(entry.client_bill_rate_snapshot || 0);
+        }
+      }
+      const grossProfit = contractValue - deliveryCost;
+      return {
+        id: implementation.id,
+        customer_name: implementation.customer_name,
+        budget_type: implementation.budget_type,
+        budget_limit: budgetLimit,
+        hard_lock_on_exceed: Boolean(implementation.hard_lock_on_exceed),
+        contract_value: contractValue,
+        approved_change_orders_total: approvedTotal,
+        delivery_cost: deliveryCost,
+        gross_profit: grossProfit,
+        gross_margin_pct: contractValue > 0 ? grossProfit / contractValue * 100 : 0,
+        logged_minutes: (implementation.timeEntries || []).reduce((total, entry) => total + Number(entry.minutes || 0), 0),
+        burn_pct: calculateDemoBurn(implementation),
+        unbilled_overage_leakage: overageLeakage
+      };
+    });
+    const revenue = projects.reduce((total, project) => total + project.contract_value, 0);
+    const marginProjects = projects.filter((project) => project.contract_value > 0);
+    return {
+      summary: {
+        total_portfolio_revenue: revenue,
+        total_delivery_cost: projects.reduce((total, project) => total + project.delivery_cost, 0),
+        average_gross_margin_pct: marginProjects.length
+          ? marginProjects.reduce((total, project) => total + project.gross_margin_pct, 0) / marginProjects.length : 0,
+        total_unbilled_overage_leakage: projects.reduce((total, project) => total + project.unbilled_overage_leakage, 0)
+      },
+      projects,
+      alerts: []
+    };
   }
 
   function updateWaitingTasks(implementation) {
@@ -250,12 +346,19 @@
         revision: template.revision,
         step_count: template.steps.length
       })),
-      implementations: data.implementations.map(summarizeImplementation),
+      implementations: data.implementations.filter((implementation) => !implementation.archived_at).map(summarizeImplementation),
+      archivedImplementations: data.implementations.filter((implementation) => implementation.archived_at).map((implementation) => ({
+        id: implementation.id,
+        customer_name: implementation.customer_name,
+        template_name: implementation.template_name,
+        archived_at: implementation.archived_at
+      })),
       requirements: clone(data.requirements),
       members: clone(data.members),
       invites: clone(data.invites),
       teamWorkload: data.members.map((member) => {
-        const tasks = data.implementations.flatMap((implementation) => implementation.steps)
+        const tasks = data.implementations.filter((implementation) => !implementation.archived_at)
+          .flatMap((implementation) => implementation.steps)
           .filter((step) => step.assignee_user_id === member.id && step.status !== "done");
         return {
           id: member.id,
@@ -267,7 +370,49 @@
       notificationSettings: clone(data.notificationSettings),
       integrations: clone(data.integrations),
       capacityPlans: clone(data.capacityPlans || []),
-      role: "owner"
+      role: "owner",
+      capabilities: {
+        administerWorkspace: true,
+        manageImplementations: true,
+        manageTasks: true,
+        manageCustomerCommunication: true,
+        logTime: true,
+        viewFinancials: true,
+        manageFinancials: true,
+        viewRates: true,
+        viewAuditLogs: true,
+        executiveView: true
+      },
+      plan: {
+        code: "custom",
+        name: "Custom",
+        memberLimit: null,
+        activeImplementationLimit: null,
+        templateLimit: null,
+        features: {
+          dependencies: true,
+          blockers: true,
+          templateHistory: true,
+          criticalPath: true,
+          changeOrders: true,
+          portfolioFull: true,
+          hubspot: true,
+          financialProtection: true,
+          clientDelegation: true,
+          inputValidation: true,
+          stageGates: true,
+          clientReminders: true,
+          csvExports: true,
+          slackAlerts: false,
+          enterpriseIntegrations: true
+        }
+      },
+      usage: {
+        members: data.members.length,
+        pendingInvites: data.invites.length,
+        templates: data.templates.length,
+        activeImplementations: data.implementations.filter((implementation) => !implementation.archived_at).length
+      }
     };
   }
 
@@ -280,6 +425,8 @@
       assigneeEmail: step.assignee_email,
       stage: step.stage,
       dueOffsetDays: step.due_offset_days,
+      estimatedDurationDays: step.estimated_duration_days || 1,
+      responsibleParty: step.responsible_party || (step.customer_visible ? "client" : "relay"),
       position: index + 1,
       dependsOnPositions: step.dependsOn.map((dependency) =>
         process.steps.findIndex((candidate) => candidate.id === dependency) + 1
@@ -386,9 +533,10 @@
 
   function implementationForCustomerToken(token) {
     return data.implementations.find((implementation) =>
+      !implementation.archived_at && (
       data.customerTokens.get(implementation.id) === token
       || (implementation.customerContacts || []).some((contact) =>
-        contact.token === token && !contact.revoked_at && Date.parse(contact.expires_at) > Date.now()));
+        contact.token === token && !contact.revoked_at && Date.parse(contact.expires_at) > Date.now())));
   }
 
   function validateCustomerValue(requirement, value) {
@@ -440,6 +588,47 @@
       return Promise.resolve({ dismissed: data.onboardingDismissed });
     }
     if (path === "/api/product/workspace") return Promise.resolve(workspaceData());
+    if (path === "/api/product/analytics/portfolio-margins" && method === "GET") {
+      return Promise.resolve(clone(demoPortfolioMargins()));
+    }
+    if ((match = path.match(/^\/api\/product\/team-members\/(\d+)\/rates$/)) && method === "POST") {
+      const member = data.members.find((item) => item.id === Number(match[1]));
+      if (!member) return Promise.reject(new Error("Team member not found."));
+      const costRate = Number(body.defaultInternalCostRate);
+      const billRate = Number(body.defaultBillableRate);
+      if (!Number.isFinite(costRate) || costRate < 0 || !Number.isFinite(billRate) || billRate < 0) {
+        return Promise.reject(new Error("Enter valid non-negative hourly rates."));
+      }
+      member.default_internal_cost_rate = costRate;
+      member.default_billable_rate = billRate;
+      return Promise.resolve({ member: clone(member) });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/archive$/)) && method === "PATCH") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      if (implementation.archived_at) return Promise.reject(new Error("This implementation is already archived."));
+      implementation.archived_at = new Date().toISOString();
+      return Promise.resolve({ success: true });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/restore$/)) && method === "PATCH") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      if (!implementation.archived_at) return Promise.reject(new Error("This implementation is not archived."));
+      delete implementation.archived_at;
+      return Promise.resolve({ success: true });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)$/)) && method === "DELETE") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      data.implementations = data.implementations.filter((item) => item.id !== implementation.id);
+      data.customerTokens.delete(implementation.id);
+      const portals = readPortalSnapshots();
+      for (const [token, portal] of Object.entries(portals)) {
+        if (portal.implementationId === implementation.id) delete portals[token];
+      }
+      window.localStorage.setItem(portalStorageKey, JSON.stringify(portals));
+      return Promise.resolve({ success: true });
+    }
     if (path === "/api/product/capacity-plans" && method === "POST") {
       const plan = {
         user_id: Number(body.userId), user_email: data.members.find((member) => member.id === Number(body.userId))?.email || "",
@@ -468,14 +657,14 @@
         reminderDaysBefore: data.notificationSettings.reminder_days_before
       });
     }
-    if ((match = path.match(/^\/api\/product\/integrations\/hubspot\/connect$/)) && method === "POST") {
+    if ((match = path.match(/^\/api\/product\/integrations\/(hubspot|salesforce)\/connect$/)) && method === "POST") {
       const provider = match[1];
       if (!data.integrations.some((integration) => integration.provider === provider)) {
         data.integrations.push({ provider, connected_at: new Date().toISOString(), demo: true });
       }
       return Promise.resolve({ demoConnected: true });
     }
-    if ((match = path.match(/^\/api\/product\/integrations\/hubspot$/)) && method === "DELETE") {
+    if ((match = path.match(/^\/api\/product\/integrations\/(hubspot|salesforce)$/)) && method === "DELETE") {
       data.integrations = data.integrations.filter((integration) => integration.provider !== match[1]);
       return Promise.resolve({ success: true });
     }
@@ -513,9 +702,24 @@
       const email = String(body.email || "").trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Promise.reject(new Error("Enter a valid teammate email address."));
       if (data.invites.some((invite) => invite.invited_email === email)) return Promise.reject(new Error("An invitation is already pending for this email."));
-      const invite = { id: nextId++, invited_email: email, expires_at: new Date(Date.now() + 7 * 86400000).toISOString(), created_at: new Date().toISOString() };
+      const invite = {
+        id: nextId++,
+        invited_email: email,
+        role: body.role || "contributor",
+        expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+        created_at: new Date().toISOString()
+      };
       data.invites.unshift(invite);
       return Promise.resolve({ invite: { ...clone(invite), inviteUrl: `${window.location.origin}/product.html?invite=local-demo-${invite.id}` } });
+    }
+    if ((match = path.match(/^\/api\/product\/team-members\/(\d+)\/role$/)) && method === "PATCH") {
+      const member = data.members.find((item) => item.id === Number(match[1]));
+      if (!member || member.role === "owner") return Promise.reject(new Error("Teammate not found."));
+      if (!["admin", "implementation_manager", "contributor", "executive_viewer"].includes(body.role)) {
+        return Promise.reject(new Error("Choose a valid workspace role."));
+      }
+      member.role = body.role;
+      return Promise.resolve({ member: clone(member) });
     }
     if ((match = path.match(/^\/api\/product\/invites\/(\d+)$/)) && method === "DELETE") {
       data.invites = data.invites.filter((invite) => invite.id !== Number(match[1]));
@@ -561,6 +765,8 @@
         due_offset_days: Number(body.dueOffsetDays || 0), assignee_user_id: body.assigneeUserId ? Number(body.assigneeUserId) : null,
         assignee_email: data.members.find((member) => member.id === Number(body.assigneeUserId))?.email || null,
         customer_visible: body.customerVisible === true,
+        estimated_duration_days: Number(body.estimatedDurationDays || 1),
+        responsible_party: body.responsibleParty === "client" ? "client" : "relay",
         dependsOn
       };
       process.steps.push(step);
@@ -597,6 +803,8 @@
         title: String(body.title || "").trim(), description: String(body.description || "").trim(),
         owner: String(body.owner || "").trim(), stage: String(body.stage || "Implementation"),
         due_offset_days: Number(body.dueOffsetDays || 0),
+        estimated_duration_days: Number(body.estimatedDurationDays || 1),
+        responsible_party: body.responsibleParty === "client" ? "client" : "relay",
         assignee_user_id: body.assigneeUserId ? Number(body.assigneeUserId) : null,
         assignee_email: data.members.find((member) => member.id === Number(body.assigneeUserId))?.email || null,
         customer_visible: body.customerVisible === true,
@@ -704,6 +912,8 @@
           position: index + 1, status: "not_started", updated_at: new Date().toISOString(),
           stage: step.stage, assignee_user_id: step.assigneeUserId || null, assignee_email: step.assigneeEmail || null,
           customer_visible: step.customerVisible === true,
+          estimated_duration_days: step.estimatedDurationDays || 1,
+          responsible_party: step.responsibleParty || (step.customerVisible ? "client" : "relay"),
           due_at: dateOffset(step.dueOffsetDays || 0), is_blocked: false, blocker_reason: "", blocker_next_action: "",
           waiting_on: "", dependsOn: []
         })),
@@ -738,7 +948,9 @@
       return Promise.resolve({ implementation: responseForImplementation(implementation).implementation, customerInvitation });
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)$/)) && method === "GET") {
-      return Promise.resolve(responseForImplementation(findImplementation(match[1])));
+      const implementation = findImplementation(match[1]);
+      if (!implementation || implementation.archived_at) return Promise.reject(new Error("Implementation not found."));
+      return Promise.resolve(responseForImplementation(implementation));
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/customer-escalation$/)) && method === "PATCH") {
       const implementation = findImplementation(match[1]);
@@ -801,21 +1013,106 @@
       };
       return Promise.resolve(clone(body));
     }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/budget$/)) && method === "PATCH") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      implementation.base_onboarding_fee = Number(body.baseOnboardingFee);
+      implementation.budget_type = String(body.budgetType);
+      implementation.budget_limit = Number(body.budgetLimit);
+      implementation.hard_lock_on_exceed = body.hardLockOnExceed === true;
+      updateDemoBurn(implementation);
+      return Promise.resolve({
+        baseOnboardingFee: implementation.base_onboarding_fee,
+        budgetType: implementation.budget_type,
+        budgetLimit: implementation.budget_limit,
+        hardLockOnExceed: implementation.hard_lock_on_exceed,
+        burn: clone(implementation.budgetBurn)
+      });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/budget-overrides$/)) && method === "POST") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      const durationHours = Number(body.durationHours);
+      const reason = String(body.reason || "").trim();
+      if (!reason || !Number.isInteger(durationHours) || durationHours < 1 || durationHours > 24) {
+        return Promise.reject(new Error("Enter an override reason and a duration between 1 and 24 hours."));
+      }
+      const override = {
+        id: nextId++, reason,
+        expires_at: new Date(Date.now() + durationHours * 3600000).toISOString(),
+        created_at: new Date().toISOString()
+      };
+      implementation.budgetOverrides ||= [];
+      implementation.budgetOverrides.push(override);
+      return Promise.resolve({ override: clone(override) });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/steps\/(\d+)\/time-entries$/)) && method === "POST") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      const taskId = Number(match[2]);
+      const task = implementation.steps.find((step) => step.id === taskId);
+      const minutes = Number(body.minutes);
+      if (!task) return Promise.reject(new Error("Task not found in this implementation."));
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+        return Promise.reject(new Error("Enter a valid work date and time entry."));
+      }
+      implementation.timeEntries ||= [];
+      const member = data.members.find((item) => item.id === data.user.id) || data.members[0];
+      const approvedChangeOrder = (implementation.changeOrders || []).some((order) =>
+        order.status === "approved" && (order.task_ids || []).includes(taskId));
+      const entry = {
+        id: nextId++, implementation_id: implementation.id, task_id: taskId,
+        user_id: member.id, user_email: member.email,
+        work_date: String(body.workDate || dateOffset(0)), minutes,
+        billable: typeof body.isBillable === "boolean" ? body.isBillable : approvedChangeOrder,
+        note: String(body.note || "").slice(0, 500),
+        internal_cost_rate_snapshot: Number(member.default_internal_cost_rate || 0),
+        client_bill_rate_snapshot: Number(member.default_billable_rate || 0),
+        labor_cost: minutes / 60 * Number(member.default_internal_cost_rate || 0),
+        logged_at: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      };
+      implementation.timeEntries.unshift(entry);
+      updateDemoBurn(implementation);
+      return Promise.resolve({ entry: clone(entry), burn: clone(implementation.budgetBurn) });
+    }
+    if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/time-entries$/)) && method === "GET") {
+      const implementation = findImplementation(match[1]);
+      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      return Promise.resolve({ entries: clone(implementation.timeEntries || []) });
+    }
+    if ((match = path.match(/^\/api\/product\/time-entries\/(\d+)$/)) && method === "DELETE") {
+      const entryId = Number(match[1]);
+      const implementation = data.implementations.find((item) => item.timeEntries?.some((entry) => entry.id === entryId));
+      if (!implementation) return Promise.reject(new Error("Time entry not found."));
+      implementation.timeEntries = implementation.timeEntries.filter((entry) => entry.id !== entryId);
+      updateDemoBurn(implementation);
+      return Promise.resolve({ success: true, burn: clone(implementation.budgetBurn) });
+    }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/time-entries$/)) && method === "POST") {
       const implementation = findImplementation(match[1]);
       if (!implementation) return Promise.reject(new Error("Implementation not found."));
       implementation.timeEntries ||= [];
+      const member = data.members.find((item) => item.id === data.user.id) || data.members[0];
+      const clientBillRate = body.hourlyRate === undefined || body.hourlyRate === ""
+        ? Number(member.default_billable_rate || 0) : Number(body.hourlyRate);
       const entry = {
-        id: nextId++, user_email: "owner@demo.invalid", work_date: String(body.workDate || ""),
+        id: nextId++, user_id: member.id, user_email: member.email, work_date: String(body.workDate || ""),
         minutes: Number(body.minutes || 0), billable: body.billable !== false,
-        note: String(body.note || ""), hourly_rate: Number(body.hourlyRate || 0),
+        note: String(body.note || ""), hourly_rate: clientBillRate,
+        task_id: body.taskId ? Number(body.taskId) : null,
+        internal_cost_rate_snapshot: Number(member.default_internal_cost_rate || 0),
+        client_bill_rate_snapshot: clientBillRate,
+        labor_cost: Number(body.minutes || 0) / 60 * Number(member.default_internal_cost_rate || 0),
+        logged_at: new Date().toISOString(),
         created_at: new Date().toISOString()
       };
       if (!entry.work_date || !Number.isInteger(entry.minutes) || entry.minutes < 1) {
         return Promise.reject(new Error("Enter a valid work date and time entry."));
       }
       implementation.timeEntries.unshift(entry);
-      return Promise.resolve({ entry: clone(entry) });
+      updateDemoBurn(implementation);
+      return Promise.resolve({ entry: clone(entry), burn: clone(implementation.budgetBurn) });
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/approvals$/)) && method === "POST") {
       const implementation = findImplementation(match[1]);
@@ -848,7 +1145,8 @@
       const implementation = findImplementation(match[1]);
       if (!implementation) return Promise.reject(new Error("Implementation not found."));
       implementation.timeEntries = (implementation.timeEntries || []).filter((entry) => entry.id !== Number(match[2]));
-      return Promise.resolve({ success: true });
+      updateDemoBurn(implementation);
+      return Promise.resolve({ success: true, burn: clone(implementation.budgetBurn) });
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/calendar-events$/)) && method === "POST") {
       const implementation = findImplementation(match[1]);
@@ -996,7 +1294,7 @@
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/customer-link$/)) && method === "POST") {
       const implementation = findImplementation(match[1]);
-      if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      if (!implementation || implementation.archived_at) return Promise.reject(new Error("Implementation not found."));
       const token = `local-demo-${nextId++}`;
       data.customerTokens.set(implementation.id, token);
       implementation.has_customer_link = true;
@@ -1055,6 +1353,11 @@
           changeManagementStatus: implementation?.change_management_status || portal.changeManagementStatus || "not_started",
           earlyValidationStatus: implementation?.early_validation_status || portal.earlyValidationStatus || "not_started",
           postLaunchSupportPlan: implementation?.post_launch_support_plan || portal.postLaunchSupportPlan || "",
+          accessRole: contact ? "primary" : "viewer",
+          projectedGoLiveDate: implementation?.projected_go_live_date || implementation?.target_launch_date || portal?.targetLaunchDate || "",
+          goLiveShifts: implementation?.goLiveShifts || portal?.goLiveShifts || [],
+          changeOrders: implementation?.changeOrders || portal?.changeOrders || [],
+          delegations: implementation?.delegations || portal?.delegations || [],
           contact: contact ? {
             id: contact.id, name: contact.display_name || contact.name,
             email: contact.email, expiresAt: contact.expires_at || contact.expiresAt

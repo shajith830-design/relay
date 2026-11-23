@@ -115,15 +115,16 @@
         </div>
         <div class="nav-group">
           <span class="nav-group-label">Run onboarding</span>
-          <button class="nav-item" data-view="processes"><span aria-hidden="true">≋</span> Process maps</button>
-          <button class="nav-item" data-view="templates"><span aria-hidden="true">▤</span> Templates</button>
+          <button class="nav-item" data-view="processes" data-role-capability="administerWorkspace"><span aria-hidden="true">≋</span> Process maps</button>
+          <button class="nav-item" data-view="templates" data-role-capability="administerWorkspace"><span aria-hidden="true">▤</span> Templates</button>
           <button class="nav-item" data-view="implementations"><span aria-hidden="true">◷</span> Implementations</button>
-          <button class="nav-item" data-view="requirements"><span aria-hidden="true">✓</span> Customer information</button>
-          <button class="nav-item" data-view="portfolio"><span aria-hidden="true">◧</span> Team workload</button>
+          <button class="nav-item" data-view="requirements" data-role-capability="administerWorkspace"><span aria-hidden="true">✓</span> Customer information</button>
+          <button class="nav-item" data-view="portfolio" data-role-capability="viewFinancials"><span aria-hidden="true">◧</span> Portfolio</button>
+          <button class="nav-item" data-view="financials" data-plan-feature="financialProtection" data-role-capability="viewFinancials" hidden><span aria-hidden="true">$</span> Financials</button>
         </div>
         <div class="nav-group">
           <span class="nav-group-label">Manage workspace</span>
-          <button class="nav-item" data-view="integrations"><span aria-hidden="true">⇄</span> Integrations</button>
+          <button class="nav-item" data-view="integrations" data-plan-feature="hubspot" data-role-capability="administerWorkspace" hidden><span aria-hidden="true">⇄</span> Integrations</button>
           <button class="nav-item" data-view="settings"><span aria-hidden="true">⚙</span> Settings</button>
         </div>
         <div class="nav-group">
@@ -157,7 +158,7 @@
           <div><p class="eyebrow">Your next best action</p><h2>Keep every implementation moving.</h2><p>Relay points you to the next useful action. Reuse a saved template to avoid rebuilding work for each customer.</p></div>
           <button class="button primary" id="overview-primary-action" data-workflow-action="map-process" type="button">Create a process map</button>
         </div>
-        <section class="panel getting-started" id="getting-started" aria-labelledby="getting-started-title" hidden>
+        <section class="panel getting-started" id="getting-started" aria-labelledby="getting-started-title" data-role-capability="administerWorkspace" hidden>
           <div class="panel-heading">
             <div><p class="eyebrow">A quick start for your workspace</p><h2 id="getting-started-title">Your first implementation, step by step</h2><p>Follow the checklist at your own pace. Relay will keep your progress up to date.</p></div>
             <button class="text-button" id="dismiss-getting-started" type="button">Hide guide</button>
@@ -212,21 +213,22 @@
           <section class="panel guide-step" aria-labelledby="guide-delivery-title">
             <p class="guide-step-label">Step 5</p>
             <h3 id="guide-delivery-title">Keep delivery details together</h3>
-            <p>Inside an implementation, use <strong>Communication, approvals, and setup</strong> to plan customer updates and record setup progress. Use <strong>Delivery operations</strong> to track agreed work, budget, time, approvals, and important dates. These sections are optional; fill in only what applies to that customer.</p>
+            <p>Inside an implementation, use <strong>Communication, approvals, and setup</strong> to plan customer updates and record setup progress. Custom workspaces include project budget caps, time tracking with timers and quick presets, and workspace-owner cost and bill rates. Each time entry keeps a rate snapshot so later rate changes do not rewrite history.</p>
+            <p>Time entries, rates, budget caps, and margin reporting stay in the internal workspace. The login-less customer portal does not display these financial details.</p>
             <p>Use <strong>Launch readiness and handoff</strong> to document success criteria, testing, training, go-live status, stakeholders, and risks. These are tracking tools: Relay does not generate invoices, collect payments, or automatically configure a customer's software.</p>
             <button class="button secondary" type="button" data-go="implementations">Open customer work</button>
           </section>
           <section class="panel guide-step" aria-labelledby="guide-monitor-title">
             <p class="guide-step-label">Step 6</p>
             <h3 id="guide-monitor-title">Review progress and workload</h3>
-            <p>Use <strong>Overview</strong> for a quick view of customer work and follow-ups. Open <strong>Team workload</strong> to review assigned open tasks and implementation health. In Implementations, search and filter by status, owner, or attention needed; export the portfolio summary when you need a CSV.</p>
+            <p>Use <strong>Overview</strong> for a quick view of customer work and follow-ups. Growth and Custom include team-workload insights; Custom also includes internal Financials for portfolio revenue, delivery cost, gross margin, budget alerts, and unbilled overage. Every plan can export the basic portfolio summary as CSV. In Implementations, search and filter by status, owner, or attention needed.</p>
             <p>Estimated finish dates are directional indicators based on completed work, not delivery commitments. Keep task ownership and status up to date for the most useful view.</p>
-            <button class="button secondary" type="button" data-go="portfolio">Open Team workload</button>
+            <button class="button secondary" type="button" data-go="portfolio">Open Portfolio</button>
           </section>
           <section class="panel guide-step" aria-labelledby="guide-connect-title">
             <p class="guide-step-label">Step 7</p>
             <h3 id="guide-connect-title">Configure your workspace</h3>
-            <p>Workspace owners can invite teammates in <strong>Settings</strong> and manage available connections in <strong>Integrations</strong>. If HubSpot is configured for your workspace, an owner can connect it and select the Closed Won pipeline, stage, and Relay template for onboarding handoff.</p>
+            <p>Workspace admins can invite teammates and assign roles in <strong>Settings</strong>. Implementation Managers run customer work and change orders; Contributors update tasks, messages, and time entries; Executive Viewers see read-only portfolio and financial summaries. Admins manage members, integrations, rates, and budgets. Growth and Custom admins can configure the HubSpot onboarding handoff. Custom admins can also connect Salesforce SKU onboarding and Jira or Linear issue sync after configuring those provider accounts.</p>
             <p>Email reminders and customer invitations require the email service to be configured for your workspace. Check the connection status in Relay; sample-workspace changes do not contact HubSpot or send email.</p>
             <button class="button secondary" type="button" data-go="settings">Open Settings</button>
           </section>
@@ -248,20 +250,39 @@
         </section>
       </section>
 
-      <section class="view" id="view-portfolio">
-        <div class="section-intro"><h2>Portfolio health and delivery capacity</h2><p>Review workload, implementation risk, overdue tasks, and estimated finish dates across this workspace.</p></div>
-        <div class="panel">
+      <section class="view" id="view-portfolio" data-role-capability="viewFinancials">
+        <div class="section-intro"><h2>Portfolio launch readiness</h2><p>Review implementation health and export portfolio details. Growth and Custom also include team workload insights.</p></div>
+        <div class="panel" data-plan-feature="portfolioFull" hidden>
           <div class="panel-heading"><div><h2>Team workload</h2><p>Open tasks assigned to each team member.</p></div></div>
           <div id="portfolio-workload" class="metric-grid"></div>
         </div>
-        <div class="panel">
+        <div class="panel" data-role-capability="manageImplementations">
           <div class="panel-heading"><div><h2>Implementation health</h2><p>Estimated finish dates use the pace of completed tasks so far and are directional, not commitments.</p></div>
             <button class="button secondary" id="export-portfolio" type="button">Export CSV</button></div>
           <div id="portfolio-implementations" class="table-wrap"></div>
         </div>
       </section>
 
-      <section class="view" id="view-processes">
+      <section class="view" id="view-financials" data-plan-feature="financialProtection" data-role-capability="viewFinancials" hidden>
+        <div class="section-intro"><h2>Financial health and margin protection</h2><p>Internal-only time, budget, delivery cost, and change-order revenue across active implementations.</p></div>
+        <div id="financial-kpis" class="metric-grid" aria-live="polite"></div>
+        <p id="financial-data-quality" class="status warning" role="status" aria-live="polite" hidden></p>
+        <div class="panel">
+          <div class="panel-heading"><div><h2>Project profitability</h2><p>Approved change orders are included in contract value. Projects without a base fee or approved change-order fee have no calculable margin.</p></div>
+            <button class="button secondary" id="refresh-financials" type="button">Refresh</button></div>
+          <div class="implementation-filters financial-filters">
+            <div class="field"><label for="financial-risk-filter">Risk</label><select id="financial-risk-filter"><option value="all">All projects</option><option value="at-risk">At risk or negative margin</option><option value="healthy">Positive margin</option></select></div>
+            <div class="field"><label for="financial-sort">Sort by</label><select id="financial-sort"><option value="margin">Gross margin</option><option value="profit">Gross profit</option><option value="revenue">Contract value</option><option value="cost">Delivery cost</option></select></div>
+          </div>
+          <div id="financial-project-table" class="table-wrap"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-heading"><div><h2>Recent budget alerts</h2><p>Threshold alerts are also written to the workspace audit log and delivered through configured notifications.</p></div></div>
+          <div id="financial-alerts" class="list-stack"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-processes" data-role-capability="administerWorkspace">
         <div class="section-intro process-intro">
           <div>
             <p class="eyebrow">Workflow builder</p>
@@ -325,6 +346,8 @@
                   <div class="process-step-fields">
                   <div class="field"><label for="step-stage">Stage</label><input id="step-stage" maxlength="100" value="Implementation"></div>
                   <div class="field"><label for="step-due-offset">Due after start (days)</label><input id="step-due-offset" type="number" min="0" max="3650" value="0"></div>
+                  <div class="field"><label for="step-estimated-duration">Estimated duration (days)</label><input id="step-estimated-duration" type="number" min="1" max="3650" value="1"></div>
+                  <div class="field"><label for="step-responsible-party">Responsible party</label><select id="step-responsible-party"><option value="relay">Relay team</option><option value="client">Client</option></select></div>
                   <label class="check-field process-customer-visible"><input id="step-customer-visible" type="checkbox"> Show this task to the customer in their portal</label>
                   <div class="field field-wide" data-growth-only="dependencies">
                     <label for="step-dependencies-search">Prerequisite steps <span class="optional">Optional</span></label>
@@ -354,9 +377,9 @@
         </div>
       </section>
 
-      <section class="view" id="view-templates">
+      <section class="view" id="view-templates" data-role-capability="administerWorkspace">
         <div class="section-intro"><h2>Reuse a process that works</h2><p>A template is a snapshot of a checked process. Growth and Custom plans also keep revision history and let you restore an earlier version.</p></div>
-        <div class="panel">
+        <div class="panel" data-role-capability="administerWorkspace">
           <div class="panel-heading"><div><h2>Reusable templates</h2><p>Save a tested workflow and use it to start consistent customer implementations.</p></div></div>
           <div id="template-list" class="card-grid"></div>
         </div>
@@ -364,9 +387,9 @@
 
       <section class="view" id="view-implementations">
         <div class="section-intro"><h2>Run a customer implementation</h2><p>Start from a template, track work in one place, and share a secure link for customers to submit the information you need.</p></div>
-        <div class="panel">
+        <div class="panel" data-role-capability="administerWorkspace">
           <div class="panel-heading"><div><h2>Start with a reusable template</h2><p>Relay creates the customer-specific tasks from the saved process.</p></div></div>
-          <form id="implementation-form" class="implementation-start-form">
+          <form id="implementation-form" class="implementation-start-form" data-role-capability="manageImplementations">
             <div class="field"><label for="implementation-customer">Customer company</label><input id="implementation-customer" maxlength="120" placeholder="Customer name" required></div>
             <div class="field"><label for="implementation-template">Template</label><select id="implementation-template" required><option value="">Choose a template</option></select></div>
             <details class="implementation-start-optional">
@@ -382,8 +405,8 @@
           <p id="implementation-cap-notice" class="status warning" role="status" aria-live="polite" hidden></p>
           <div id="implementation-prerequisite" class="empty-state" hidden></div>
         </div>
-        <div class="panel">
-          <div class="panel-heading"><div><h2>All implementations</h2><p>Open a customer to update tasks or check required information.</p></div></div>
+        <div class="panel" id="implementation-list-panel">
+          <div class="panel-heading"><div><h2>All implementations</h2><p>Open a customer to update tasks or check required information.</p></div><button class="button secondary" id="show-archived-implementations" type="button">View archived</button></div>
           <div class="implementation-filters" role="search" aria-label="Filter implementations">
             <div class="field"><label for="implementation-search">Find a customer</label><input id="implementation-search" type="search" placeholder="Search customer or template" autocomplete="off"></div>
             <div class="field"><label for="implementation-status-filter">Status</label><select id="implementation-status-filter"><option value="all">All statuses</option><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="needs_information">Needs information</option><option value="complete">Complete</option></select></div>
@@ -394,11 +417,17 @@
           <p id="implementation-filter-summary" class="filter-summary" role="status" aria-live="polite"></p>
           <div id="implementation-list" class="table-wrap"></div>
         </div>
+        <div class="panel" id="archived-implementations-panel" hidden>
+          <div class="panel-heading"><div><h2>Archived implementations</h2><p>Archived work is hidden from active delivery and customer portal access. Restore it to resume.</p></div><button class="button secondary" id="show-active-implementations" type="button">Back to active</button></div>
+          <div id="archived-implementation-list" class="table-wrap"></div>
+        </div>
         <div class="panel" id="implementation-detail" hidden>
-          <div class="panel-heading"><div><h2 id="implementation-detail-title">Implementation details</h2><p id="implementation-detail-subtitle"></p></div><button class="text-button" id="close-implementation" type="button">Close</button></div>
+          <div class="panel-heading"><div><h2 id="implementation-detail-title">Implementation details</h2><p id="implementation-detail-subtitle"></p></div><div class="button-row"><button class="button secondary" id="archive-implementation" type="button" hidden>Archive</button><button class="text-button danger-text" id="delete-implementation" type="button" hidden>Permanently delete</button><button class="text-button" id="close-implementation" type="button">Close</button></div></div>
+          <section class="budget-burn-panel" id="implementation-budget-burn" aria-label="Project budget burn" data-plan-feature="financialProtection" data-role-capability="viewFinancials" hidden></section>
           <nav id="implementation-section-nav" class="implementation-section-nav" aria-label="Implementation sections">
             <button type="button" data-implementation-jump="implementation-work-section" aria-controls="implementation-work-section">Work plan</button>
             <button type="button" data-implementation-jump="implementation-information-section" aria-controls="implementation-information-section">Customer information</button>
+            <button type="button" data-implementation-jump="change-orders-section" aria-controls="change-orders-section" data-plan-feature="changeOrders" hidden>Scope changes</button>
             <button type="button" data-implementation-jump="customer-access-section" aria-controls="customer-access-section">Portal access</button>
             <button type="button" data-implementation-jump="communication-section" aria-controls="communication-section">Communication &amp; setup</button>
             <button type="button" data-implementation-jump="delivery-section" aria-controls="delivery-section">Delivery</button>
@@ -413,6 +442,21 @@
             <div class="panel-heading"><div><h3 id="implementation-information-heading">Customer information</h3><p>See what the customer has submitted and what is still needed.</p></div></div>
             <div id="implementation-requirements" class="step-list"></div>
           </section>
+          <section class="panel implementation-primary-section" id="change-orders-section" tabindex="-1" aria-labelledby="change-orders-heading" data-plan-feature="changeOrders" data-role-capability="manageImplementations" hidden>
+            <div class="panel-heading"><div><h3 id="change-orders-heading">Scope changes</h3><p>Draft, send, and track change orders and locked tasks.</p></div></div>
+            <form id="change-order-form" class="implementation-form-layout">
+              <div class="implementation-field-grid">
+                <label>Change title<input id="change-order-title" maxlength="160" required></label>
+                <label>Additional fee<input id="change-order-fee" type="number" min="0" step="0.01" value="0" required></label>
+                <label>Timeline extension (days)<input id="change-order-days" type="number" min="0" max="3650" value="0" required></label>
+                <label class="implementation-field-wide">Scope description<textarea id="change-order-description" maxlength="4000" required></textarea></label>
+                <label class="implementation-field-wide">Locked tasks<select id="change-order-task-ids" multiple size="5"></select></label>
+              </div>
+              <button class="button secondary" type="submit">Create change order</button>
+              <p id="change-order-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+            <div id="change-order-list" class="list-stack"></div>
+          </section>
           <details class="panel implementation-collapsible" id="customer-access-section" aria-labelledby="customer-access-heading" data-implementation-section="customer-access">
             <summary class="implementation-collapsible-summary">
               <span class="implementation-collapsible-copy">
@@ -425,7 +469,7 @@
             </summary>
             <div class="implementation-collapsible-content">
               <div class="two-column implementation-plan-grid">
-                <form id="implementation-launch-plan" class="info-row">
+                <form id="implementation-launch-plan" class="info-row" data-role-capability="manageImplementations">
                   <h3>Customer launch plan</h3>
                   <p>Keep the customer owner and target date current; the portal shows these details.</p>
                   <label for="implementation-plan-owner">Customer owner</label><input id="implementation-plan-owner" maxlength="120">
@@ -437,7 +481,7 @@
                 <section class="info-row" aria-labelledby="customer-contact-heading">
                   <h3 id="customer-contact-heading">Customer portal access</h3>
                   <p>Invite named contacts. Each gets a personal link that expires after 30 days and can be revoked.</p>
-                  <form id="customer-contact-form" class="inline-form vertical">
+                  <form id="customer-contact-form" class="inline-form vertical" data-role-capability="manageImplementations">
                     <label for="customer-contact-name">Contact name</label><input id="customer-contact-name" maxlength="120">
                     <label for="customer-contact-email">Contact email</label><input id="customer-contact-email" type="email" maxlength="254" required>
                     <button class="button secondary" type="submit">Send portal invitation</button>
@@ -446,6 +490,19 @@
                   <div id="customer-contact-list" class="list-stack"></div>
                 </section>
               </div>
+              <section class="info-row" aria-labelledby="delegation-heading">
+                <h3 id="delegation-heading">Delegate specific tasks</h3>
+                <p>Primary contacts can create private, expiring links for individual teammates. Delegates can complete only assigned tasks.</p>
+                <form id="customer-delegation-form" class="inline-form vertical" data-role-capability="manageImplementations">
+                  <label for="delegation-name">Teammate name<input id="delegation-name" maxlength="120"></label>
+                  <label for="delegation-email">Teammate email<input id="delegation-email" type="email" maxlength="254" required></label>
+                  <label for="delegation-role">Role<select id="delegation-role"><option value="it">IT</option><option value="legal">Legal</option><option value="finance">Finance</option><option value="ops">Ops</option><option value="other">Other</option></select></label>
+                  <label for="delegation-task-ids">Assigned customer tasks<select id="delegation-task-ids" multiple size="5"></select></label>
+                  <button class="button secondary" type="submit">Create scoped invitation</button>
+                  <p id="delegation-status" class="status" role="status" aria-live="polite"></p>
+                </form>
+                <div id="delegation-list" class="list-stack"></div>
+              </section>
               <div class="share-box" id="customer-link-box" hidden></div>
             </div>
           </details>
@@ -459,7 +516,7 @@
               <span class="implementation-disclosure-label" aria-hidden="true">View details</span>
             </summary>
             <div class="implementation-collapsible-content">
-              <form id="implementation-onboarding-gap-plan" class="implementation-form-layout communication-form-layout">
+              <form id="implementation-onboarding-gap-plan" class="implementation-form-layout communication-form-layout" data-role-capability="manageImplementations">
                 <details class="implementation-subsection" aria-labelledby="communication-plan-heading">
                   <summary class="implementation-subsection-summary"><h4 id="communication-plan-heading">Communication plan</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
                   <div class="implementation-subsection-content">
@@ -525,7 +582,7 @@
               <div class="delivery-form-grid">
                 <details class="implementation-subsection" aria-labelledby="delivery-scope-heading">
                   <summary class="implementation-subsection-summary"><h4 id="delivery-scope-heading">Scope and stage</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
-                  <form id="implementation-sow-form" class="implementation-form-group">
+                  <form id="implementation-sow-form" class="implementation-form-group" data-role-capability="manageImplementations">
                   <div class="implementation-field-grid">
                     <label class="implementation-field-wide">SOW scope<textarea id="sow-scope" maxlength="4000"></textarea></label>
                     <label>Milestones<textarea id="sow-milestones" maxlength="4000"></textarea></label>
@@ -538,9 +595,25 @@
                   </div>
                   </form>
                 </details>
-                <details class="implementation-subsection" aria-labelledby="delivery-budget-heading">
+                <details class="implementation-subsection" aria-labelledby="delivery-budget-heading" data-plan-feature="financialProtection" hidden>
                   <summary class="implementation-subsection-summary"><h4 id="delivery-budget-heading">Budget and invoice</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
-                  <form id="implementation-financial-form" class="implementation-form-group">
+                  <form id="budget-cap-form" class="implementation-form-group" data-role-capability="administerWorkspace" hidden>
+                    <div class="implementation-field-grid">
+                      <label>Base onboarding fee<input id="budget-base-fee" type="number" min="0" max="1000000000" step="0.01" required></label>
+                      <label>Budget type<select id="budget-type"><option value="fixed_hours">Fixed hours</option><option value="fixed_fee">Fixed fee</option><option value="time_and_materials">Time and materials</option></select></label>
+                      <label>Budget limit<input id="budget-limit" type="number" min="0" max="1000000000" step="0.01" required></label>
+                      <label class="implementation-checkbox"><input id="budget-hard-lock" type="checkbox"> Lock additional time above 100%</label>
+                    </div>
+                    <div class="implementation-form-actions"><button class="button secondary" type="submit">Save budget cap</button><p id="budget-cap-status" class="status" role="status" aria-live="polite"></p></div>
+                  </form>
+                  <form id="budget-override-form" class="implementation-form-group" data-role-capability="manageImplementations" hidden>
+                    <div class="implementation-field-grid">
+                      <label class="implementation-field-wide">Override reason<input id="budget-override-reason" maxlength="1000" required></label>
+                      <label>Override duration<select id="budget-override-hours"><option value="1">1 hour</option><option value="4" selected>4 hours</option><option value="8">8 hours</option><option value="24">24 hours</option></select></label>
+                    </div>
+                    <div class="implementation-form-actions"><button class="button secondary" type="submit">Grant time-entry override</button><p id="budget-override-status" class="status" role="status" aria-live="polite"></p></div>
+                  </form>
+                  <form id="implementation-financial-form" class="implementation-form-group" data-role-capability="administerWorkspace">
                   <div class="implementation-field-grid">
                     <label>Budget amount<input id="finance-budget" type="number" min="0" step="0.01"></label>
                     <label>Forecast amount<input id="finance-forecast" type="number" min="0" step="0.01"></label>
@@ -555,25 +628,13 @@
                   </div>
                   </form>
                 </details>
-                <details class="implementation-subsection" aria-labelledby="delivery-time-heading">
-                  <summary class="implementation-subsection-summary"><h4 id="delivery-time-heading">Log time</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
-                  <form id="time-entry-form" class="implementation-form-group">
-                  <div class="implementation-field-grid">
-                    <label>Work date<input id="time-work-date" type="date" required></label>
-                    <label>Minutes<input id="time-minutes" type="number" min="1" max="1440" required></label>
-                    <label>Hourly rate<input id="time-rate" type="number" min="0" step="0.01"></label>
-                    <label class="implementation-checkbox"><input id="time-billable" type="checkbox" checked> Billable</label>
-                    <label class="implementation-field-wide">Note<input id="time-note" maxlength="500"></label>
-                  </div>
-                  <div class="implementation-form-actions">
-                    <button class="button secondary" type="submit">Log time</button>
-                    <p id="time-status" class="status" role="status" aria-live="polite"></p>
-                  </div>
-                  </form>
+                <details class="implementation-subsection" aria-labelledby="delivery-time-heading" data-plan-feature="financialProtection" hidden>
+                  <summary class="implementation-subsection-summary"><h4 id="delivery-time-heading">Time &amp; effort</h4><span class="implementation-subsection-toggle">Track task time</span></summary>
+                  <p class="muted">Use the Time &amp; Effort control on each task to start a timer or log time. Hourly rates are snapshotted when time is recorded.</p>
                 </details>
                 <details class="implementation-subsection" aria-labelledby="delivery-approval-heading">
                   <summary class="implementation-subsection-summary"><h4 id="delivery-approval-heading">Request approval</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
-                  <form id="approval-form" class="implementation-form-group">
+                  <form id="approval-form" class="implementation-form-group" data-role-capability="manageImplementations">
                   <div class="implementation-field-grid">
                     <label class="implementation-field-wide">Approval title<input id="approval-title" maxlength="240" required></label>
                     <label>Type<input id="approval-type" maxlength="80" placeholder="Security, contract, launch"></label>
@@ -595,7 +656,7 @@
                 </details>
                 <details class="implementation-subsection" aria-labelledby="delivery-dates-heading">
                   <summary class="implementation-subsection-summary"><h4 id="delivery-dates-heading">Important dates</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
-                  <form id="calendar-event-form" class="implementation-form-group">
+                  <form id="calendar-event-form" class="implementation-form-group" data-role-capability="manageImplementations">
                   <div class="implementation-field-grid">
                     <label class="implementation-field-wide">Event title<input id="calendar-event-title" maxlength="240" required></label>
                     <label>Start<input id="calendar-event-start" type="datetime-local" required></label>
@@ -625,7 +686,7 @@
               <div class="delivery-form-grid">
                 <details class="implementation-subsection" aria-labelledby="launch-checklist-heading">
                   <summary class="implementation-subsection-summary"><h4 id="launch-checklist-heading">Readiness checklist</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
-                  <form id="implementation-launch-readiness" class="implementation-form-group">
+                  <form id="implementation-launch-readiness" class="implementation-form-group" data-role-capability="manageImplementations">
                   <div class="implementation-field-grid">
                     <label class="implementation-field-wide">Success criteria<textarea id="launch-success-criteria" maxlength="4000" placeholder="What outcome proves the customer is ready?"></textarea></label>
                     <label class="implementation-field-wide">Test and acceptance plan<textarea id="launch-test-plan" maxlength="4000" placeholder="Acceptance scenarios, test owner, and sign-off process"></textarea></label>
@@ -646,7 +707,7 @@
                   <summary class="implementation-subsection-summary"><h4 id="launch-stakeholders-heading">Approvals and stakeholders</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
                   <section class="implementation-form-group">
                   <p class="implementation-group-description">Track people whose approval or participation can block launch.</p>
-                  <form id="launch-stakeholder-form" class="implementation-form-layout">
+                  <form id="launch-stakeholder-form" class="implementation-form-layout" data-role-capability="manageImplementations">
                     <div class="implementation-field-grid">
                       <label>Stakeholder name<input id="launch-stakeholder-name" maxlength="120"></label>
                       <label>Stakeholder email<input id="launch-stakeholder-email" type="email" maxlength="254" required></label>
@@ -666,7 +727,7 @@
                   <summary class="implementation-subsection-summary"><h4 id="launch-risks-heading">Risks and blockers</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
                   <section class="implementation-form-group">
                   <p class="implementation-group-description">Record an owner, severity, due date, and next action for each risk.</p>
-                  <form id="launch-risk-form" class="implementation-form-layout">
+                  <form id="launch-risk-form" class="implementation-form-layout" data-role-capability="manageImplementations">
                     <div class="implementation-field-grid">
                       <label class="implementation-field-wide">Risk or blocker<input id="launch-risk-title" maxlength="240" required></label>
                       <label>Category<select id="launch-risk-category"><option>Technical</option><option>Security</option><option>Compliance</option><option>Approval</option><option>Data</option><option>Training</option><option>Schedule</option><option>Other</option></select></label>
@@ -719,12 +780,12 @@
         </div>
       </section>
 
-      <section class="view" id="view-requirements">
+      <section class="view" id="view-requirements" data-role-capability="administerWorkspace">
         <div class="section-intro"><h2>Ask for only what you need</h2><p>Define global or template-specific requests and choose a response type. Relay validates responses before saving them. Customers can submit information through their private implementation link. Do not request passwords, payment card numbers, or other secrets.</p></div>
         <div class="two-column">
           <div class="panel">
             <div class="panel-heading"><div><h2>Required information</h2><p>Keep requests clear, specific, and relevant.</p></div></div>
-            <form id="requirement-form" class="inline-form vertical">
+            <form id="requirement-form" class="inline-form vertical" data-role-capability="administerWorkspace">
               <div class="field"><label for="requirement-name">What do you need?</label><input id="requirement-name" maxlength="120" placeholder="e.g. Company website URL" required></div>
               <div class="field"><label for="requirement-description">Why is it needed? <span class="optional">Optional</span></label><textarea id="requirement-description" maxlength="500" placeholder="Explain what the customer should provide"></textarea></div>
               <div class="field"><label for="requirement-template">Apply to</label><select id="requirement-template"><option value="">Every implementation</option></select></div>
@@ -739,8 +800,8 @@
           </div>
         </div>
       </section>
-      <section class="view" id="view-integrations">
-        <div class="section-intro"><h2>Connect your workspace tools</h2><p>Authorize the configured HubSpot integration so Relay can hand off Closed Won deals and share implementation progress. Connections are managed by workspace owners.</p></div>
+      <section class="view" id="view-integrations" data-plan-feature="hubspot" data-role-capability="administerWorkspace" hidden>
+        <div class="section-intro"><h2>Connect your workspace tools</h2><p>Authorize the configured HubSpot integration so Relay can hand off Closed Won deals and share implementation progress. Connections are managed by workspace admins.</p></div>
         <div class="panel">
           <div class="panel-heading"><div><h2>Available integrations</h2><p>Connect an account to enable workspace updates and synchronization.</p></div></div>
           <p id="integrations-demo-note" class="empty-state" hidden>Sample preview: connection controls do not contact an external service.</p>
@@ -754,6 +815,62 @@
               <div class="field"><label for="hubspot-template">Relay onboarding template</label><select id="hubspot-template" required></select></div>
               <button class="button secondary" type="submit">Save handoff</button>
               <p id="hubspot-handoff-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+          <section id="salesforce-sku-panel" class="integration-handoff" data-plan-feature="enterpriseIntegrations" data-role-capability="administerWorkspace" hidden aria-labelledby="salesforce-sku-title">
+            <h3 id="salesforce-sku-title">Start onboarding from Salesforce Closed Won opportunities</h3>
+            <p>Relay checks newly won opportunities every five minutes and combines the Relay templates mapped to each product SKU. Existing opportunities are not bulk-imported. Unmapped SKUs stay visible as sync errors until you add a mapping.</p>
+            <p id="salesforce-sync-status" class="muted" role="status" aria-live="polite"></p>
+            <div id="salesforce-import-errors" class="list-stack"></div>
+            <form id="salesforce-sku-form" class="inline-form vertical">
+              <div id="salesforce-sku-mapping-list" class="list-stack"></div>
+              <button class="button secondary" type="submit">Save SKU mappings</button>
+              <p id="salesforce-sku-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+          <section id="jira-settings-panel" class="integration-handoff" data-plan-feature="enterpriseIntegrations" data-role-capability="administerWorkspace" hidden aria-labelledby="jira-settings-title">
+            <h3 id="jira-settings-title">Connect Jira Cloud</h3>
+            <p>Use a dedicated Jira service account and API token with access limited to the target project. The token is encrypted before it is saved and cannot be viewed again.</p>
+            <form id="jira-settings-form" class="inline-form vertical">
+              <label>Jira Cloud site<input id="jira-site" type="url" placeholder="https://company.atlassian.net" required></label>
+              <label>Jira account email<input id="jira-email" type="email" autocomplete="username" required></label>
+              <label>Project key<input id="jira-project-key" maxlength="50" required></label>
+              <label>Issue type<input id="jira-issue-type" maxlength="100" value="Task" required></label>
+              <label>Jira API token<input id="jira-api-token" type="password" autocomplete="new-password"></label>
+              <small>Leave blank to keep the encrypted token already saved for this connection.</small>
+              <div class="button-row">
+                <button class="button secondary" type="submit">Test and save Jira</button>
+                <button class="text-button danger-text" id="jira-disconnect" type="button">Disconnect Jira</button>
+              </div>
+              <p id="jira-settings-status" class="appearance-status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+          <section id="linear-settings-panel" class="integration-handoff" data-plan-feature="enterpriseIntegrations" data-role-capability="administerWorkspace" hidden aria-labelledby="linear-settings-title">
+            <h3 id="linear-settings-title">Connect Linear</h3>
+            <p>Use a dedicated Linear API key restricted to the team used for engineering work. The key is encrypted before it is saved and cannot be viewed again.</p>
+            <form id="linear-settings-form" class="inline-form vertical">
+              <label>Linear team ID<input id="linear-team-id" maxlength="36" placeholder="UUID from the Linear team URL or settings" required></label>
+              <label>Linear API key<input id="linear-api-token" type="password" autocomplete="new-password"></label>
+              <small>Leave blank to keep the encrypted key already saved for this connection.</small>
+              <div class="button-row">
+                <button class="button secondary" type="submit">Test and save Linear</button>
+                <button class="text-button danger-text" id="linear-disconnect" type="button">Disconnect Linear</button>
+              </div>
+              <p id="linear-settings-status" class="appearance-status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+          <section id="slack-alert-panel" class="integration-handoff" data-plan-feature="slackAlerts" data-role-capability="administerWorkspace" hidden aria-labelledby="slack-alert-title">
+            <h3 id="slack-alert-title">Configure Slack workspace alerts</h3>
+            <p>Relay sends selected implementation and budget alerts to this Slack channel. The incoming webhook is encrypted before it is saved. Customer credentials are never included in Slack messages.</p>
+            <p id="slack-webhook-state" class="muted" role="status" aria-live="polite"></p>
+            <form id="slack-alert-form" class="inline-form vertical">
+              <div class="field"><label for="slack-webhook-url">Slack incoming webhook URL</label><input id="slack-webhook-url" type="url" autocomplete="off" placeholder="https://hooks.slack.com/services/…" required></div>
+              <div class="button-row">
+                <button class="button secondary" type="submit">Save or replace webhook</button>
+                <button class="button secondary" id="slack-test-alert" type="button">Send test alert</button>
+                <button class="text-button danger-text" id="slack-disconnect" type="button">Disconnect Slack</button>
+              </div>
+              <p id="slack-alert-status" class="appearance-status" role="status" aria-live="polite"></p>
             </form>
           </section>
           <p id="integration-status" class="appearance-status" role="status" aria-live="polite"></p>
@@ -772,7 +889,7 @@
               </select>
               <small>Dark mode uses a darker workspace and panels.</small>
             </div>
-            <div class="panel">
+            <div class="panel" data-role-capability="administerWorkspace">
               <div class="panel-heading"><div><h2>Notifications and reminders</h2><p>Send task reminders to assigned teammates and invited customer contacts, notify the team about customer questions and files, and escalate missing information to a backup contact.</p></div></div>
               <p id="notifications-demo-note" class="empty-state" hidden>Sample preview: settings are saved locally; no email is sent.</p>
               <form id="notification-settings-form" class="inline-form vertical">
@@ -797,7 +914,7 @@
           </div>
           <p class="appearance-status" id="appearance-status" role="status" aria-live="polite"></p>
         </div>
-        <div class="panel">
+        <div class="panel" data-role-capability="administerWorkspace">
           <div class="panel-heading"><div><h2>Team capacity</h2><p>Create weekly team capacity plans.</p></div></div>
           <div class="two-column">
             <div>
@@ -814,7 +931,7 @@
           </div>
           <div id="automation-capacity-summary" class="list-stack"></div>
         </div>
-        <div class="panel account-deletion-panel">
+        <div class="panel account-deletion-panel" id="account-deletion-panel">
           <div class="panel-heading"><div><h2>Delete your Relay account</h2><p>This permanently removes your account and its personal data. Workspace data is handled according to the ownership choices below.</p></div></div>
           <div class="account-deletion-summary" id="account-deletion-summary" role="status" aria-live="polite">Loading your workspace ownership details…</div>
           <form id="account-deletion-form" hidden>
@@ -830,8 +947,8 @@
             <p class="account-deletion-status" id="account-deletion-status" role="status" aria-live="polite"></p>
           </form>
         </div>
-        <section class="panel" id="team-panel">
-          <div class="panel-heading"><div><h2>Workspace team</h2><p>Invite a teammate and assign implementation work to a real account.</p></div></div>
+        <section class="panel" id="team-panel" data-role-capability="administerWorkspace">
+          <div class="panel-heading"><div><h2>Workspace team</h2><p>Invite teammates with the least-privilege role they need. The Owner remains the workspace ownership identity; Admins manage membership, Managers manage implementation work, Contributors handle tasks and communication, and Executive Viewers get read-only summaries.</p></div></div>
           <div class="two-column">
             <div>
               <h3 class="subheading">Members</h3>
@@ -842,6 +959,14 @@
             <div>
               <form id="team-invite-form" class="inline-form vertical">
                 <div class="field"><label for="invite-email">Teammate email</label><input id="invite-email" type="email" maxlength="254" required></div>
+                <div class="field"><label for="invite-role">Workspace role</label>
+                  <select id="invite-role">
+                    <option value="contributor">Contributor</option>
+                    <option value="implementation_manager">Implementation Manager</option>
+                    <option value="executive_viewer">Executive Viewer</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
                 <button class="button primary" type="submit">Create invitation link</button>
               </form>
               <p id="team-cap-notice" class="status warning" role="status" aria-live="polite" hidden></p>
@@ -849,6 +974,21 @@
               <div id="invite-result" class="share-box" hidden></div>
             </div>
           </div>
+        </section>
+        <section class="panel" id="audit-log-panel" data-role-capability="viewAuditLogs">
+          <div class="panel-heading">
+            <div><h2>Audit log</h2><p>Review immutable workspace role, budget, scope, approval, and automated delivery events.</p></div>
+            <button class="button secondary" id="refresh-audit-logs" type="button">Refresh log</button>
+          </div>
+          <div id="audit-log-list" class="list-stack" role="log" aria-live="polite"></div>
+          <button class="text-button" id="load-more-audit-logs" type="button" hidden>Load older events</button>
+        </section>
+        <section class="panel" id="notification-delivery-panel" data-role-capability="viewAuditLogs">
+          <div class="panel-heading">
+            <div><h2>Notification delivery health</h2><p>Review retried or failed workspace notifications. Provider credentials and event payloads are not shown here.</p></div>
+            <button class="button secondary" id="refresh-notification-delivery" type="button">Refresh status</button>
+          </div>
+          <div id="notification-delivery-list" class="list-stack" role="log" aria-live="polite"></div>
         </section>
       </section>
       <footer class="app-footer">Relay helps teams run clear, dependable customer implementations.</footer>

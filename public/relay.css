@@ -434,6 +434,7 @@ h1::after {
 .plan-comparison th, .plan-comparison td { border-bottom: 1px solid var(--line-soft); padding: 14px 16px; vertical-align: top; }
 .plan-comparison thead { background: #f8fafc; color: #334155; }
 .plan-comparison tbody th { width: 39%; color: #334155; font-weight: 600; }
+.plan-comparison .plan-category th { width: auto; background: #eef4fa; color: #0f172a; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
 .plan-comparison td { color: #475569; }
 .plan-comparison tbody tr { transition: background-color .2s, color .2s; }
 .plan-comparison tbody tr:hover { background: #f0f9ff; }

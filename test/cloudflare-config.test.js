@@ -18,14 +18,22 @@ function withHyperdriveId(config, id) {
 
 test("Cloudflare configuration routes production and backend requests through Relay", () => {
   assert.doesNotThrow(() => validateCloudflareConfig(configuration));
-  assert.match(configuration, /"crons"\s*:\s*\[\s*"\*\/5 \* \* \* \*"\s*\]/);
+  assert.match(configuration, /"crons"\s*:\s*\[\s*"\*\/5 \* \* \* \*"\s*,\s*"0 0 \* \* \*"\s*\]/);
   const worker = readFileSync(path.join(__dirname, "..", "cloudflare-worker.mjs"), "utf8");
   assert.match(worker, /006_customer_portal_notifications_integrations\.sql/);
   assert.match(worker, /007_customer_contact_escalation\.sql/);
   assert.match(worker, /008_client_onboarding_collaboration\.sql/);
   assert.match(worker, /009_launch_readiness\.sql/);
   assert.match(worker, /010_onboarding_gap_resolution\.sql/);
+  assert.match(worker, /015_enterprise_roles\.sql/);
   assert.match(worker, /"INQUIRY_NOTIFICATION_EMAIL"/);
+  assert.match(worker, /016_phase3_csv_validation\.sql/);
+  assert.match(worker, /017_enterprise_operations\.sql/);
+  assert.match(worker, /018_enterprise_integrations\.sql/);
+  assert.match(worker, /"SALESFORCE_CLIENT_SECRET"/);
+  assert.match(worker, /salesforceImportsCreated/);
+  assert.match(worker, /scheduled_job_completed/);
+  assert.match(worker, /scheduled_job_execution_failed/);
 });
 
 test("Cloudflare deployment validation rejects the Hyperdrive placeholder", () => {

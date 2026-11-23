@@ -8,9 +8,23 @@ const PLAN_DEFINITIONS = Object.freeze({
     activeImplementationLimit: 5,
     templateLimit: 3,
     features: Object.freeze({
-      dependencies: false,
+      dependencies: true,
       blockers: false,
-      templateHistory: false
+      templateHistory: false,
+      criticalPath: false,
+      changeOrders: false,
+      portfolioFull: false,
+      hubspot: false,
+      financialProtection: false,
+      clientDelegation: true,
+      inputValidation: true,
+      stageGates: true,
+      clientReminders: true,
+      csvExports: true,
+      csvSchemaValidation: false,
+      credentialVerification: false,
+      slackAlerts: false,
+      enterpriseIntegrations: false
     })
   }),
   growth: Object.freeze({
@@ -22,7 +36,21 @@ const PLAN_DEFINITIONS = Object.freeze({
     features: Object.freeze({
       dependencies: true,
       blockers: true,
-      templateHistory: true
+      templateHistory: true,
+      criticalPath: true,
+      changeOrders: true,
+      portfolioFull: true,
+      hubspot: true,
+      financialProtection: false,
+      clientDelegation: true,
+      inputValidation: true,
+      stageGates: true,
+      clientReminders: true,
+      csvExports: true,
+      csvSchemaValidation: false,
+      credentialVerification: false,
+      slackAlerts: true,
+      enterpriseIntegrations: false
     })
   }),
   custom: Object.freeze({
@@ -34,7 +62,21 @@ const PLAN_DEFINITIONS = Object.freeze({
     features: Object.freeze({
       dependencies: true,
       blockers: true,
-      templateHistory: true
+      templateHistory: true,
+      criticalPath: true,
+      changeOrders: true,
+      portfolioFull: true,
+      hubspot: true,
+      financialProtection: true,
+      clientDelegation: true,
+      inputValidation: true,
+      stageGates: true,
+      clientReminders: true,
+      csvExports: true,
+      csvSchemaValidation: true,
+      credentialVerification: true,
+      slackAlerts: true,
+      enterpriseIntegrations: true
     })
   })
 });
@@ -51,11 +93,6 @@ function getPlanDetails(code, customLimits = {}) {
   if (code !== "custom") {
     return {
       ...definition,
-      memberLimit: Number.isSafeInteger(customLimits.memberLimit) ? customLimits.memberLimit : definition.memberLimit,
-      activeImplementationLimit: Number.isSafeInteger(customLimits.activeImplementationLimit)
-        ? customLimits.activeImplementationLimit : definition.activeImplementationLimit,
-      templateLimit: Number.isSafeInteger(customLimits.templateLimit)
-        ? customLimits.templateLimit : definition.templateLimit,
       features: { ...definition.features }
     };
   }
@@ -63,13 +100,13 @@ function getPlanDetails(code, customLimits = {}) {
     ...definition,
     memberLimit: customLimits.memberLimit ?? null,
     activeImplementationLimit: customLimits.activeImplementationLimit ?? null,
-    templateLimit: customLimits.templateLimit ?? null,
+    templateLimit: null,
     features: { ...definition.features }
   };
 }
 
 function validateCustomLimits(limits) {
-  return ["memberLimit", "activeImplementationLimit", "templateLimit"].every((key) =>
+  return ["memberLimit", "activeImplementationLimit"].every((key) =>
     Number.isSafeInteger(limits[key]) && limits[key] > 0
   );
 }

@@ -11,6 +11,13 @@ import clientOnboardingMigration from "./migrations/008_client_onboarding_collab
 import launchReadinessMigration from "./migrations/009_launch_readiness.sql";
 import onboardingGapMigration from "./migrations/010_onboarding_gap_resolution.sql";
 import competitiveCapabilitiesMigration from "./migrations/011_relay_competitive_capabilities.sql";
+import implementationArchiveMigration from "./migrations/012_implementation_archive.sql";
+import phaseOneMigration from "./migrations/013_phase1_critical_path_change_orders_delegation.sql";
+import phaseTwoMigration from "./migrations/014_phase2_financial_protection.sql";
+import enterpriseRolesMigration from "./migrations/015_enterprise_roles.sql";
+import phaseThreeCsvValidationMigration from "./migrations/016_phase3_csv_validation.sql";
+import enterpriseOperationsMigration from "./migrations/017_enterprise_operations.sql";
+import enterpriseIntegrationsMigration from "./migrations/018_enterprise_integrations.sql";
 
 const backendPaths = [
   "/api",
@@ -42,7 +49,12 @@ async function getBackendHandler(env) {
     "INTEGRATION_ENCRYPTION_KEY",
     "HUBSPOT_CLIENT_ID",
     "HUBSPOT_CLIENT_SECRET",
+    "SALESFORCE_CLIENT_ID",
+    "SALESFORCE_CLIENT_SECRET",
+    "SALESFORCE_LOGIN_URL",
     "NOTIFICATIONS_CRON_SECRET",
+    "MALWARE_SCANNER_URL",
+    "MALWARE_SCANNER_TOKEN",
     "JUSTONECX_SECRET_KEY"
   ]) {
     if (env[key]) process.env[key] = env[key];
@@ -58,7 +70,14 @@ async function getBackendHandler(env) {
     "008_client_onboarding_collaboration.sql": clientOnboardingMigration,
     "009_launch_readiness.sql": launchReadinessMigration,
     "010_onboarding_gap_resolution.sql": onboardingGapMigration,
-    "011_relay_competitive_capabilities.sql": competitiveCapabilitiesMigration
+    "011_relay_competitive_capabilities.sql": competitiveCapabilitiesMigration,
+    "012_implementation_archive.sql": implementationArchiveMigration,
+    "013_phase1_critical_path_change_orders_delegation.sql": phaseOneMigration,
+    "014_phase2_financial_protection.sql": phaseTwoMigration,
+    "015_enterprise_roles.sql": enterpriseRolesMigration,
+    "016_phase3_csv_validation.sql": phaseThreeCsvValidationMigration,
+    "017_enterprise_operations.sql": enterpriseOperationsMigration,
+    "018_enterprise_integrations.sql": enterpriseIntegrationsMigration
   };
 
   handlerPromise ??= (async () => {
@@ -105,19 +124,59 @@ export default {
       );
     }
   },
-  async scheduled(_event, env, ctx) {
+  async scheduled(event, env, ctx) {
     ctx.waitUntil((async () => {
-      const { serverHandler, database } = await getBackendHandler(env);
-      const response = await database.database.withRequestClient(() => serverHandler.fetch(
-        new Request("https://relayautomation.tech/api/product/internal/process-events", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${env.NOTIFICATIONS_CRON_SECRET || ""}` }
-        }),
-        env,
-        ctx
-      ));
-      if (!response.ok) {
-        console.error(JSON.stringify({ event: "scheduled_event_processing_failed", status: response.status }));
+      const job = event.cron === "0 0 * * *" ? "shift_go_live" : "process_events";
+      const path = job === "shift_go_live"
+        ? "/api/product/internal/shift-go-live"
+        : "/api/product/internal/process-events";
+      try {
+        const { serverHandler, database } = await getBackendHandler(env);
+        const response = await database.database.withRequestClient(() => serverHandler.fetch(
+          new Request(`https://relayautomation.tech${path}`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${env.NOTIFICATIONS_CRON_SECRET || ""}` }
+          }),
+          env,
+          ctx
+        ));
+        if (!response.ok) {
+          console.error(JSON.stringify({
+            event: "scheduled_job_failed",
+            job,
+            status: response.status
+          }));
+          return;
+        }
+        const result = await response.json().catch(() => ({}));
+        const metrics = job === "shift_go_live"
+          ? {
+            shiftedImplementations: Number(result.shiftedImplementations) || 0,
+            shiftedTasks: Number(result.shiftedTasks) || 0
+          }
+          : {
+            processed: Number(result.processed) || 0,
+            failures: Number(result.failures) || 0,
+            remindersQueued: Number(result.remindersQueued) || 0,
+            hubspotImportFailures: Number(result.hubspotImportFailures) || 0,
+            salesforceImportsCreated: Number(result.salesforceImportsCreated) || 0,
+            salesforceImportFailures: Number(result.salesforceImportFailures) || 0,
+            engineeringIssuesCompleted: Number(result.engineeringIssuesCompleted) || 0,
+            engineeringIssueFailures: Number(result.engineeringIssueFailures) || 0
+          };
+        console.info(JSON.stringify({
+          event: "scheduled_job_completed",
+          job,
+          status: response.status,
+          ...metrics
+        }));
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: "scheduled_job_execution_failed",
+          job,
+          errorName: error?.name || "Error"
+        }));
+        throw new Error("Scheduled job execution failed.");
       }
     })());
   }

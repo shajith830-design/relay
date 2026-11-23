@@ -19,8 +19,11 @@ let testDatabaseUrl;
 let testSchema;
 let baseUrl;
 let emailServer;
+let malwareScannerServer;
 let emailMessages = [];
 let emailProviderStatus = 200;
+let malwareScannerVerdict = "clean";
+const malwareScannerToken = "relay-test-malware-scanner-token-0123456789";
 let telegramMessages = [];
 let telegramProviderStatus = 200;
 const databaseTestSkipReason = process.env.RELAY_TEST_DATABASE_URL?.trim()
@@ -154,6 +157,23 @@ before(async () => {
   emailServer.listen(0, "127.0.0.1");
   await once(emailServer, "listening");
   const emailPort = emailServer.address().port;
+  malwareScannerServer = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      if (req.method !== "POST" || req.url !== "/scan"
+        || req.headers.authorization !== `Bearer ${malwareScannerToken}`
+        || req.headers["content-type"] !== "application/octet-stream") {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Not authorized." }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: malwareScannerVerdict }));
+    });
+  });
+  malwareScannerServer.listen(0, "127.0.0.1");
+  await once(malwareScannerServer, "listening");
+  const malwareScannerPort = malwareScannerServer.address().port;
   const port = await availablePort();
   baseUrl = `http://127.0.0.1:${port}`;
   serverProcess = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {
@@ -167,6 +187,8 @@ before(async () => {
       RESEND_API_KEY: "test-email-key",
       AUTH_EMAIL_FROM: "Relay Tests <test@example.test>",
       AUTH_EMAIL_API_URL: `http://127.0.0.1:${emailPort}/emails`,
+      MALWARE_SCANNER_URL: `http://127.0.0.1:${malwareScannerPort}/scan`,
+      MALWARE_SCANNER_TOKEN: malwareScannerToken,
       INQUIRY_NOTIFICATION_EMAIL: "relayautomations@gmail.com",
       OPENAI_API_KEY: "",
       OPENAI_MODEL: "",
@@ -180,7 +202,7 @@ before(async () => {
   });
   await waitForServer();
   const initializedMigration = await testQuery("SELECT version FROM relay_schema_migrations");
-  assert.deepEqual(initializedMigration.rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  assert.deepEqual(initializedMigration.rows.map((row) => row.version), Array.from({ length: 17 }, (_, index) => index + 1));
   const removedHelpConsentTable = await testQuery("SELECT to_regclass('product_help_consents') AS relation");
   assert.equal(removedHelpConsentTable.rows[0].relation, null);
 });
@@ -194,6 +216,11 @@ after(async () => {
   if (emailServer) {
     const closed = once(emailServer, "close");
     emailServer.close();
+    await closed;
+  }
+  if (malwareScannerServer) {
+    const closed = once(malwareScannerServer, "close");
+    malwareScannerServer.close();
     await closed;
   }
   if (testPool) await testPool.end();
@@ -413,6 +440,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
     body: { email: "teammate@relaytest.example" }
   });
   assert.equal(inviteResponse.response.status, 201);
+  assert.equal(inviteResponse.data.invite.role, "contributor");
   const inviteToken = new URL(inviteResponse.data.invite.inviteUrl).searchParams.get("invite");
   assert.match(inviteToken, /^[A-Za-z0-9_-]{40,60}$/);
   const acceptedInvite = await request("/api/product/auth/signup", {
@@ -424,9 +452,50 @@ test("Relay product supports the six connected jobs with workspace isolation", {
     }
   });
   assert.equal(acceptedInvite.response.status, 201);
-  assert.equal(acceptedInvite.data.workspace.role, "member");
+  assert.equal(acceptedInvite.data.workspace.role, "contributor");
   const teammateId = acceptedInvite.data.user.id;
   const teammateCookie = acceptedInvite.response.headers.get("set-cookie").split(";")[0];
+  const contributorAuditLogs = await request("/api/product/audit-logs", { cookie: teammateCookie });
+  assert.equal(contributorAuditLogs.response.status, 403);
+  const changedRole = await request(`/api/product/team-members/${teammateId}/role`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { role: "implementation_manager" }
+  });
+  assert.equal(changedRole.response.status, 200);
+  assert.equal(changedRole.data.member.role, "implementation_manager");
+  const auditLogs = await request("/api/product/audit-logs?limit=100", { cookie: ownerCookie });
+  assert.equal(auditLogs.response.status, 200);
+  assert.ok(auditLogs.data.events.some((event) => event.action === "workspace.member_role_changed"));
+  assert.ok(auditLogs.data.events.some((event) => event.action === "workspace.invitation_accepted"));
+  const failedDelivery = await testQuery(`
+    INSERT INTO product_workspace_events
+      (event_key, workspace_id, event_type, status, attempts, last_error, last_attempted_at)
+    VALUES ($1, $2, 'task.updated', 'failed', 5, 'Delivery provider returned HTTP 503.', CURRENT_TIMESTAMP)
+    RETURNING id
+  `, [`test-failed-delivery:${Date.now()}`, ownerAccount.workspace.id]);
+  const deliveryStatus = await request("/api/product/notification-delivery", { cookie: ownerCookie });
+  assert.equal(deliveryStatus.response.status, 200);
+  const listedFailure = deliveryStatus.data.events.find((event) => event.id === failedDelivery.rows[0].id);
+  assert.ok(listedFailure);
+  assert.equal(listedFailure.last_error, "Delivery provider returned HTTP 503.");
+  assert.equal(Object.hasOwn(listedFailure, "payload"), false);
+  assert.equal((await request("/api/product/notification-delivery", { cookie: teammateCookie })).response.status, 403);
+  const retryResponse = await request(
+    `/api/product/notification-delivery/${failedDelivery.rows[0].id}/retry`,
+    { method: "POST", cookie: ownerCookie }
+  );
+  assert.equal(retryResponse.response.status, 202);
+  const retriedDelivery = await testQuery(`
+    SELECT status, attempts, last_error FROM product_workspace_events WHERE id = $1
+  `, [failedDelivery.rows[0].id]);
+  assert.deepEqual(retriedDelivery.rows[0], { status: "pending", attempts: 0, last_error: "" });
+  const retryAudit = await testQuery(`
+    SELECT action FROM audit_logs
+    WHERE workspace_id = $1 AND action = 'notification.delivery_retry_requested'
+  `, [ownerAccount.workspace.id]);
+  assert.equal(retryAudit.rowCount, 1);
+  await testQuery("DELETE FROM product_workspace_events WHERE id = $1", [failedDelivery.rows[0].id]);
   const teamWorkspace = await request("/api/product/workspace", { cookie: ownerCookie });
   assert.equal(teamWorkspace.data.members.length, 2);
   assert.equal(teamWorkspace.data.invites.length, 0);
@@ -744,12 +813,52 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   });
   assert.equal(financial.response.status, 200, JSON.stringify(financial.data));
   assert.equal(financial.data.invoiceStatus, "draft");
+  const financialAudit = await testQuery(`
+    SELECT diff_json FROM audit_logs
+    WHERE workspace_id = $1 AND implementation_id = $2 AND action = 'financial_plan.updated'
+  `, [ownerAccount.workspace.id, implementationId]);
+  assert.equal(financialAudit.rowCount, 1);
+  assert.equal(financialAudit.rows[0].diff_json.after.has_margin_note, true);
+  assert.equal(Object.hasOwn(financialAudit.rows[0].diff_json.after, "margin_note"), false);
+  const auditRecord = await testQuery(`
+    SELECT id FROM audit_logs
+    WHERE workspace_id = $1 AND implementation_id = $2 AND action = 'financial_plan.updated'
+  `, [ownerAccount.workspace.id, implementationId]);
+  await assert.rejects(
+    testQuery("UPDATE audit_logs SET action = 'tampered' WHERE id = $1", [auditRecord.rows[0].id]),
+    /Audit log records are immutable/
+  );
   const invalidFinancial = await request(`/api/product/implementations/${implementationId}/financial-plan`, {
     method: "PATCH",
     cookie: ownerCookie,
     body: { budgetAmount: -1, forecastAmount: 14000, actualCost: 7000, invoiceStatus: "draft", invoiceReference: "INV-100", marginNote: "" }
   });
   assert.equal(invalidFinancial.response.status, 400);
+  const ownerRates = await request(`/api/product/team-members/${ownerId}/rates`, {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { defaultInternalCostRate: 60, defaultBillableRate: 120 }
+  });
+  assert.equal(ownerRates.response.status, 200, JSON.stringify(ownerRates.data));
+  const teammateRates = await request(`/api/product/team-members/${teammateId}/rates`, {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { defaultInternalCostRate: 60, defaultBillableRate: 120 }
+  });
+  assert.equal(teammateRates.response.status, 200, JSON.stringify(teammateRates.data));
+  const budget = await request(`/api/product/implementations/${implementationId}/budget`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { baseOnboardingFee: 1000, budgetType: "fixed_hours", budgetLimit: 1.5, hardLockOnExceed: true }
+  });
+  assert.equal(budget.response.status, 200, JSON.stringify(budget.data));
+  assert.equal(budget.data.baseOnboardingFee, 1000);
+  const memberCannotUpdateBudget = await request(`/api/product/implementations/${implementationId}/budget`, {
+    method: "PATCH",
+    cookie: teammateCookie,
+    body: { baseOnboardingFee: 1000, budgetType: "fixed_hours", budgetLimit: 1.5, hardLockOnExceed: true }
+  });
+  assert.equal(memberCannotUpdateBudget.response.status, 403);
   const timeEntry = await request(`/api/product/implementations/${implementationId}/time-entries`, {
     method: "POST",
     cookie: ownerCookie,
@@ -757,11 +866,158 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   });
   assert.equal(timeEntry.response.status, 201, JSON.stringify(timeEntry.data));
   assert.equal(timeEntry.data.entry.minutes, 90);
+  assert.equal(Number(timeEntry.data.entry.internal_cost_rate_snapshot), 60);
+  assert.equal(Number(timeEntry.data.entry.client_bill_rate_snapshot), 100);
+  assert.equal(timeEntry.data.entry.rate_snapshot_present, true);
+  assert.equal(timeEntry.data.burn.burn_pct, 100);
   const deleteTimeEntry = await request(`/api/product/implementations/${implementationId}/time-entries/${timeEntry.data.entry.id}`, {
     method: "DELETE",
     cookie: ownerCookie
   });
   assert.equal(deleteTimeEntry.response.status, 200);
+  const budgetTaskId = createdImplementation.data.implementation.steps[0].id;
+  const memberTaskTime = await request(`/api/product/implementations/${implementationId}/steps/${budgetTaskId}/time-entries`, {
+    method: "POST",
+    cookie: teammateCookie,
+    body: { minutes: 90, workDate: "2027-01-10", note: "Task-scoped work" }
+  });
+  assert.equal(memberTaskTime.response.status, 201, JSON.stringify(memberTaskTime.data));
+  assert.equal(memberTaskTime.data.entry.task_id, budgetTaskId);
+  assert.equal(memberTaskTime.data.entry.billable, false);
+  assert.equal(Object.hasOwn(memberTaskTime.data.entry, "hourly_rate"), false);
+  assert.equal(Object.hasOwn(memberTaskTime.data.entry, "internal_cost_rate_snapshot"), false);
+  assert.equal(Object.hasOwn(memberTaskTime.data.entry, "client_bill_rate_snapshot"), false);
+  assert.equal(Object.hasOwn(memberTaskTime.data, "burn"), false);
+  const memberTimeEntries = await request(`/api/product/implementations/${implementationId}/time-entries`, {
+    cookie: teammateCookie
+  });
+  assert.equal(memberTimeEntries.response.status, 200);
+  assert.equal(Object.hasOwn(memberTimeEntries.data.entries[0], "labor_cost"), false);
+  assert.equal(Object.hasOwn(memberTimeEntries.data.entries[0], "client_bill_rate_snapshot"), false);
+  const lockedTaskTime = await request(`/api/product/implementations/${implementationId}/steps/${budgetTaskId}/time-entries`, {
+    method: "POST",
+    cookie: teammateCookie,
+    body: { minutes: 1, workDate: "2027-01-10" }
+  });
+  assert.equal(lockedTaskTime.response.status, 409);
+  const budgetOverride = await request(`/api/product/implementations/${implementationId}/budget-overrides`, {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { reason: "Finish customer acceptance testing", durationHours: 1 }
+  });
+  assert.equal(budgetOverride.response.status, 201, JSON.stringify(budgetOverride.data));
+  const overrideTaskTime = await request(`/api/product/implementations/${implementationId}/steps/${budgetTaskId}/time-entries`, {
+    method: "POST",
+    cookie: teammateCookie,
+    body: { minutes: 1, workDate: "2027-01-10" }
+  });
+  assert.equal(overrideTaskTime.response.status, 201, JSON.stringify(overrideTaskTime.data));
+  const listedTimeEntries = await request(`/api/product/implementations/${implementationId}/time-entries`, { cookie: ownerCookie });
+  await testQuery(
+    "UPDATE product_time_entries SET rate_snapshot_present = FALSE WHERE id = $1",
+    [memberTaskTime.data.entry.id]
+  );
+  const entriesWithLegacySnapshot = await request(`/api/product/implementations/${implementationId}/time-entries`, {
+    cookie: ownerCookie
+  });
+  assert.equal(listedTimeEntries.response.status, 200);
+  assert.equal(listedTimeEntries.data.entries.length, 2);
+  assert.equal(Number(listedTimeEntries.data.entries[0].labor_cost), 1);
+  const legacyEntry = entriesWithLegacySnapshot.data.entries.find((entry) => entry.id === memberTaskTime.data.entry.id);
+  assert.equal(legacyEntry.rate_snapshot_present, false);
+  assert.equal(legacyEntry.labor_cost, null);
+  for (const entry of listedTimeEntries.data.entries) {
+    const deleted = await request(`/api/product/time-entries/${entry.id}`, { method: "DELETE", cookie: ownerCookie });
+    assert.equal(deleted.response.status, 200);
+  }
+  const financialDashboard = await request("/api/product/analytics/portfolio-margins", { cookie: ownerCookie });
+  assert.equal(financialDashboard.response.status, 200, JSON.stringify(financialDashboard.data));
+  assert.equal(financialDashboard.data.projects.find((project) => project.id === implementationId).contract_value, 1000);
+  const promoteToManager = await request(`/api/product/team-members/${teammateId}/role`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { role: "implementation_manager" }
+  });
+  assert.equal(promoteToManager.response.status, 200, JSON.stringify(promoteToManager.data));
+  const fillBudget = await request(`/api/product/implementations/${implementationId}/time-entries`, {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { minutes: 90, workDate: "2027-01-10", hourlyRate: 100, billable: true }
+  });
+  assert.equal(fillBudget.response.status, 201, JSON.stringify(fillBudget.data));
+  const managerBlockedAtCap = await request(`/api/product/implementations/${implementationId}/steps/${budgetTaskId}/time-entries`, {
+    method: "POST",
+    cookie: teammateCookie,
+    body: { minutes: 1, workDate: "2027-01-10" }
+  });
+  assert.equal(managerBlockedAtCap.response.status, 409);
+  const managerOverride = await request(`/api/product/implementations/${implementationId}/budget-overrides`, {
+    method: "POST",
+    cookie: teammateCookie,
+    body: { reason: "Manager-approved final validation", durationHours: 1 }
+  });
+  assert.equal(managerOverride.response.status, 201, JSON.stringify(managerOverride.data));
+  const managerTimeEntry = await request(`/api/product/implementations/${implementationId}/steps/${budgetTaskId}/time-entries`, {
+    method: "POST",
+    cookie: teammateCookie,
+    body: { minutes: 1, workDate: "2027-01-10" }
+  });
+  assert.equal(managerTimeEntry.response.status, 201, JSON.stringify(managerTimeEntry.data));
+  assert.equal(Object.hasOwn(managerTimeEntry.data.entry, "internal_cost_rate_snapshot"), false);
+  assert.equal(Object.hasOwn(managerTimeEntry.data.entry, "client_bill_rate_snapshot"), false);
+  assert.equal(Object.hasOwn(managerTimeEntry.data, "burn"), true);
+  const managerImplementation = await request(`/api/product/implementations/${implementationId}`, { cookie: teammateCookie });
+  assert.equal(managerImplementation.response.status, 200);
+  assert.equal(Object.hasOwn(managerImplementation.data.implementation, "budgetBurn"), true);
+  assert.equal(Object.hasOwn(managerImplementation.data.implementation.timeEntries[0], "labor_cost"), true);
+  assert.equal(Object.hasOwn(managerImplementation.data.implementation.timeEntries[0], "internal_cost_rate_snapshot"), false);
+  const managerWorkspace = await request("/api/product/workspace", { cookie: teammateCookie });
+  assert.equal(Object.hasOwn(managerWorkspace.data.members[0], "default_internal_cost_rate"), false);
+  assert.equal((await request(`/api/product/team-members/${teammateId}/rates`, {
+    method: "POST",
+    cookie: teammateCookie,
+    body: { defaultInternalCostRate: 1, defaultBillableRate: 2 }
+  })).response.status, 403);
+  assert.equal((await request("/api/product/analytics/portfolio-margins", { cookie: teammateCookie })).response.status, 200);
+  assert.equal((await request("/api/product/audit-logs", { cookie: teammateCookie })).response.status, 403);
+  const executiveInvite = await request("/api/product/invites", {
+    method: "POST",
+    cookie: ownerCookie,
+    body: { email: "executive@relaytest.example", role: "executive_viewer" }
+  });
+  assert.equal(executiveInvite.response.status, 201, JSON.stringify(executiveInvite.data));
+  assert.equal(executiveInvite.data.invite.role, "executive_viewer");
+  const executiveSignup = await request("/api/product/auth/signup", {
+    method: "POST",
+    body: {
+      email: "executive@relaytest.example",
+      password: "another-executive-password",
+      inviteToken: new URL(executiveInvite.data.invite.inviteUrl).searchParams.get("invite")
+    }
+  });
+  assert.equal(executiveSignup.response.status, 201);
+  assert.equal(executiveSignup.data.workspace.role, "executive_viewer");
+  const executiveCookie = executiveSignup.response.headers.get("set-cookie").split(";")[0];
+  const executiveWorkspace = await request("/api/product/workspace", { cookie: executiveCookie });
+  assert.equal(executiveWorkspace.response.status, 200);
+  assert.deepEqual(executiveWorkspace.data.implementations, []);
+  assert.deepEqual(executiveWorkspace.data.members, []);
+  assert.deepEqual(executiveWorkspace.data.templates, []);
+  assert.equal((await request(`/api/product/implementations/${implementationId}`, { cookie: executiveCookie })).response.status, 403);
+  assert.equal((await request("/api/product/analytics/portfolio-margins", { cookie: executiveCookie })).response.status, 200);
+  assert.equal((await request("/api/product/implementations", {
+    method: "POST",
+    cookie: executiveCookie,
+    body: { templateId, customerName: "Unauthorized Customer" }
+  })).response.status, 403);
+  const budgetAudit = await testQuery(`
+    SELECT action FROM audit_logs
+    WHERE workspace_id = $1 AND action IN ('budget.configuration_updated', 'budget.override_granted', 'budget.burn_alert', 'team_member.rates_updated')
+  `, [ownerAccount.workspace.id]);
+  assert.ok(budgetAudit.rows.some((row) => row.action === "budget.configuration_updated"));
+  assert.ok(budgetAudit.rows.some((row) => row.action === "budget.override_granted"));
+  assert.ok(budgetAudit.rows.some((row) => row.action === "budget.burn_alert"));
+  assert.ok(budgetAudit.rows.some((row) => row.action === "team_member.rates_updated"));
   const invalidTimeEntry = await request(`/api/product/implementations/${implementationId}/time-entries`, {
     method: "POST",
     cookie: ownerCookie,
@@ -832,6 +1088,13 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   const initialCustomerForm = await request(`/api/product/customer/${customerToken}`);
   assert.equal(initialCustomerForm.response.status, 200);
   assert.equal(initialCustomerForm.data.requirements[0].value, "");
+  const customerPortalJson = JSON.stringify(initialCustomerForm.data);
+  for (const internalFinancialField of [
+    "timeEntries", "internal_cost_rate_snapshot", "client_bill_rate_snapshot",
+    "budget_type", "budget_limit", "hard_lock_on_exceed", "burn_pct", "financialPlan"
+  ]) {
+    assert.equal(customerPortalJson.includes(internalFinancialField), false, `Customer portal exposed ${internalFinancialField}.`);
+  }
   const updatedCustomerForm = await request(`/api/product/customer/${customerToken}`);
   assert.equal(updatedCustomerForm.data.requirements.length, 4);
   assert.equal(updatedCustomerForm.data.requirements.find((item) => item.id === secondRequirementId).input_type, "email");
@@ -1436,7 +1699,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
     }
   });
   assert.equal(existingAccountJoin.response.status, 200);
-  assert.equal(existingAccountJoin.data.workspace.role, "member");
+  assert.equal(existingAccountJoin.data.workspace.role, "contributor");
   assert.equal(existingAccountJoin.data.workspace.id, ownerAccount.workspace.id);
   const existingAccountCookie = existingAccountJoin.response.headers.get("set-cookie").split(";")[0];
   assert.equal((await request("/api/product/workspace", { cookie: existingAccountCookie })).data.members.length, 3);
@@ -1500,7 +1763,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   assert.equal(expiredCustomerSubmission.response.status, 404);
 });
 
-test("Starter plan enforces member, template, active implementation, and feature limits", {
+test("Starter plan enforces limits while keeping included prerequisites and gating paid features", {
   skip: databaseTestSkipReason || undefined
 }, async () => {
   const suffix = `${process.pid}-${Date.now()}`;
@@ -1555,7 +1818,7 @@ test("Starter plan enforces member, template, active implementation, and feature
       dependsOn: [firstStep.data.step.id]
     }
   });
-  assert.equal(dependency.response.status, 403);
+  assert.equal(dependency.response.status, 201, JSON.stringify(dependency.data));
 
   const readiness = await request(`/api/product/processes/${processId}/test`, {
     method: "POST",
@@ -1589,6 +1852,22 @@ test("Starter plan enforces member, template, active implementation, and feature
     { cookie: account.cookie }
   );
   assert.equal(implementationDetails.response.status, 200, JSON.stringify(implementationDetails.data));
+  assert.equal(Object.hasOwn(implementationDetails.data.implementation, "timeEntries"), false);
+  assert.equal(Object.hasOwn(implementationDetails.data.implementation, "budgetBurn"), false);
+  const financialDashboard = await request("/api/product/analytics/portfolio-margins", {
+    cookie: account.cookie
+  });
+  assert.equal(financialDashboard.response.status, 403);
+  const hubspotPipelines = await request("/api/product/integrations/hubspot/pipelines", {
+    cookie: account.cookie
+  });
+  assert.equal(hubspotPipelines.response.status, 403);
+  const timeEntry = await request(`/api/product/implementations/${firstImplementation.data.implementation.id}/steps/${implementationDetails.data.implementation.steps[0].id}/time-entries`, {
+    method: "POST",
+    cookie: account.cookie,
+    body: { minutes: 30, workDate: new Date().toISOString().slice(0, 10) }
+  });
+  assert.equal(timeEntry.response.status, 403);
   const blocker = await request(
     `/api/product/implementations/${firstImplementation.data.implementation.id}/steps/${implementationDetails.data.implementation.steps[0].id}`,
     {
@@ -1624,7 +1903,7 @@ test("account deletion removes sole-member workspaces and transfers shared owner
   );
   const member = memberResult.rows[0];
   await testQuery(
-    "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+    "INSERT INTO product_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'contributor')",
     [sharedWorkspaceId, member.id]
   );
   const processResult = await testQuery(
@@ -1760,7 +2039,7 @@ test("public pages and the inquiry app remain available", {
   assert.doesNotMatch(productScript, /consentAccepted|helpConsented/);
   assert.match(relayHelpReply("hi"), /Hi! I’m Ray/);
   assert.match(relayHelpReply("hello Ray"), /What are you working on today/);
-  assert.match(relayHelpReply("Does Relay integrate with Jira and Slack?"), /HubSpot.*not connected today/i);
+  assert.match(relayHelpReply("Does Relay integrate with Jira and Slack?"), /Slack alerts.*HubSpot.*provider setup.*Jira Cloud or Linear.*internal tasks/i);
   assert.match(relayHelpReply("How do I map prerequisites between process steps?"), /Process map/i);
   assert.match(relayHelpReply("If I update a template, will existing plans change?"), /existing.*not changed/i);
   assert.match(relayHelpReply("Can I delete my account, and what happens to customer information?"), /private link/i);

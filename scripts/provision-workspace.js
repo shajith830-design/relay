@@ -25,8 +25,7 @@ async function provisionWorkspace() {
     if (planCode === "custom") {
       for (const [key, label] of [
         ["memberLimit", "Team-member limit"],
-        ["activeImplementationLimit", "Active implementation limit"],
-        ["templateLimit", "Template limit"]
+        ["activeImplementationLimit", "Active implementation limit"]
       ]) {
         const answer = (await prompt.question(`${label}: `)).trim();
         customLimits[key] = /^\d+$/.test(answer) ? Number(answer) : 0;

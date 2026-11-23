@@ -54,7 +54,8 @@ app.use((_req, res, next) => {
   next();
 });
 app.use("/api/product/customer", (req, res, next) => {
-  const isCustomerFileUpload = req.method === "POST" && /^\/[^/]+\/files$/.test(req.path);
+  const isCustomerFileUpload = req.method === "POST"
+    && (/^\/[^/]+\/files$/.test(req.path) || /^\/[^/]+\/tasks\/\d+\/csv$/.test(req.path));
   if (isCustomerFileUpload) {
     const now = Date.now();
     const key = req.ip || "unknown";
@@ -81,7 +82,7 @@ app.use("/api/product/customer", (req, res, next) => {
     : express.json({ limit: "128kb" });
   return parser(req, res, next);
 });
-app.use(express.json({ limit: "16kb" }));
+app.use(express.json({ limit: "64kb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 app.get("/product", (req, res) => {
   const query = req.originalUrl.slice("/product".length);
@@ -294,7 +295,8 @@ app.get("/admin/workspaces", asyncRoute(async (req, res) => {
   if (!authorizeAdminRequest(req, res, config.ownerAdminToken, "OWNER_ADMIN_TOKEN")) return;
   const workspaces = await db.database.prepare(`
     SELECT w.id, w.name, u.email AS owner_email, s.activated_at, s.expires_at, s.plan,
-      s.member_limit, s.active_implementation_limit, s.template_limit,
+      s.member_limit, s.active_implementation_limit,
+      CASE WHEN s.plan IN ('growth', 'custom') THEN NULL ELSE s.template_limit END AS template_limit,
       (s.expires_at > CURRENT_TIMESTAMP) AS active
     FROM product_workspace_subscriptions s
     JOIN product_workspaces w ON w.id = s.workspace_id
@@ -312,8 +314,7 @@ app.post("/admin/workspaces", asyncRoute(async (req, res) => {
   const planCode = req.body.plan;
   const customLimits = {
     memberLimit: req.body.memberLimit,
-    activeImplementationLimit: req.body.activeImplementationLimit,
-    templateLimit: req.body.templateLimit
+    activeImplementationLimit: req.body.activeImplementationLimit
   };
   if (!name || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     return res.status(400).json({
@@ -380,8 +381,7 @@ app.put("/admin/workspaces/:workspaceId/plan", asyncRoute(async (req, res) => {
   const planCode = req.body.plan;
   const customLimits = {
     memberLimit: req.body.memberLimit,
-    activeImplementationLimit: req.body.activeImplementationLimit,
-    templateLimit: req.body.templateLimit
+    activeImplementationLimit: req.body.activeImplementationLimit
   };
   if (!Number.isSafeInteger(workspaceId) || workspaceId < 1 || !isPlanCode(planCode)
     || (planCode === "custom" && !validateCustomLimits(customLimits))) {

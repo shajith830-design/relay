@@ -51,6 +51,37 @@ test("sample workspace previews portfolio health, notification settings, and int
     method: "PATCH",
     body: { escalationEmail: "  backup@acme.example ", escalationDelayDays: 7 }
   });
+
+  test("sample workspace previews internal financials, budget controls, and task-level time locally", async () => {
+    const { adapter } = makeDemoAdapter();
+    const dashboard = await adapter.request("/api/product/analytics/portfolio-margins");
+    assert.equal(dashboard.projects[0].contract_value, 13500);
+    assert.equal(dashboard.projects[0].delivery_cost, 4200);
+    assert.equal(dashboard.projects[0].gross_profit, 9300);
+    assert.equal(dashboard.projects[0].gross_margin_pct, 9300 / 13500 * 100);
+
+    const implementation = (await adapter.request("/api/product/implementations/9040")).implementation;
+    const taskId = implementation.steps[0].id;
+    const taskEntry = await adapter.request(`/api/product/implementations/9040/steps/${taskId}/time-entries`, {
+      method: "POST",
+      body: { minutes: 30, workDate: "2027-01-10", note: "Sample task time" }
+    });
+    assert.equal(taskEntry.entry.task_id, taskId);
+    assert.equal(taskEntry.entry.billable, false);
+    assert.equal(taskEntry.entry.internal_cost_rate_snapshot, 70);
+    assert.equal(taskEntry.entry.client_bill_rate_snapshot, 150);
+    assert.equal(taskEntry.burn.logged_minutes, 3630);
+
+    const savedBudget = await adapter.request("/api/product/implementations/9040/budget", {
+      method: "PATCH",
+      body: { baseOnboardingFee: 14000, budgetType: "fixed_hours", budgetLimit: 40, hardLockOnExceed: true }
+    });
+    assert.equal(savedBudget.burn.burn_pct, 151.25);
+    const listedEntries = await adapter.request("/api/product/implementations/9040/time-entries");
+    assert.equal(listedEntries.entries.length, 2);
+    const removed = await adapter.request(`/api/product/time-entries/${taskEntry.entry.id}`, { method: "DELETE" });
+    assert.equal(removed.success, true);
+  });
   assert.equal(savedEscalation.escalationEmail, "backup@acme.example");
   assert.equal(savedEscalation.escalationDelayDays, 7);
   assert.equal(
@@ -92,9 +123,44 @@ test("sample workspace previews portfolio health, notification settings, and int
   let integrations = (await adapter.request("/api/product/workspace")).integrations;
   assert.equal(integrations.length, 1);
   assert.equal(integrations[0].demo, true);
+  const salesforceConnection = await adapter.request("/api/product/integrations/salesforce/connect", {
+    method: "POST",
+    body: {}
+  });
+  assert.equal(salesforceConnection.demoConnected, true);
+  integrations = (await adapter.request("/api/product/workspace")).integrations;
+  assert.deepEqual(Array.from(integrations, (integration) => integration.provider).sort(), ["hubspot", "salesforce"]);
+  await adapter.request("/api/product/integrations/salesforce", { method: "DELETE" });
   await adapter.request("/api/product/integrations/hubspot", { method: "DELETE" });
   integrations = (await adapter.request("/api/product/workspace")).integrations;
   assert.equal(integrations.length, 0);
+});
+
+test("sample workspace can archive, restore, and permanently delete implementations", async () => {
+  const { adapter } = makeDemoAdapter();
+  const implementationId = 9040;
+  const customerLink = await adapter.request(`/api/product/implementations/${implementationId}/customer-link`, {
+    method: "POST",
+    body: {}
+  });
+  assert.ok(customerLink.customerPortalToken);
+
+  await adapter.request(`/api/product/implementations/${implementationId}/archive`, { method: "PATCH" });
+  let workspace = await adapter.request("/api/product/workspace");
+  assert.equal(workspace.implementations.some((item) => item.id === implementationId), false);
+  assert.equal(workspace.archivedImplementations[0].id, implementationId);
+  await assert.rejects(adapter.request(`/api/product/implementations/${implementationId}`), /not found/);
+
+  await adapter.request(`/api/product/implementations/${implementationId}/restore`, { method: "PATCH" });
+  workspace = await adapter.request("/api/product/workspace");
+  assert.equal(workspace.implementations.some((item) => item.id === implementationId), true);
+  assert.equal(workspace.archivedImplementations.length, 0);
+
+  await adapter.request(`/api/product/implementations/${implementationId}/archive`, { method: "PATCH" });
+  await adapter.request(`/api/product/implementations/${implementationId}`, { method: "DELETE" });
+  workspace = await adapter.request("/api/product/workspace");
+  assert.equal(workspace.implementations.some((item) => item.id === implementationId), false);
+  assert.equal(workspace.archivedImplementations.length, 0);
 });
 
 test("sample template deletion explains when existing implementation history requires keeping it", async () => {
@@ -106,6 +172,7 @@ test("sample template deletion explains when existing implementation history req
     method: "POST",
     body: { processId: workspace.processes[0].id, name: "Unused deletion test" }
   });
+
   await adapter.request(`/api/product/templates/${unusedTemplate.id}`, { method: "DELETE" });
   assert.equal((await adapter.request("/api/product/workspace")).templates.some((item) => item.id === unusedTemplate.id), false);
   await assert.rejects(
@@ -120,6 +187,24 @@ test("sample template deletion explains when existing implementation history req
   assert.match(productScript, /template-delete-note-/);
   assert.match(productScript, /class="button primary" type="button" data-start-template=/);
   assert.match(productScript, /class="template-management"/);
+});
+
+test("implementation archive and deletion are workspace-admin-only and permanently remove linked records", () => {
+  const routes = readFileSync(path.join(__dirname, "..", "product-routes.js"), "utf8");
+  const archiveMigration = readFileSync(path.join(__dirname, "..", "migrations", "012_implementation_archive.sql"), "utf8");
+  const productScript = readFileSync(path.join(__dirname, "..", "public", "product.js"), "utf8");
+  const productHtml = readFileSync(path.join(__dirname, "..", "public", "product.html"), "utf8");
+
+  assert.match(archiveMigration, /ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ/);
+  assert.match(routes, /Only a workspace admin can archive implementations/);
+  assert.match(routes, /Only a workspace admin can restore implementations/);
+  assert.match(routes, /Only a workspace admin can permanently delete implementations/);
+  assert.match(routes, /WHERE i\.workspace_id = \$1 AND i\.archived_at IS NULL/);
+  assert.match(routes, /AND i\.archived_at IS NULL/);
+  assert.match(productScript, /data-restore-implementation/);
+  assert.match(productScript, /Permanently delete/);
+  assert.match(productHtml, /id="archived-implementations-panel"/);
+  assert.match(productHtml, /id="archive-implementation"/);
 });
 
 test("starting an implementation requires only its company and template", () => {
@@ -393,6 +478,7 @@ test("workspace navigation is grouped and the overview routes to one next action
     "implementations",
     "requirements",
     "portfolio",
+    "financials",
     "integrations",
     "settings",
     "guide"
@@ -477,12 +563,16 @@ test("implementation detail loads independent sections concurrently", () => {
 
 test("workspace exposes delivery operations and competitive capability controls", () => {
   const productHtml = readFileSync(path.join(__dirname, "..", "public", "product.html"), "utf8");
+  const productScript = readFileSync(path.join(__dirname, "..", "public", "product.js"), "utf8");
   for (const id of [
     "delivery-operations-heading", "implementation-sow-form", "implementation-financial-form",
-    "time-entry-form", "approval-form", "implementation-onboarding-gap-plan"
+    "budget-cap-form", "budget-override-form", "approval-form", "implementation-onboarding-gap-plan"
   ]) {
     assert.match(productHtml, new RegExp(`id="${id}"`), `${id} must be present`);
   }
+  assert.match(productScript, /data-time-preset="15"/);
+  assert.match(productScript, /data-time-start=/);
+  assert.match(productScript, /data-time-stop=/);
 });
 
 test("implementation planning forms are grouped into accessible collapsed sections", () => {
@@ -643,7 +733,9 @@ test("customer portal wizard keeps Relay launch details and prevents lost or mis
   assert.match(customerScript, /el\.body\.querySelectorAll\("button, input, select, textarea"\)/);
   assert.match(customerScript, /el\.steps\.querySelectorAll\("button"\)/);
   assert.match(routes, /const implementationId = implementation\.implementation_id \|\| implementation\.id/);
-  assert.match(routes, /if \(completed\.changes\)[\s\S]*count: completed\.changes/);
+  assert.match(routes, /access\.kind !== "delegate"/);
+  assert.match(routes, /product_customer_task_delegation_steps/);
+  assert.match(routes, /locked_pending_co/);
 });
 
 test("sample customer contacts can use launch plans, questions, and file sharing without sending email", async () => {

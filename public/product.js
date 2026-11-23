@@ -23,7 +23,7 @@ const state = {
   inviteUrl: "",
   user: null,
   workspace: null,
-  data: { processes: [], templates: [], implementations: [], requirements: [], members: [], invites: [], teamWorkload: [], integrations: [], notificationSettings: null, role: "member", usage: null, plan: null },
+  data: { processes: [], templates: [], implementations: [], archivedImplementations: [], requirements: [], members: [], invites: [], teamWorkload: [], integrations: [], notificationSettings: null, role: "member", usage: null, plan: null },
   selectedProcessId: null,
   process: null,
   editingStepId: null,
@@ -33,12 +33,21 @@ const state = {
   helpMessages: [],
   onboardingDismissed: false,
   preferences: { theme: "light", accent: "blue" },
-  implementationFilters: { search: "", status: "all", owner: "all", attention: "all" }
+  implementationFilters: { search: "", status: "all", owner: "all", attention: "all" },
+  implementationListMode: "active",
+  financialDashboard: null,
+  activeTimeTimer: null,
+  auditLogEvents: [],
+  auditLogCursor: null,
+  notificationDeliveryEvents: []
 };
+const TASK_TIMER_STORAGE_KEY = "relay-task-time-timer";
 const dirtyScopes = new Map();
 let hubspotPipelineCache = [];
 let hubspotConfigurationLoaded = false;
 let hubspotConfigurationLoading = false;
+let salesforceCatalogCache = null;
+let salesforceCatalogLoading = false;
 const dirtyScopeBaselines = new WeakMap();
 const pendingFormButtons = new WeakMap();
 let activeSubmissionForm = null;
@@ -47,6 +56,7 @@ let nextFieldErrorId = 0;
 const titles = {
   overview: ["Your workspace", "Overview"],
   portfolio: ["See delivery health", "Portfolio"],
+  financials: ["Protect project margins", "Financials"],
   processes: ["Plan your work", "Process map"],
   templates: ["Reuse what works", "Templates"],
   implementations: ["Run customer work", "Implementations"],
@@ -56,6 +66,67 @@ const titles = {
   settings: ["Personalize your workspace", "Settings"]
 };
 
+function taskTimerStorageKey() {
+  return `${TASK_TIMER_STORAGE_KEY}:${state.workspace?.id || "none"}:${state.user?.id || "none"}`;
+}
+
+function loadTaskTimer() {
+  const storageKey = taskTimerStorageKey();
+  const saved = window.localStorage.getItem(storageKey);
+  if (!saved) return null;
+  try {
+    const timer = JSON.parse(saved);
+    if (Number.isInteger(timer.implementationId) && Number.isInteger(timer.taskId)
+      && Number.isFinite(timer.startedAt)) return timer;
+  } catch {
+    window.localStorage.removeItem(storageKey);
+    showToast("An unreadable saved timer was cleared.");
+    return null;
+  }
+  window.localStorage.removeItem(storageKey);
+  showToast("An invalid saved timer was cleared.");
+  return null;
+}
+
+function saveTaskTimer(timer) {
+  state.activeTimeTimer = timer;
+  if (timer) window.localStorage.setItem(taskTimerStorageKey(), JSON.stringify(timer));
+  else window.localStorage.removeItem(taskTimerStorageKey());
+  updateTaskTimerDisplay();
+}
+
+function updateTaskTimerDisplay() {
+  const timer = state.activeTimeTimer;
+  document.querySelectorAll("[data-time-elapsed]").forEach((element) => {
+    const isActive = timer && Number(element.dataset.timeElapsed) === timer.taskId
+      && Number(element.dataset.timeImplementation) === timer.implementationId;
+    element.textContent = isActive ? `Running · ${formatElapsed(Date.now() - timer.startedAt)}` : "Timer stopped";
+  });
+  document.querySelectorAll("[data-time-start]").forEach((button) => {
+    const isActiveTimer = timer && Number(button.dataset.timeStart) === timer.taskId
+      && Number(button.dataset.timeImplementation) === timer.implementationId;
+    button.hidden = Boolean(isActiveTimer);
+    button.disabled = Boolean(timer && !isActiveTimer);
+  });
+  document.querySelectorAll("[data-time-stop]").forEach((button) => {
+    button.hidden = !(timer && Number(button.dataset.timeStop) === timer.taskId
+      && Number(button.dataset.timeImplementation) === timer.implementationId);
+  });
+}
+
+function formatElapsed(milliseconds) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = String(Math.floor(seconds / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+  const remainder = String(seconds % 60).padStart(2, "0");
+  return `${hours}:${minutes}:${remainder}`;
+}
+
+function formatMoney(value) {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 })
+    .format(Number(value) || 0);
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({
     "&": "&amp;",
@@ -64,6 +135,19 @@ function escapeHtml(value) {
     '"': "&quot;",
     "'": "&#39;"
   })[character]);
+}
+
+function safeEngineeringIssueUrl(issue) {
+  try {
+    const url = new URL(issue.issue_url);
+    const trustedHost = issue.provider === "jira"
+      ? url.hostname.endsWith(".atlassian.net")
+      : issue.provider === "linear" && url.hostname === "linear.app";
+    return url.protocol === "https:" && trustedHost && !url.username && !url.password && !url.port
+      ? url.href : "";
+  } catch {
+    return "";
+  }
 }
 
 async function api(url, options = {}) {
@@ -397,6 +481,9 @@ function showAuth(message = "") {
   window.clearTimeout(subscriptionExpiryTimer);
   state.user = null;
   state.workspace = null;
+  state.auditLogEvents = [];
+  state.auditLogCursor = null;
+  state.activeTimeTimer = null;
   state.onboardingDismissed = false;
   state.preferences = { theme: "light", accent: "blue" };
   applyAppearance();
@@ -433,6 +520,8 @@ function scheduleSubscriptionExpiry(expiresAt) {
 function showProduct() {
   authScreen.hidden = true;
   appShell.hidden = false;
+  state.activeTimeTimer = loadTaskTimer();
+  updateTaskTimerDisplay();
   document.getElementById("workspace-name-display").textContent = state.workspace.name;
   document.getElementById("user-email").textContent = state.user.email;
   scheduleSubscriptionExpiry(state.workspace.subscriptionExpiresAt);
@@ -507,6 +596,42 @@ async function savePreference(key, value) {
     } catch (error) {
       state.preferences[key] = previous;
       applyAppearance();
+      status.textContent = error.message;
+    }
+  });
+
+  document.getElementById("team-member-list").addEventListener("submit", async (event) => {
+    const roleForm = event.target.closest(".member-role-form");
+    if (roleForm) {
+      event.preventDefault();
+      const status = roleForm.querySelector(".form-status");
+      try {
+        await api(`/api/product/team-members/${roleForm.dataset.memberRole}/role`, {
+          method: "PATCH",
+          body: { role: new FormData(roleForm).get("role") }
+        });
+        await loadWorkspace();
+        showToast("Workspace role updated.");
+      } catch (error) {
+        status.textContent = error.message;
+      }
+      return;
+    }
+    const form = event.target.closest(".member-rate-form");
+    if (!form) return;
+    event.preventDefault();
+    const status = form.querySelector(".form-status");
+    const fields = new FormData(form);
+    try {
+      await api(`/api/product/team-members/${form.dataset.memberRates}/rates`, {
+        method: "POST",
+        body: {
+          defaultInternalCostRate: fields.get("internalCostRate"),
+          defaultBillableRate: fields.get("billableRate")
+        }
+      });
+      status.textContent = "Hourly rates saved. Existing time-entry snapshots are unchanged.";
+    } catch (error) {
       status.textContent = error.message;
     }
   });
@@ -601,10 +726,14 @@ async function loadWorkspace() {
   if (dirtyScopes.size && !confirmDiscardChanges()) return false;
   state.data = data;
   renderWorkspace();
+  if (data.role === "executive_viewer") {
+    setView(data.plan?.features.financialProtection && data.capabilities?.viewFinancials ? "financials" : "guide");
+  }
   const integrationResult = new URLSearchParams(window.location.search).get("integration");
   if (integrationResult) {
     const messages = {
       hubspot_connected: "HubSpot connected. New and updated implementations will sync during event processing.",
+      salesforce_connected: "Salesforce connected. Map product SKUs to Relay templates to start onboarding from new Closed Won opportunities.",
       connect_failed: "The integration could not be connected. Check its OAuth app settings and try again."
     };
     document.getElementById("integration-status").textContent = messages[integrationResult] || "Integration connection completed.";
@@ -624,6 +753,12 @@ function emptyStateMarkup(title, description, actionLabel, action) {
 }
 
 function getNextWorkflowAction() {
+  if (!state.data.capabilities?.administerWorkspace) {
+    if (state.data.capabilities?.manageImplementations && state.data.templates.length) {
+      return { action: "start-implementation", label: "Start an implementation" };
+    }
+    return { action: "view-implementations", label: "View implementations" };
+  }
   if (!state.data.processes.length) return { action: "map-process", label: "Create a process map" };
   if (!state.data.processes.some((process) => process.steps_count > 0)) {
     return { action: "map-process", label: "Add process steps" };
@@ -700,6 +835,8 @@ function setMobileNavigationOpen(isOpen) {
 
 function setView(name) {
   if (!titles[name]) return;
+  const targetView = document.getElementById(`view-${name}`);
+  if (!targetView || targetView.hidden) return false;
   const activeView = document.querySelector(".view.active");
   if (activeView?.id !== `view-${name}` && !confirmDiscardChanges()) return false;
   const mobileNavigationWasOpen = document.getElementById("mobile-nav-toggle").getAttribute("aria-expanded") === "true";
@@ -716,7 +853,14 @@ function setView(name) {
   if (mobileNavigationWasOpen) document.getElementById("view-title").focus();
   document.getElementById("refresh-button").hidden = name === "settings";
   globalStatus.textContent = "";
-  if (name === "settings") loadAccountDeletionChoices().catch(showError);
+  if (name === "settings" && state.data.role !== "executive_viewer") {
+    loadAccountDeletionChoices().catch(showError);
+  }
+  if (name === "settings" && state.data.capabilities?.viewAuditLogs && !isWorkspaceDemo) {
+    loadAuditLogs(false).catch(showError);
+    loadNotificationDelivery().catch(showError);
+  }
+  if (name === "financials") loadFinancialDashboard().catch(showError);
   return true;
 }
 
@@ -843,7 +987,8 @@ function renderOverview() {
       "map-process": ["Start with your team's process", "Map the steps your team follows so Relay can check the workflow and turn it into a reusable template."],
       "check-process": ["Check your process", "Run a workflow check before creating a template."],
       "save-template": ["Create a reusable template", "A template gives each customer a consistent starting point."],
-      "start-implementation": ["Start your first implementation", "Choose a template and enter the customer company to create a customer-specific work plan."]
+        "start-implementation": ["Start your first implementation", "Choose a template and enter the customer company to create a customer-specific work plan."],
+        "view-implementations": ["Your implementation work", "Open an implementation to review its tasks and communicate with the customer."]
     }[next.action];
     emptyState.innerHTML = `<strong>${escapeHtml(copy[0])}</strong><p>${escapeHtml(copy[1])}</p>`;
   }
@@ -880,7 +1025,7 @@ function renderNotificationSettings() {
   document.getElementById("notifications-email-enabled").checked = settings.email_enabled;
   document.getElementById("notifications-reminder-days").value = settings.reminder_days_before;
   const form = document.getElementById("notification-settings-form");
-  const owner = state.workspace.role === "owner";
+  const owner = state.data.capabilities?.administerWorkspace === true;
   for (const control of form.elements) control.disabled = !owner;
   document.getElementById("notifications-demo-note").hidden = !isWorkspaceDemo;
 }
@@ -889,26 +1034,100 @@ function renderIntegrations() {
   const integrations = state.data.integrations || [];
   const connected = new Set(integrations.map((item) => item.provider));
   const hubspot = integrations.find((item) => item.provider === "hubspot");
+  const salesforce = integrations.find((item) => item.provider === "salesforce");
+  const jira = integrations.find((item) => item.provider === "jira");
+  const linear = integrations.find((item) => item.provider === "linear");
   document.getElementById("integration-status").textContent = hubspot?.hubspot_onboarding_last_error
     ? `HubSpot handoff needs attention: ${hubspot.hubspot_onboarding_last_error}`
-    : state.workspace.role === "owner" ? "" : "Only a workspace owner can connect or disconnect integrations.";
+    : state.data.capabilities?.administerWorkspace ? "" : "Only workspace admins can connect or disconnect integrations.";
   document.getElementById("integrations-demo-note").hidden = !isWorkspaceDemo;
-  document.getElementById("integration-list").innerHTML = ["hubspot"].map((provider) => {
-    const name = "HubSpot";
+  const integrationNames = {
+    hubspot: "HubSpot",
+    salesforce: "Salesforce",
+    jira: "Jira Cloud",
+    linear: "Linear"
+  };
+  const providers = ["hubspot", ...(state.data.plan?.features?.enterpriseIntegrations
+    ? ["salesforce", "jira", "linear"] : [])];
+  document.getElementById("integration-list").innerHTML = providers.map((provider) => {
+    const name = integrationNames[provider];
     const isConnected = connected.has(provider);
     const stateLabel = isWorkspaceDemo
       ? isConnected ? "Preview connected · no external service linked" : "Not connected"
-      : isConnected ? "Connected" : "Not connected";
-    return `<div class="list-row"><div><strong>${name}</strong><small>${stateLabel}</small></div>
+      : provider === "jira" && isConnected
+        ? `Connected · ${jira.configuration_json?.projectKey || "Jira project"}`
+        : provider === "linear" && isConnected
+          ? `Connected · ${linear.configuration_json?.teamName || "Linear team"}`
+          : isConnected ? "Connected" : "Not connected";
+    const oauthProvider = provider === "hubspot" || provider === "salesforce";
+    return `<div class="list-row"><div><strong>${name}</strong><small>${escapeHtml(stateLabel)}</small></div>
       ${connected.has(provider)
-        ? `<button class="text-button" type="button" data-disconnect-integration="${provider}" ${state.workspace.role !== "owner" ? "disabled" : ""}>${isWorkspaceDemo ? "Clear preview" : "Disconnect"}</button>`
-        : `<button class="button secondary" type="button" data-connect-integration="${provider}" ${state.workspace.role !== "owner" ? "disabled" : ""}>${isWorkspaceDemo ? "Preview connection" : `Connect ${name}`}</button>`}</div>`;
+        ? `<button class="text-button" type="button" data-disconnect-integration="${provider}" ${!state.data.capabilities?.administerWorkspace ? "disabled" : ""}>${isWorkspaceDemo ? "Clear preview" : "Disconnect"}</button>`
+        : oauthProvider
+          ? `<button class="button secondary" type="button" data-connect-integration="${provider}" ${!state.data.capabilities?.administerWorkspace ? "disabled" : ""}>${isWorkspaceDemo ? "Preview connection" : `Connect ${name}`}</button>`
+          : `<span class="muted">${isWorkspaceDemo ? "Preview only" : "Configure below"}</span>`}</div>`;
   }).join("");
   const handoffPanel = document.getElementById("hubspot-handoff-panel");
   handoffPanel.hidden = isWorkspaceDemo || !connected.has("hubspot");
   for (const control of document.getElementById("hubspot-handoff-form").elements) {
-    control.disabled = state.workspace.role !== "owner";
+    control.disabled = !state.data.capabilities?.administerWorkspace;
   }
+  const salesforcePanel = document.getElementById("salesforce-sku-panel");
+  salesforcePanel.hidden = isWorkspaceDemo || !state.data.plan?.features?.enterpriseIntegrations
+    || !state.data.capabilities?.administerWorkspace || !connected.has("salesforce");
+  const salesforceError = salesforce?.last_sync_error || "";
+  document.getElementById("salesforce-sync-status").textContent = salesforceError
+    ? `Salesforce sync needs attention: ${salesforceError}`
+    : salesforce?.last_synced_at
+      ? `Last checked ${new Date(salesforce.last_synced_at).toLocaleString()}. New Closed Won opportunities are checked every five minutes.`
+      : "Connected. Save SKU mappings to start checking new Closed Won opportunities.";
+  if (!salesforcePanel.hidden && !salesforceCatalogCache && !salesforceCatalogLoading) {
+    loadSalesforceCatalog().catch((error) => {
+      document.getElementById("salesforce-sku-status").textContent = error.message;
+      salesforceCatalogLoading = false;
+    });
+  }
+  for (const panelId of ["jira-settings-panel", "linear-settings-panel"]) {
+    document.getElementById(panelId).hidden = isWorkspaceDemo
+      || !state.data.plan?.features?.enterpriseIntegrations
+      || !state.data.capabilities?.administerWorkspace;
+  }
+  const jiraConfig = jira?.configuration_json || {};
+  document.getElementById("jira-site").value = jiraConfig.baseUrl || "";
+  document.getElementById("jira-email").value = jiraConfig.email || "";
+  document.getElementById("jira-project-key").value = jiraConfig.projectKey || "";
+  document.getElementById("jira-issue-type").value = jiraConfig.issueType || "Task";
+  document.getElementById("jira-api-token").value = "";
+  document.getElementById("jira-api-token").required = !connected.has("jira");
+  document.getElementById("jira-disconnect").disabled = !connected.has("jira")
+    || !state.data.capabilities?.administerWorkspace;
+  document.getElementById("jira-settings-status").textContent = jira?.last_sync_error
+    ? `Last issue sync failed: ${jira.last_sync_error}`
+    : connected.has("jira") ? "Connected. Enter a new token only when replacing the saved one." : "";
+  const linearConfig = linear?.configuration_json || {};
+  document.getElementById("linear-team-id").value = linearConfig.teamId || "";
+  document.getElementById("linear-api-token").value = "";
+  document.getElementById("linear-api-token").required = !connected.has("linear");
+  document.getElementById("linear-disconnect").disabled = !connected.has("linear")
+    || !state.data.capabilities?.administerWorkspace;
+  document.getElementById("linear-settings-status").textContent = linear?.last_sync_error
+    ? `Last issue sync failed: ${linear.last_sync_error}`
+    : connected.has("linear") ? "Connected. Enter a new key only when replacing the saved one." : "";
+  const slack = integrations.find((item) => item.provider === "slack");
+  const slackConnected = slack?.has_slack_webhook === true;
+  const slackPanel = document.getElementById("slack-alert-panel");
+  slackPanel.hidden = isWorkspaceDemo || !state.data.plan?.features?.slackAlerts
+    || !state.data.capabilities?.administerWorkspace;
+  document.getElementById("slack-webhook-state").textContent = slackConnected
+    ? "A webhook is saved. Its URL is encrypted and cannot be viewed again."
+    : "No webhook is configured.";
+  document.getElementById("slack-test-alert").disabled = !slackConnected;
+  document.getElementById("slack-disconnect").disabled = !slackConnected;
+  for (const control of document.getElementById("slack-alert-form").elements) {
+    control.disabled = !state.data.capabilities?.administerWorkspace;
+  }
+  document.getElementById("slack-test-alert").disabled ||= !slackConnected;
+  document.getElementById("slack-disconnect").disabled ||= !slackConnected;
   if (!handoffPanel.hidden && !hubspotConfigurationLoaded && !hubspotConfigurationLoading) {
     loadHubspotHandoffOptions().catch((error) => {
       document.getElementById("hubspot-handoff-status").textContent = error.message;
@@ -964,6 +1183,47 @@ async function loadHubspotHandoffOptions() {
           : "");
 }
 
+async function loadSalesforceCatalog() {
+  salesforceCatalogLoading = true;
+  document.getElementById("salesforce-sku-status").textContent = "Loading Salesforce products and Relay templates...";
+  try {
+    const result = await api("/api/product/integrations/salesforce/catalog");
+    salesforceCatalogCache = result;
+    document.getElementById("salesforce-import-errors").innerHTML = (result.failedImports || []).length
+      ? `<p class="status warning"><strong>Opportunities needing attention</strong></p>${result.failedImports.map((item) => `
+        <article class="list-row"><div><strong>${escapeHtml(item.opportunity_name || `Opportunity ${item.opportunity_id}`)}</strong>
+          <small>${escapeHtml(item.last_error)} · Updated ${escapeHtml(new Date(item.updated_at).toLocaleString())}</small></div></article>`).join("")}`
+      : "";
+    const mapped = new Map((result.mappings || []).map((item) => [item.sku, item]));
+    const products = [...(result.products || [])];
+    for (const mapping of result.mappings || []) {
+      if (!products.some((product) => product.sku === mapping.sku)) {
+        products.push({ sku: mapping.sku, name: `${mapping.sku} (not in active catalog)` });
+      }
+    }
+    const mappingList = document.getElementById("salesforce-sku-mapping-list");
+    mappingList.innerHTML = products.length
+      ? products.map((product) => {
+        const selectedTemplateId = mapped.get(product.sku)?.template_id;
+        return `<label class="field">${escapeHtml(product.name)} · SKU ${escapeHtml(product.sku)}
+          <select data-salesforce-sku="${escapeHtml(product.sku)}">
+            <option value="">Do not map</option>
+            ${(result.templates || []).map((template) =>
+              `<option value="${template.id}" ${Number(template.id) === Number(selectedTemplateId) ? "selected" : ""}>${escapeHtml(template.name)}</option>`
+            ).join("")}
+          </select>
+        </label>`;
+      }).join("")
+      : '<p class="empty-state">No active Salesforce product SKUs were found.</p>';
+    document.getElementById("salesforce-sku-status").textContent = result.templates?.length
+      ? "Choose a Relay template for each SKU that should start an implementation."
+      : "Create a Relay template with tasks before saving SKU mappings.";
+    return result;
+  } finally {
+    salesforceCatalogLoading = false;
+  }
+}
+
 function renderPlanSummary() {
   const panel = document.getElementById("plan-summary");
   const plan = state.data.plan;
@@ -983,23 +1243,33 @@ function renderPlanSummary() {
     ["Templates", usage.templates || 0, formatLimit(plan.templateLimit)]
   ].map(([label, used, limit]) => `<div><strong>${used} / ${escapeHtml(limit)}</strong><span>${escapeHtml(label)}</span></div>`).join("");
   const featureLabels = [
-    !plan.features.dependencies && "Prerequisites",
     !plan.features.blockers && "Blocker tracking",
-    !plan.features.templateHistory && "Template history and restore"
+    !plan.features.templateHistory && "Template history and restore",
+    !plan.features.criticalPath && "Critical-path go-live shifting",
+    !plan.features.changeOrders && "Change-order approvals",
+    !plan.features.portfolioFull && "Full team-workload portfolio view",
+    !plan.features.hubspot && "HubSpot handoff",
+    !plan.features.enterpriseIntegrations && "Salesforce SKU and Jira/Linear task sync",
+    !plan.features.financialProtection && "Time tracking, budget caps, and margin reporting"
   ].filter(Boolean);
   document.getElementById("plan-features").textContent = featureLabels.length
-    ? `Growth adds ${featureLabels.join(", ")}.`
-    : "Your plan includes prerequisites, blocker tracking, and template revision history and restore.";
+    ? `Not included: ${featureLabels.join(", ")}. Growth adds workflow, portfolio, and HubSpot features; Custom adds financial controls and enterprise integrations.`
+    : "Your plan includes the Growth workflow, portfolio, HubSpot, and enterprise integrations, plus financial controls.";
   panel.hidden = false;
 }
 
 function applyPlanGates() {
   updateSaveTemplateButton();
   const features = state.data.plan?.features;
-  if (!features) return;
-  for (const element of document.querySelectorAll("[data-growth-only]")) {
-    element.hidden = !features[element.dataset.growthOnly];
+  for (const element of document.querySelectorAll("[data-growth-only], [data-plan-feature], [data-role-capability]")) {
+    const feature = element.dataset.planFeature || element.dataset.growthOnly;
+    const roleCapability = element.dataset.roleCapability;
+    const planAllowed = !feature || Boolean(features?.[feature]);
+    const roleAllowed = !roleCapability || state.data.capabilities?.[roleCapability] === true;
+    element.hidden = !planAllowed || !roleAllowed;
   }
+  applyRoleGates();
+  if (!features) return;
   for (const button of document.querySelectorAll("[data-start-template]")) {
     button.disabled = state.data.plan.templateLimit !== null && state.data.plan.templateLimit !== undefined
       && state.data.templates.length >= state.data.plan.templateLimit;
@@ -1014,6 +1284,20 @@ function applyPlanGates() {
   capNotice.textContent = activeFull
     ? `Your plan allows ${activeLimit} active implementations. Complete an implementation or upgrade the plan to start another.`
     : "";
+}
+
+function applyRoleGates() {
+  const isExecutive = (state.data.role || state.workspace?.role) === "executive_viewer";
+  const accountDeletionPanel = document.getElementById("account-deletion-panel");
+  if (accountDeletionPanel) accountDeletionPanel.hidden = isExecutive;
+  const auditPanel = document.getElementById("audit-log-panel");
+  if (auditPanel && isWorkspaceDemo) auditPanel.hidden = true;
+  for (const viewName of ["overview", "implementations", "portfolio"]) {
+    const view = document.getElementById(`view-${viewName}`);
+    const button = document.querySelector(`.nav-item[data-view="${viewName}"]`);
+    if (view) view.hidden = isExecutive;
+    if (button) button.hidden = isExecutive;
+  }
 }
 
 function updateSaveTemplateButton() {
@@ -1263,31 +1547,170 @@ function renderAutomationAndCapacity() {
 }
 
 function renderTeam() {
+  const canAdministerWorkspace = state.data.capabilities?.administerWorkspace === true;
+  const canViewRates = state.data.capabilities?.viewRates === true
+    && state.data.plan?.features.financialProtection === true;
   document.getElementById("team-member-list").innerHTML = state.data.members.length
-    ? state.data.members.map((member) => `<div class="list-row"><strong>${escapeHtml(member.email)}</strong><span class="badge">${escapeHtml(member.role)}</span></div>`).join("")
+    ? state.data.members.map((member) => `
+      <article class="member-rate-row">
+        <div class="member-rate-heading"><strong>${escapeHtml(member.email)}</strong><span class="badge">${escapeHtml(member.role)}</span></div>
+        ${canAdministerWorkspace && member.role !== "owner" && Number(member.id) !== Number(state.user?.id) ? `
+          <form class="member-role-form" data-member-role="${member.id}">
+            <label>Workspace role<select name="role">
+              ${[
+                ["admin", "Admin"],
+                ["implementation_manager", "Implementation Manager"],
+                ["contributor", "Contributor"],
+                ["executive_viewer", "Executive Viewer"]
+              ].map(([value, label]) => `<option value="${value}" ${member.role === value ? "selected" : ""}>${label}</option>`).join("")}
+            </select></label>
+            <button class="text-button" type="submit">Save role</button>
+            <p class="form-status" role="status" aria-live="polite"></p>
+          </form>` : ""}
+        ${canViewRates ? `
+          <form class="member-rate-form" data-member-rates="${member.id}">
+            <label>Internal cost / hour<input name="internalCostRate" type="number" min="0" max="1000000" step="0.01" value="${escapeHtml(member.default_internal_cost_rate || 0)}" required></label>
+            <label>Client bill / hour<input name="billableRate" type="number" min="0" max="1000000" step="0.01" value="${escapeHtml(member.default_billable_rate || 0)}" required></label>
+            <button class="text-button" type="submit">Save rates</button>
+            <p class="form-status" role="status" aria-live="polite"></p>
+          </form>` : ""}
+      </article>`).join("")
     : '<p class="empty-state">No workspace members are available.</p>';
   document.getElementById("team-invite-list").innerHTML = state.data.invites.length
-    ? state.data.invites.map((invite) => `<div class="list-row"><div><strong>${escapeHtml(invite.invited_email)}</strong><small>Expires ${escapeHtml(invite.expires_at)}</small></div><button class="text-button" type="button" data-revoke-invite="${invite.id}">Revoke</button></div>`).join("")
+    ? state.data.invites.map((invite) => `<div class="list-row"><div><strong>${escapeHtml(invite.invited_email)}</strong><small>${escapeHtml(invite.role || "contributor")} · Expires ${escapeHtml(invite.expires_at)}</small></div><button class="text-button" type="button" data-revoke-invite="${invite.id}">Revoke</button></div>`).join("")
     : '<p class="empty-state">No pending invitations.</p>';
   const inviteForm = document.getElementById("team-invite-form");
   const memberLimit = state.data.plan?.memberLimit;
   const seatsUsed = state.data.usage ? state.data.usage.members + state.data.usage.pendingInvites : state.data.members.length;
   const seatsFull = memberLimit !== null && memberLimit !== undefined && seatsUsed >= memberLimit;
-  inviteForm.hidden = state.workspace.role !== "owner" || seatsFull;
+  inviteForm.hidden = !canAdministerWorkspace || seatsFull;
   const capNotice = document.getElementById("team-cap-notice");
-  capNotice.hidden = state.workspace.role !== "owner" || !seatsFull;
+  capNotice.hidden = !canAdministerWorkspace || !seatsFull;
   capNotice.textContent = seatsFull ? `Your plan allows ${memberLimit} team members, including pending invitations. Upgrade the plan or revoke an invitation to add someone.` : "";
   const result = document.getElementById("invite-result");
   result.hidden = !state.inviteUrl;
   if (state.inviteUrl) {
     result.innerHTML = `<strong>One-time teammate invitation</strong><br><a href="${escapeHtml(state.inviteUrl)}">${escapeHtml(state.inviteUrl)}</a><br><button class="text-button" type="button" data-copy-invite="${escapeHtml(state.inviteUrl)}">Copy invitation link</button>`;
   }
+  const auditPanel = document.getElementById("audit-log-panel");
+  if (auditPanel) auditPanel.hidden = !state.data.capabilities?.viewAuditLogs || isWorkspaceDemo;
   const assigneeOptions = state.data.members.map((member) => `<option value="${member.id}">${escapeHtml(member.email)} (${escapeHtml(member.role)})</option>`).join("");
   const processAssignee = document.getElementById("step-assignee");
   processAssignee.innerHTML = `<option value="">Choose a workspace member</option>${assigneeOptions}`;
   if (state.user?.id && state.data.members.some((member) => member.id === state.user.id)) {
     processAssignee.value = String(state.user.id);
   }
+}
+
+function renderAuditLogs() {
+  const container = document.getElementById("audit-log-list");
+  if (!container) return;
+  container.innerHTML = state.auditLogEvents.length
+    ? state.auditLogEvents.map((event) => {
+      const diff = typeof event.diff_json === "string"
+        ? event.diff_json : JSON.stringify(event.diff_json || {});
+      return `<details class="list-row">
+        <summary><strong>${escapeHtml(event.action)}</strong><small>${escapeHtml(event.timestamp)} · ${escapeHtml(event.actor_email || event.actor_id)} · ${escapeHtml(event.ip_address || "IP unavailable")}</small></summary>
+        <pre>${escapeHtml(diff)}</pre>
+      </details>`;
+    }).join("")
+    : '<p class="empty-state">No audit events have been recorded yet.</p>';
+  document.getElementById("load-more-audit-logs").hidden = !state.auditLogCursor;
+}
+
+function renderNotificationDelivery() {
+  const container = document.getElementById("notification-delivery-list");
+  if (!container) return;
+  const canRetry = state.data.capabilities?.administerWorkspace === true;
+  container.innerHTML = state.notificationDeliveryEvents.length
+    ? state.notificationDeliveryEvents.map((event) => `
+      <article class="list-row">
+        <div>
+          <strong>${escapeHtml(event.event_type)} · ${escapeHtml(event.status)}</strong>
+          <small>${escapeHtml(event.last_attempted_at || event.created_at)} · ${escapeHtml(event.attempts)} attempt(s)</small>
+          <small>${escapeHtml(event.last_error || "Delivery is waiting for its next retry.")}</small>
+        </div>
+        ${event.status === "failed" && canRetry
+          ? `<button class="text-button" type="button" data-retry-notification="${event.id}">Retry</button>`
+          : ""}
+      </article>`).join("")
+    : '<p class="empty-state">No notification delivery failures or retried events.</p>';
+}
+
+async function loadAuditLogs(append = false) {
+  if (isWorkspaceDemo || !state.data.capabilities?.viewAuditLogs) return;
+  if (!append) {
+    state.auditLogEvents = [];
+    state.auditLogCursor = null;
+  }
+  const query = new URLSearchParams({ limit: "50" });
+  if (append && state.auditLogCursor) query.set("cursor", state.auditLogCursor);
+  const { events, nextCursor } = await api(`/api/product/audit-logs?${query}`);
+  state.auditLogEvents = append ? [...state.auditLogEvents, ...events] : events;
+  state.auditLogCursor = nextCursor;
+  renderAuditLogs();
+}
+
+async function loadNotificationDelivery() {
+  if (isWorkspaceDemo || !state.data.capabilities?.viewAuditLogs) return;
+  const { events } = await api("/api/product/notification-delivery");
+  state.notificationDeliveryEvents = events;
+  renderNotificationDelivery();
+}
+
+function renderFinancialDashboard() {
+  const dashboard = state.financialDashboard;
+  if (!dashboard) return;
+  const summary = dashboard.summary;
+  document.getElementById("financial-kpis").innerHTML = [
+    ["Total portfolio revenue", summary.total_portfolio_revenue],
+    ["Total delivery cost", summary.total_delivery_cost],
+    ["Average gross margin", `${(Number(summary.average_gross_margin_pct) || 0).toFixed(1)}%`],
+    ["Unbilled overage leakage", summary.total_unbilled_overage_leakage]
+  ].map(([label, value]) => `<article class="metric-card"><span>${escapeHtml(label)}</span><strong>${typeof value === "number" ? formatMoney(value) : escapeHtml(value)}</strong></article>`).join("");
+  const unpricedMinutes = Number(summary.unpriced_minutes) || 0;
+  const dataQuality = document.getElementById("financial-data-quality");
+  dataQuality.hidden = unpricedMinutes === 0;
+  dataQuality.textContent = unpricedMinutes > 0
+    ? `${(unpricedMinutes / 60).toFixed(1)} hours have no historical cost-rate snapshot. They are excluded from delivery cost and margin rather than estimated using today's rates.`
+    : "";
+  const filter = document.getElementById("financial-risk-filter").value;
+  const sortBy = document.getElementById("financial-sort").value;
+  const projects = dashboard.projects.filter((project) => {
+    const atRisk = project.gross_margin_pct < 0 || project.gross_margin_pct < 20
+      || project.burn_pct >= 90 || project.unbilled_overage_leakage > 0 || project.unpriced_minutes > 0;
+    return filter === "all" || (filter === "at-risk" ? atRisk : !atRisk);
+  }).sort((left, right) => {
+    const key = { margin: "gross_margin_pct", profit: "gross_profit", revenue: "contract_value", cost: "delivery_cost" }[sortBy];
+    return Number(left[key]) - Number(right[key]);
+  });
+  document.getElementById("financial-project-table").innerHTML = projects.length ? `
+    <table class="data-table financial-table">
+      <thead><tr><th>Implementation</th><th>Contract value</th><th>Delivery cost</th><th>Gross profit</th><th>Margin</th><th>Budget burn</th><th>Unpriced time</th><th>Overage leakage</th><th>Next step</th></tr></thead>
+      <tbody>${projects.map((project) => {
+        const atRisk = project.gross_margin_pct < 0 || project.gross_margin_pct < 20
+          || project.burn_pct >= 90 || project.unbilled_overage_leakage > 0 || project.unpriced_minutes > 0;
+        const burn = project.burn_pct === null ? "—" : `${Number(project.burn_pct).toFixed(1)}%`;
+        return `<tr class="${atRisk ? "financial-risk-row" : ""}">
+          <th scope="row">${escapeHtml(project.customer_name)}</th>
+          <td>${formatMoney(project.contract_value)}</td><td>${formatMoney(project.delivery_cost)}</td>
+          <td>${formatMoney(project.gross_profit)}</td><td>${Number(project.gross_margin_pct).toFixed(1)}%</td>
+          <td>${burn}</td><td>${(Number(project.unpriced_minutes || 0) / 60).toFixed(1)}h</td>
+          <td>${formatMoney(project.unbilled_overage_leakage)}</td>
+          <td><div class="button-row"><button class="text-button" type="button" data-financial-open="${project.id}">Open</button>
+          <button class="text-button" type="button" data-financial-change-order="${project.id}">Create change order</button></div></td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table>` : '<p class="empty-state">No active implementations match these filters.</p>';
+  document.getElementById("financial-alerts").innerHTML = dashboard.alerts.length
+    ? dashboard.alerts.map((alert) => `<article class="list-row"><div><strong>${escapeHtml(alert.payload.severity)} · ${escapeHtml(alert.payload.customerName)}</strong><small>${escapeHtml(alert.payload.burnPercent)}% burn · ${escapeHtml(alert.created_at)} · ${escapeHtml(alert.status)}</small></div><button class="text-button" type="button" data-financial-open="${alert.implementation_id}">Open implementation</button></article>`).join("")
+    : '<p class="muted">No budget alerts have been triggered.</p>';
+}
+
+async function loadFinancialDashboard() {
+  const dashboard = await api("/api/product/analytics/portfolio-margins");
+  state.financialDashboard = dashboard;
+  renderFinancialDashboard();
 }
 
 async function loadProcess(processId) {
@@ -1323,7 +1746,7 @@ async function loadProcess(processId) {
     ? process.steps.map((step, index) => `<article class="step-card">
         <span class="step-number">${index + 1}</span>
         <div><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.description)}</p>
-          <small>${escapeHtml(step.stage)} · Role: ${escapeHtml(step.owner || "Not assigned")} · Due ${step.due_offset_days} days after start</small>
+          <small>${escapeHtml(step.stage)} · Role: ${escapeHtml(step.owner || "Not assigned")} · Due ${step.due_offset_days} days after start · Estimated duration ${step.estimated_duration_days || 1} days · ${step.responsible_party === "client" ? "Client-owned" : "Relay-owned"}</small>
           <small>Assigned to: ${escapeHtml(step.assignee_email || "No workspace member assigned")}</small>
           ${step.customer_visible ? '<small class="badge ready">Visible to customer</small>' : ""}
           ${state.data.plan?.features.dependencies && step.dependsOn.length ? `<small>Prerequisites: ${escapeHtml(step.dependsOn.map((id) => process.steps.find((item) => item.id === id)?.title || "").filter(Boolean).join(", "))}</small>` : ""}
@@ -1415,16 +1838,21 @@ function renderTemplates() {
 function renderImplementations() {
   const form = document.getElementById("implementation-form");
   const prerequisite = document.getElementById("implementation-prerequisite");
-  form.hidden = state.data.templates.length === 0;
-  prerequisite.hidden = state.data.templates.length > 0;
+  const canManageImplementations = state.data.capabilities?.manageImplementations === true;
+  form.hidden = !canManageImplementations || state.data.templates.length === 0;
+  prerequisite.hidden = !canManageImplementations || state.data.templates.length > 0;
   if (!prerequisite.hidden) {
-    const next = getNextWorkflowAction();
-    prerequisite.innerHTML = emptyStateMarkup(
-      "A template is needed first",
-      "Templates are checked process snapshots. Create a process map, save its steps, run the check, then create a template.",
-      next.label,
-      next.action
-    );
+    if (state.data.capabilities?.administerWorkspace) {
+      const next = getNextWorkflowAction();
+      prerequisite.innerHTML = emptyStateMarkup(
+        "A template is needed first",
+        "Templates are checked process snapshots. Create a process map, save its steps, run the check, then create a template.",
+        next.label,
+        next.action
+      );
+    } else {
+      prerequisite.innerHTML = "<strong>No reusable template is available yet</strong><p>Ask a workspace admin to prepare a template before starting an implementation.</p>";
+    }
   }
   const ownerFilter = document.getElementById("implementation-owner-filter");
   const selectedOwner = state.implementationFilters.owner;
@@ -1441,6 +1869,22 @@ function renderImplementations() {
     : state.data.implementations.length && filterActive
       ? `<div class="empty-state"><strong>No implementations match these filters</strong><p>Try changing a filter or clear them to see every customer.</p><button class="button secondary" type="button" data-clear-implementation-filters>Clear filters</button></div>`
       : renderImplementationTable(filtered);
+  const archived = state.data.archivedImplementations || [];
+  document.getElementById("show-archived-implementations").textContent = `View archived (${archived.length})`;
+  document.getElementById("archived-implementation-list").innerHTML = archived.length
+    ? `<table class="data-table"><thead><tr><th>Customer</th><th>Template</th><th>Archived</th><th></th></tr></thead><tbody>${archived.map((item) => `
+      <tr>
+        <td><strong>${escapeHtml(item.customer_name)}</strong></td>
+        <td>${escapeHtml(item.template_name)}</td>
+        <td>${escapeHtml(new Date(item.archived_at).toLocaleDateString())}</td>
+        <td><div class="button-row">${state.data.capabilities?.administerWorkspace ? `<button class="row-button" type="button" data-restore-implementation="${item.id}">Restore</button><button class="text-button danger-text" type="button" data-delete-archived-implementation="${item.id}">Permanently delete</button>` : "Workspace admin can restore or delete"}</div></td>
+      </tr>`).join("")}</tbody></table>`
+    : '<div class="empty-state"><strong>No archived implementations</strong><p>When you archive a customer implementation, it will appear here and can be restored.</p></div>';
+  document.getElementById("show-archived-implementations").hidden = !state.data.capabilities?.administerWorkspace;
+  document.getElementById("archive-implementation").hidden = !state.data.capabilities?.administerWorkspace;
+  document.getElementById("delete-implementation").hidden = !state.data.capabilities?.administerWorkspace;
+  document.getElementById("archived-implementations-panel").hidden = state.implementationListMode !== "archived";
+  document.getElementById("implementation-list-panel").hidden = state.implementationListMode === "archived";
 }
 
 function renderRequirements() {
@@ -1475,6 +1919,7 @@ function renderWorkspace() {
   renderRequirements();
   renderTeam();
   renderNotificationSettings();
+  renderNotificationDelivery();
   renderIntegrations();
   renderAutomationAndCapacity();
   renderGettingStarted();
@@ -1493,6 +1938,43 @@ async function openImplementation(implementationId) {
   panel.hidden = false;
   document.getElementById("implementation-detail-title").textContent = implementation.customer_name;
   document.getElementById("implementation-detail-subtitle").textContent = `Started from ${implementation.template_name}`;
+  const budgetBurn = implementation.budgetBurn || {};
+  const budgetTypeNames = {
+    fixed_hours: "Fixed hours",
+    fixed_fee: "Fixed fee",
+    time_and_materials: "Time and materials"
+  };
+  const burnPanel = document.getElementById("implementation-budget-burn");
+  const hasFinancialProtection = state.data.plan?.features.financialProtection === true
+    && state.data.capabilities?.viewFinancials === true;
+  burnPanel.hidden = !hasFinancialProtection;
+  if (!hasFinancialProtection) {
+    burnPanel.replaceChildren();
+  } else if (budgetBurn.burn_pct === null) {
+    burnPanel.innerHTML = `<strong>${escapeHtml(budgetTypeNames[implementation.budget_type] || "Budget")} · no fixed cap</strong><span>Logged ${Math.round((budgetBurn.logged_minutes || 0) / 60 * 10) / 10} hours</span>`;
+  } else {
+    const burn = Number(budgetBurn.burn_pct) || 0;
+    const burnLevel = burn >= 90 ? "danger" : burn >= 75 ? "warning" : "healthy";
+    const consumed = implementation.budget_type === "fixed_hours"
+      ? `${(budgetBurn.logged_minutes / 60).toFixed(1)} / ${Number(implementation.budget_limit).toLocaleString()} hours`
+      : `${formatMoney(budgetBurn.delivery_cost)} / ${formatMoney(implementation.budget_limit)} delivery cost`;
+    burnPanel.innerHTML = `<div class="budget-burn-copy"><strong>${escapeHtml(budgetTypeNames[implementation.budget_type] || "Budget")} · ${burn.toFixed(1)}%</strong><span>${escapeHtml(consumed)}</span></div>
+      <div class="budget-burn-track" role="progressbar" aria-label="Project budget burn" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.min(100, Math.round(burn))}"><span class="budget-burn-fill ${burnLevel}" style="width:${Math.min(100, burn)}%"></span></div>
+      <span class="budget-burn-description">${burn >= 100 ? "Budget exceeded" : burn >= 90 ? "Critical budget burn" : burn >= 75 ? "Budget warning" : "Within budget"}</span>`;
+  }
+  const budgetForm = document.getElementById("budget-cap-form");
+  budgetForm.hidden = !hasFinancialProtection || !state.data.capabilities?.manageFinancials;
+  document.getElementById("budget-base-fee").value = implementation.base_onboarding_fee || 0;
+  document.getElementById("budget-type").value = implementation.budget_type || "fixed_hours";
+  document.getElementById("budget-limit").value = implementation.budget_limit || 0;
+  document.getElementById("budget-hard-lock").checked = Boolean(implementation.hard_lock_on_exceed);
+  const overrideForm = document.getElementById("budget-override-form");
+  overrideForm.hidden = !hasFinancialProtection || !state.data.capabilities?.manageFinancials || !implementation.hard_lock_on_exceed
+    || budgetBurn.burn_pct === null || budgetBurn.burn_pct < 100;
+  document.getElementById("budget-cap-status").textContent = "";
+  document.getElementById("budget-override-status").textContent = "";
+  document.getElementById("archive-implementation").dataset.archiveImplementation = implementation.id;
+  document.getElementById("delete-implementation").dataset.deleteImplementation = implementation.id;
   const customerAccessSummary = document.getElementById("customer-access-summary");
   customerAccessSummary.hidden = !implementation.has_customer_link;
   customerAccessSummary.textContent = implementation.has_customer_link ? "Shared link active" : "";
@@ -1538,9 +2020,14 @@ async function openImplementation(implementationId) {
   document.getElementById("finance-invoice-status").value = financial.invoice_status || "not_started";
   document.getElementById("finance-invoice-reference").value = financial.invoice_reference || "";
   document.getElementById("finance-margin-note").value = financial.margin_note || "";
+  const timeEntries = implementation.timeEntries || [];
+  const canTrackTime = state.data.plan?.features.financialProtection === true
+    && state.data.capabilities?.logTime === true;
+  const canDeleteTimeEntry = (entry) => state.data.capabilities?.manageImplementations
+    || Number(entry.user_id) === Number(state.user?.id);
   const deliveryItems = [];
-  deliveryItems.push(...(implementation.timeEntries || []).slice(0, 5).map((entry) =>
-    `<article class="list-row"><div><strong>${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m</strong><small>${escapeHtml(entry.work_date)} · ${entry.billable ? "Billable" : "Non-billable"} · ${escapeHtml(entry.user_email || "Team member")}</small></div><button class="text-button danger-text" type="button" data-delete-time-entry="${entry.id}">Delete</button></article>`));
+  deliveryItems.push(...timeEntries.slice(0, 5).map((entry) =>
+    `<article class="list-row"><div><strong>${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m</strong><small>${escapeHtml(entry.work_date)} · ${entry.billable ? "Billable" : "Non-billable"} · ${escapeHtml(entry.user_email || "Team member")}${entry.labor_cost === undefined ? "" : ` · ${entry.rate_snapshot_present === false ? "Cost snapshot unavailable" : `${formatMoney(entry.labor_cost)} labor`}`}</small></div>${canDeleteTimeEntry(entry) ? `<button class="text-button danger-text" type="button" data-delete-time-entry="${entry.id}">Delete</button>` : ""}</article>`));
   deliveryItems.push(...(implementation.approvals || []).map((approval) =>
     `<article class="list-row"><div><strong>${escapeHtml(approval.title)}</strong><small>${escapeHtml(approval.approval_type)} · ${escapeHtml(approval.status)}${approval.due_at ? ` · Due ${escapeHtml(approval.due_at)}` : ""}</small></div><div class="button-row">${approval.status !== "approved" ? `<button class="text-button" type="button" data-approval-status="${approval.id}">Approve</button>` : ""}<button class="text-button danger-text" type="button" data-delete-approval="${approval.id}">Delete</button></div></article>`));
   deliveryItems.push(...(implementation.calendarEvents || []).slice(0, 5).map((event) =>
@@ -1595,6 +2082,12 @@ async function openImplementation(implementationId) {
       const taskStatus = Object.hasOwn(taskStatuses, step.status)
         ? taskStatuses[step.status]
         : taskStatuses.not_started;
+      const taskEntries = timeEntries.filter((entry) => entry.task_id === step.id);
+      const taskTimerIsActive = state.activeTimeTimer?.implementationId === implementation.id
+        && state.activeTimeTimer?.taskId === step.id;
+      const credentialProvider = step.credential_verification_json?.provider || "";
+      const engineeringIssues = Array.isArray(step.engineering_issues) ? step.engineering_issues : [];
+      const engineeringProviders = state.data.engineeringProviders || [];
       return `
       <article class="step-card">
         <span class="step-number">${index + 1}</span>
@@ -1605,6 +2098,55 @@ async function openImplementation(implementationId) {
           ${state.data.plan?.features.blockers && step.is_blocked ? `<p class="status warning"><strong>Blocked:</strong> ${escapeHtml(step.blocker_reason)}<br><strong>Next action:</strong> ${escapeHtml(step.blocker_next_action)}</p>` : ""}
         </div>
         <span class="badge task-status-badge ${taskStatus.className}">${taskStatus.label}</span>
+        <details class="task-engineering-details" ${state.data.plan?.features.enterpriseIntegrations ? "" : "hidden"}>
+          <summary>Engineering sync</summary>
+          <div class="task-engineering-controls">
+            ${engineeringIssues.map((issue) => {
+              const issueUrl = safeEngineeringIssueUrl(issue);
+              const issueName = `${issue.provider === "jira" ? "Jira" : issue.provider === "linear" ? "Linear" : "Issue"} ${escapeHtml(issue.issue_key)}`;
+              return `<p class="status">
+              ${issueUrl ? `<a href="${escapeHtml(issueUrl)}" target="_blank" rel="noopener noreferrer">${issueName}</a>` : issueName}
+              · ${escapeHtml(issue.last_status || "Pending")}${issue.last_error ? `<br><small>${escapeHtml(issue.last_error)}</small>` : ""}
+            </p>`;
+            }).join("")}
+            ${state.data.capabilities?.manageTasks && taskStatus.label !== "Done" ? `
+              ${engineeringProviders.some((provider) => !engineeringIssues.some((issue) => issue.provider === provider)) ? `
+                <label>Send task to
+                  <select data-engineering-provider="${step.id}">
+                    ${engineeringProviders.filter((provider) => !engineeringIssues.some((issue) => issue.provider === provider))
+                      .map((provider) => `<option value="${provider}">${provider === "jira" ? "Jira" : "Linear"}</option>`).join("")}
+                  </select>
+                </label>
+                <button class="text-button" type="button" data-engineering-escalate="${step.id}" data-engineering-implementation="${implementation.id}">Escalate to engineering</button>
+                <small>Only the task, customer name, due date, and projected go-live date are sent. Financial details are excluded.</small>
+              ` : engineeringProviders.length ? "" : "<small>Ask a workspace admin to configure Jira or Linear.</small>"}
+            ` : ""}
+            <p data-engineering-status="${step.id}" role="status" aria-live="polite"></p>
+          </div>
+        </details>
+        <details class="task-time-details" ${canTrackTime ? "" : "hidden"}>
+          <summary>Time &amp; effort</summary>
+          <div class="task-time-controls">
+            <p data-time-elapsed="${step.id}" data-time-implementation="${implementation.id}" role="status" aria-live="polite">${taskTimerIsActive ? `Running · ${formatElapsed(Date.now() - state.activeTimeTimer.startedAt)}` : "Timer stopped"}</p>
+            <div class="button-row">
+              <button class="button secondary" type="button" data-time-start="${step.id}" data-time-implementation="${implementation.id}" ${taskTimerIsActive ? "hidden" : ""}>Start timer</button>
+              <button class="button secondary" type="button" data-time-stop="${step.id}" data-time-implementation="${implementation.id}" ${taskTimerIsActive ? "" : "hidden"}>Stop &amp; log</button>
+              <button class="text-button" type="button" data-time-preset="15" data-time-task="${step.id}">+15m</button>
+              <button class="text-button" type="button" data-time-preset="30" data-time-task="${step.id}">+30m</button>
+              <button class="text-button" type="button" data-time-preset="60" data-time-task="${step.id}">+1h</button>
+              <button class="text-button" type="button" data-time-preset="120" data-time-task="${step.id}">+2h</button>
+            </div>
+            <div class="task-time-custom">
+              <label>Custom minutes<input data-time-custom="${step.id}" type="number" min="1" max="1440" step="1" value="30"></label>
+              <label>Note<input data-time-note="${step.id}" maxlength="500"></label>
+              <label class="check-field"><input data-time-billable="${step.id}" type="checkbox" ${step.change_order_approved ? "checked" : ""}> Billable</label>
+              <button class="text-button" type="button" data-time-log-custom="${step.id}">Log custom time</button>
+            </div>
+            ${taskEntries.length ? `<div class="task-time-history">${taskEntries.slice(0, 3).map((entry) =>
+              `<small>${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m · ${escapeHtml(entry.work_date)}${entry.labor_cost === undefined ? "" : ` · ${entry.rate_snapshot_present === false ? "Cost snapshot unavailable" : `${formatMoney(entry.labor_cost)} labor`}`} · ${escapeHtml(entry.user_email || "Team member")}</small>`
+            ).join("")}</div>` : ""}
+          </div>
+        </details>
         <details class="task-edit-details">
           <summary aria-label="Edit task: ${escapeHtml(step.title)}">Edit task</summary>
           <div class="task-controls">
@@ -1627,6 +2169,23 @@ async function openImplementation(implementationId) {
             <label class="check-field" data-growth-only="blockers"><input data-task-blocked="${step.id}" type="checkbox" ${step.is_blocked ? "checked" : ""}> Blocked</label>
             <label data-growth-only="blockers">Blocker reason<textarea data-task-reason="${step.id}" maxlength="500">${escapeHtml(step.blocker_reason)}</textarea></label>
             <label data-growth-only="blockers">Next action<textarea data-task-action="${step.id}" maxlength="500">${escapeHtml(step.blocker_next_action)}</textarea></label>
+            ${state.data.plan?.features.csvSchemaValidation ? `<label data-plan-feature="csvSchemaValidation" data-role-capability="administerWorkspace">
+              CSV validation schema (JSON)
+              <textarea data-task-csv-schema="${step.id}" maxlength="16000" spellcheck="false">${escapeHtml(JSON.stringify(step.csv_schema_json || [], null, 2))}</textarea>
+              <small>Use column_name, data_type (email, iso_date, currency, string), required, and optional regex. Use [] to disable validation.</small>
+            </label>` : ""}
+            ${state.data.plan?.features.credentialVerification ? `<label data-plan-feature="credentialVerification" data-role-capability="administerWorkspace">
+              Credential verification for customer task
+              <select data-task-credential-provider="${step.id}">
+                <option value="" ${credentialProvider ? "" : "selected"}>Not a credential verification task</option>
+                <option value="hubspot" ${credentialProvider === "hubspot" ? "selected" : ""}>HubSpot</option>
+                <option value="jira" ${credentialProvider === "jira" ? "selected" : ""}>Jira Cloud (OAuth token)</option>
+                <option value="linear" ${credentialProvider === "linear" ? "selected" : ""}>Linear</option>
+                <option value="salesforce" ${credentialProvider === "salesforce" ? "selected" : ""}>Salesforce</option>
+                <option value="slack" ${credentialProvider === "slack" ? "selected" : ""}>Slack</option>
+              </select>
+              <small>Relay tests only fixed, allowlisted provider endpoints. Customer credentials are not stored.</small>
+            </label>` : ""}
             <button class="button secondary" type="button" data-save-task="${step.id}">Save changes</button>
           </div>
         </details>
@@ -1641,6 +2200,29 @@ async function openImplementation(implementationId) {
         ${requirement.value ? `<p>${escapeHtml(requirement.value)}</p>` : ""}
       </article>`).join("")
     : '<div class="empty-state"><strong>No customer information requested</strong><p>Add a specific request if this customer needs to provide setup details.</p><button class="button secondary" type="button" data-workflow-action="add-requirement">Create an information request</button></div>';
+  document.getElementById("change-order-task-ids").innerHTML = implementation.steps
+    .filter((step) => step.customer_visible)
+    .map((step) => `<option value="${step.id}">${escapeHtml(step.title)}</option>`).join("");
+  document.getElementById("change-order-list").innerHTML = (implementation.changeOrders || []).length
+    ? implementation.changeOrders.map((order) => `
+      <article class="list-row">
+        <div><strong>${escapeHtml(order.title)}</strong><small>${escapeHtml(order.scope_description)}</small>
+          <small>${escapeHtml(order.status)} · $${Number(order.additional_fee || 0).toLocaleString()} · ${order.timeline_extension_days || 0} day extension</small></div>
+        ${order.status === "draft" ? `<button class="button secondary" type="button" data-send-change-order="${order.id}">Send to customer</button>` : ""}
+      </article>`).join("")
+    : '<p class="muted">No change orders yet.</p>';
+  document.getElementById("delegation-task-ids").innerHTML = implementation.steps
+    .filter((step) => step.customer_visible && step.status !== "done")
+    .map((step) => `<option value="${step.id}">${escapeHtml(step.title)}</option>`).join("");
+  document.getElementById("delegation-list").innerHTML = (implementation.delegations || []).length
+    ? implementation.delegations.map((delegation) => `
+      <article class="list-row">
+        <div><strong>${escapeHtml(delegation.display_name || delegation.email)}</strong><small>${escapeHtml(delegation.email)} · ${escapeHtml(delegation.stakeholder_role)}</small>
+          <small>${delegation.revoked_at ? "Revoked" : Date.parse(delegation.expires_at) <= Date.now() ? "Expired" : `Active until ${new Date(delegation.expires_at).toLocaleDateString()}`}</small>
+          ${delegation.task_titles?.length ? `<small>Tasks: ${escapeHtml(delegation.task_titles.join(", "))}</small>` : ""}</div>
+        ${!delegation.revoked_at && Date.parse(delegation.expires_at) > Date.now() ? `<button class="text-button danger-text" type="button" data-revoke-delegation="${delegation.id}">Revoke</button>` : ""}
+      </article>`).join("")
+    : '<p class="muted">No scoped task delegations yet.</p>';
   const linkBox = document.getElementById("customer-link-box");
   linkBox.hidden = false;
   linkBox.innerHTML = implementation.has_customer_link
@@ -1660,12 +2242,18 @@ async function openImplementation(implementationId) {
       <button class="button secondary" type="submit">Save backup contact</button>
     </form>`);
   document.getElementById("implementation-file-list").innerHTML = (implementation.customerFiles || []).length
-    ? implementation.customerFiles.map((file) => `
-      <article class="list-row">
-        <div>${file.demo ? `<strong>${escapeHtml(file.filename)}</strong>` : `<a href="/api/product/implementations/${implementation.id}/files/${file.id}">${escapeHtml(file.filename)}</a>`}
-          <small>${escapeHtml(file.uploaded_by_name || "Customer team")} · ${Math.ceil(file.size_bytes / 1024)} KB</small></div>
-        <button class="text-button danger-text" type="button" data-delete-customer-file="${file.id}">Delete</button>
-      </article>`).join("")
+    ? implementation.customerFiles.map((file) => {
+      const scanStatus = file.demo ? "Sample file"
+        : file.scan_status === "clean" ? "Security scan passed"
+          : file.scan_status === "infected" ? "Blocked: security scan failed"
+            : file.scan_status === "pending" ? "Security scan pending" : "Scan status unavailable";
+      return `
+        <article class="list-row">
+          <div>${file.demo ? `<strong>${escapeHtml(file.filename)}</strong>` : `<a href="/api/product/implementations/${implementation.id}/files/${file.id}">${escapeHtml(file.filename)}</a>`}
+            <small>${escapeHtml(file.uploaded_by_name || "Customer team")} · ${Math.ceil(file.size_bytes / 1024)} KB · ${escapeHtml(scanStatus)}</small></div>
+          <button class="text-button danger-text" type="button" data-delete-customer-file="${file.id}">Delete</button>
+        </article>`;
+    }).join("")
     : '<p class="muted">No files shared yet.</p>';
   document.getElementById("implementation-message-list").innerHTML = (implementation.customerMessages || []).length
     ? implementation.customerMessages.map((message) => `
@@ -1677,6 +2265,7 @@ async function openImplementation(implementationId) {
   document.getElementById("implementation-message-status").textContent = "";
   document.getElementById("implementation-message").value = "";
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  updateTaskTimerDisplay();
   return true;
 }
 
@@ -1820,7 +2409,10 @@ document.getElementById("team-invite-form").addEventListener("submit", async (ev
   try {
     const { invite } = await api("/api/product/invites", {
       method: "POST",
-      body: { email: document.getElementById("invite-email").value }
+      body: {
+        email: document.getElementById("invite-email").value,
+        role: document.getElementById("invite-role").value
+      }
     });
     state.inviteUrl = invite.inviteUrl;
     event.target.reset();
@@ -1840,6 +2432,31 @@ document.getElementById("team-invite-list").addEventListener("click", async (eve
     await loadWorkspace();
     showToast("Invitation revoked.");
   } catch (error) {
+    showError(error);
+  }
+});
+
+document.getElementById("refresh-audit-logs").addEventListener("click", () => {
+  loadAuditLogs(false).catch(showError);
+});
+document.getElementById("load-more-audit-logs").addEventListener("click", () => {
+  loadAuditLogs(true).catch(showError);
+});
+document.getElementById("refresh-notification-delivery").addEventListener("click", () => {
+  loadNotificationDelivery().catch(showError);
+});
+document.getElementById("notification-delivery-list").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-retry-notification]");
+  if (!button || !state.data.capabilities?.administerWorkspace) return;
+  button.disabled = true;
+  try {
+    await api(`/api/product/notification-delivery/${button.dataset.retryNotification}/retry`, {
+      method: "POST"
+    });
+    await loadNotificationDelivery();
+    showToast("Notification retry queued.");
+  } catch (error) {
+    button.disabled = false;
     showError(error);
   }
 });
@@ -1915,6 +2532,7 @@ document.getElementById("integration-list").addEventListener("click", async (eve
       hubspotPipelineCache = [];
       hubspotConfigurationLoaded = false;
     }
+    if (disconnect.dataset.disconnectIntegration === "salesforce") salesforceCatalogCache = null;
     await loadWorkspace();
     showToast("Integration disconnected.");
   } catch (error) {
@@ -1943,6 +2561,166 @@ document.getElementById("hubspot-handoff-form").addEventListener("submit", async
     status.textContent = error.message;
   } finally {
     button.disabled = false;
+  }
+});
+document.getElementById("salesforce-sku-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  const status = document.getElementById("salesforce-sku-status");
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    const mappings = [...form.querySelectorAll("[data-salesforce-sku]")]
+      .filter((select) => select.value)
+      .map((select) => ({ sku: select.dataset.salesforceSku, templateId: select.value }));
+    const result = await api("/api/product/integrations/salesforce/sku-mappings", {
+      method: "PUT",
+      body: { mappings }
+    });
+    salesforceCatalogCache = null;
+    await refreshWorkspace();
+    status.textContent = `${result.count} SKU mapping${result.count === 1 ? "" : "s"} saved. New matching Closed Won opportunities will be checked by the scheduled sync.`;
+  } catch (error) {
+    status.textContent = error.message;
+    status.setAttribute("role", "alert");
+  } finally {
+    button.disabled = !state.data.capabilities?.administerWorkspace;
+  }
+});
+document.getElementById("jira-settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  const status = document.getElementById("jira-settings-status");
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    const result = await api("/api/product/integrations/jira", {
+      method: "PUT",
+      body: {
+        baseUrl: document.getElementById("jira-site").value,
+        email: document.getElementById("jira-email").value,
+        projectKey: document.getElementById("jira-project-key").value,
+        issueType: document.getElementById("jira-issue-type").value,
+        apiToken: document.getElementById("jira-api-token").value
+      }
+    });
+    document.getElementById("jira-api-token").value = "";
+    await refreshWorkspace();
+    status.textContent = `Jira connection verified for ${result.projectName}.`;
+  } catch (error) {
+    status.textContent = error.message;
+    status.setAttribute("role", "alert");
+  } finally {
+    button.disabled = !state.data.capabilities?.administerWorkspace;
+  }
+});
+document.getElementById("linear-settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  const status = document.getElementById("linear-settings-status");
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    const result = await api("/api/product/integrations/linear", {
+      method: "PUT",
+      body: {
+        teamId: document.getElementById("linear-team-id").value,
+        apiToken: document.getElementById("linear-api-token").value
+      }
+    });
+    document.getElementById("linear-api-token").value = "";
+    await refreshWorkspace();
+    status.textContent = `Linear connection verified for ${result.teamName}.`;
+  } catch (error) {
+    status.textContent = error.message;
+    status.setAttribute("role", "alert");
+  } finally {
+    button.disabled = !state.data.capabilities?.administerWorkspace;
+  }
+});
+document.getElementById("jira-disconnect").addEventListener("click", async (event) => {
+  if (!window.confirm("Disconnect Jira engineering sync for this workspace?")) return;
+  const button = event.currentTarget;
+  const status = document.getElementById("jira-settings-status");
+  button.disabled = true;
+  try {
+    await api("/api/product/integrations/jira", { method: "DELETE" });
+    await refreshWorkspace();
+    status.textContent = "Jira disconnected. Existing issue links remain in Relay and will sync again if reconnected.";
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = !state.data.capabilities?.administerWorkspace;
+  }
+});
+document.getElementById("linear-disconnect").addEventListener("click", async (event) => {
+  if (!window.confirm("Disconnect Linear engineering sync for this workspace?")) return;
+  const button = event.currentTarget;
+  const status = document.getElementById("linear-settings-status");
+  button.disabled = true;
+  try {
+    await api("/api/product/integrations/linear", { method: "DELETE" });
+    await refreshWorkspace();
+    status.textContent = "Linear disconnected. Existing issue links remain in Relay and will sync again if reconnected.";
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = !state.data.capabilities?.administerWorkspace;
+  }
+});
+document.getElementById("slack-alert-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const status = document.getElementById("slack-alert-status");
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    await api("/api/product/integrations/slack", {
+      method: "PUT",
+      body: { webhookUrl: document.getElementById("slack-webhook-url").value }
+    });
+    document.getElementById("slack-webhook-url").value = "";
+    status.textContent = "Slack webhook saved securely.";
+    await refreshWorkspace();
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = !state.data.capabilities?.administerWorkspace;
+  }
+});
+document.getElementById("slack-test-alert").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  const status = document.getElementById("slack-alert-status");
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    const result = await api("/api/product/integrations/slack/test", { method: "POST", body: {} });
+    status.textContent = result.message;
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = !state.data.capabilities?.administerWorkspace
+      || !(state.data.integrations || []).some((item) => item.provider === "slack" && item.has_slack_webhook);
+  }
+});
+document.getElementById("slack-disconnect").addEventListener("click", async (event) => {
+  if (!window.confirm("Disconnect Slack alerts for this workspace?")) return;
+  const button = event.currentTarget;
+  const status = document.getElementById("slack-alert-status");
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    await api("/api/product/integrations/slack", { method: "DELETE" });
+    await refreshWorkspace();
+    status.textContent = "Slack disconnected.";
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = !state.data.capabilities?.administerWorkspace;
   }
 });
 
@@ -1984,6 +2762,25 @@ document.querySelectorAll(".nav-item").forEach((button) => button.addEventListen
 }));
 document.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.go)));
 document.getElementById("refresh-button").addEventListener("click", () => refreshWorkspace().catch(showError));
+document.getElementById("refresh-financials").addEventListener("click", () => loadFinancialDashboard().catch(showError));
+document.getElementById("financial-risk-filter").addEventListener("change", renderFinancialDashboard);
+document.getElementById("financial-sort").addEventListener("change", renderFinancialDashboard);
+document.getElementById("financial-project-table").addEventListener("click", async (event) => {
+  const openButton = event.target.closest("[data-financial-open], [data-financial-change-order]");
+  if (!openButton) return;
+  if (!setView("implementations")) return;
+  const implementationId = Number(openButton.dataset.financialOpen || openButton.dataset.financialChangeOrder);
+  try {
+    await openImplementation(implementationId);
+    if (openButton.hasAttribute("data-financial-change-order")) {
+      const section = document.getElementById("change-orders-section");
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+      section.querySelector("input, textarea, select, button")?.focus({ preventScroll: true });
+    }
+  } catch (error) {
+    showError(error);
+  }
+});
 document.getElementById("implementation-search").addEventListener("input", (event) => {
   state.implementationFilters.search = event.currentTarget.value;
   renderImplementations();
@@ -2038,6 +2835,10 @@ appShell.addEventListener("click", async (event) => {
   const actionButton = event.target.closest("[data-workflow-action]");
   if (!actionButton) return;
   const action = actionButton.dataset.workflowAction;
+  if (action === "view-implementations") {
+    setView("implementations");
+    return;
+  }
   if (action === "create-process") {
     if (!setView("processes")) return;
     focusProcessCreation();
@@ -2360,6 +3161,8 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
         assigneeUserId: document.getElementById("step-assignee").value || null,
         stage: document.getElementById("step-stage").value,
         dueOffsetDays: Number(document.getElementById("step-due-offset").value),
+        estimatedDurationDays: Number(document.getElementById("step-estimated-duration").value),
+        responsibleParty: document.getElementById("step-responsible-party").value,
         customerVisible: document.getElementById("step-customer-visible").checked,
         dependsOn: [...document.querySelectorAll("#step-dependencies input:checked")].map((input) => Number(input.value))
       }
@@ -2371,6 +3174,8 @@ document.getElementById("step-form").addEventListener("submit", async (event) =>
     document.getElementById("step-options").open = false;
     document.getElementById("step-stage").value = "Implementation";
     document.getElementById("step-due-offset").value = "0";
+    document.getElementById("step-estimated-duration").value = "1";
+    document.getElementById("step-responsible-party").value = "relay";
     document.getElementById("step-customer-visible").checked = false;
     document.getElementById("step-form-heading").textContent = "Add a step";
     document.getElementById("step-submit").textContent = "Save step";
@@ -2398,6 +3203,8 @@ document.getElementById("cancel-step-edit").addEventListener("click", () => {
   document.getElementById("step-options").open = false;
   document.getElementById("step-stage").value = "Implementation";
   document.getElementById("step-due-offset").value = "0";
+  document.getElementById("step-estimated-duration").value = "1";
+  document.getElementById("step-responsible-party").value = "relay";
   document.getElementById("step-customer-visible").checked = false;
   document.getElementById("step-form-heading").textContent = "Add a step";
   document.getElementById("step-submit").textContent = "Save step";
@@ -2418,9 +3225,13 @@ document.getElementById("process-step-list").addEventListener("click", async (ev
     document.getElementById("step-assignee").value = step.assignee_user_id ? String(step.assignee_user_id) : "";
     document.getElementById("step-stage").value = step.stage;
     document.getElementById("step-due-offset").value = step.due_offset_days;
+    document.getElementById("step-estimated-duration").value = step.estimated_duration_days || 1;
+    document.getElementById("step-responsible-party").value = step.responsible_party || (step.customer_visible ? "client" : "relay");
     document.getElementById("step-customer-visible").checked = step.customer_visible === true;
     document.getElementById("step-options").open = step.stage !== "Implementation"
       || Number(step.due_offset_days) > 0
+      || Number(step.estimated_duration_days || 1) !== 1
+      || (step.responsible_party || "relay") !== "relay"
       || step.customer_visible === true
       || Boolean(step.dependsOn?.length);
     document.getElementById("step-form-heading").textContent = "Edit a step";
@@ -2662,6 +3473,44 @@ document.getElementById("implementation-list").addEventListener("click", (event)
   const button = event.target.closest("[data-open-implementation]");
   if (button) openImplementationFromButton(button);
 });
+document.getElementById("show-archived-implementations").addEventListener("click", () => {
+  if (dirtyScopes.size && !confirmDiscardChanges()) return;
+  state.selectedImplementationId = null;
+  document.getElementById("implementation-detail").hidden = true;
+  state.implementationListMode = "archived";
+  renderImplementations();
+});
+document.getElementById("show-active-implementations").addEventListener("click", () => {
+  state.implementationListMode = "active";
+  renderImplementations();
+});
+document.getElementById("archived-implementation-list").addEventListener("click", async (event) => {
+  const restore = event.target.closest("[data-restore-implementation]");
+  const remove = event.target.closest("[data-delete-archived-implementation]");
+  if (restore) {
+    try {
+      await api(`/api/product/implementations/${restore.dataset.restoreImplementation}/restore`, { method: "PATCH" });
+      await loadWorkspace();
+      showToast("Implementation restored to active work.");
+    } catch (error) {
+      showError(error);
+    }
+    return;
+  }
+  if (!remove) return;
+  const implementation = state.data.archivedImplementations.find((item) =>
+    String(item.id) === remove.dataset.deleteArchivedImplementation);
+  if (!implementation || !window.confirm(
+    `Permanently delete "${implementation.customer_name}"? This cannot be undone and removes its tasks, customer information, portal messages, and uploaded files.`
+  )) return;
+  try {
+    await api(`/api/product/implementations/${implementation.id}`, { method: "DELETE" });
+    await loadWorkspace();
+    showToast("Implementation and its customer data permanently deleted.");
+  } catch (error) {
+    showError(error);
+  }
+});
 document.getElementById("overview-implementations").addEventListener("click", (event) => {
   const button = event.target.closest("[data-open-implementation]");
   if (button) {
@@ -2673,6 +3522,38 @@ document.getElementById("close-implementation").addEventListener("click", () => 
   if (dirtyScopes.size && !confirmDiscardChanges()) return;
   state.selectedImplementationId = null;
   document.getElementById("implementation-detail").hidden = true;
+});
+document.getElementById("archive-implementation").addEventListener("click", async (event) => {
+  const implementation = state.data.implementations.find((item) =>
+    String(item.id) === event.currentTarget.dataset.archiveImplementation);
+  if (!implementation || !window.confirm(
+    `Archive "${implementation.customer_name}"? It will leave active work and customer portal access will pause. You can restore it later.`
+  ) || !confirmDiscardChanges()) return;
+  try {
+    await api(`/api/product/implementations/${implementation.id}/archive`, { method: "PATCH" });
+    state.selectedImplementationId = null;
+    document.getElementById("implementation-detail").hidden = true;
+    await loadWorkspace();
+    showToast("Implementation archived. You can restore it from View archived.");
+  } catch (error) {
+    showError(error);
+  }
+});
+document.getElementById("delete-implementation").addEventListener("click", async (event) => {
+  const implementation = state.data.implementations.find((item) =>
+    String(item.id) === event.currentTarget.dataset.deleteImplementation);
+  if (!implementation || !window.confirm(
+    `Permanently delete "${implementation.customer_name}"? This cannot be undone and removes its tasks, customer information, portal messages, and uploaded files.`
+  ) || !confirmDiscardChanges()) return;
+  try {
+    await api(`/api/product/implementations/${implementation.id}`, { method: "DELETE" });
+    state.selectedImplementationId = null;
+    document.getElementById("implementation-detail").hidden = true;
+    await loadWorkspace();
+    showToast("Implementation and its customer data permanently deleted.");
+  } catch (error) {
+    showError(error);
+  }
 });
 document.getElementById("implementation-section-nav").addEventListener("click", (event) => {
   const button = event.target.closest("[data-implementation-jump]");
@@ -2692,6 +3573,73 @@ document.getElementById("implementation-section-nav").addEventListener("click", 
   else target.focus({ preventScroll: true });
 });
 document.getElementById("implementation-step-list").addEventListener("click", async (event) => {
+  const timeAction = event.target.closest("[data-time-start], [data-time-stop], [data-time-preset], [data-time-log-custom]");
+  if (timeAction && state.selectedImplementationId) {
+    const root = timeAction.closest(".step-card");
+    const taskId = Number(timeAction.dataset.timeStart || timeAction.dataset.timeStop
+      || timeAction.dataset.timeTask || timeAction.dataset.timeLogCustom);
+    try {
+      if (timeAction.hasAttribute("data-time-start")) {
+        if (state.activeTimeTimer && (state.activeTimeTimer.implementationId !== state.selectedImplementationId
+          || state.activeTimeTimer.taskId !== taskId)) {
+          showToast("Stop the active task timer before starting another.");
+          return;
+        }
+        saveTaskTimer({ implementationId: state.selectedImplementationId, taskId, startedAt: Date.now() });
+        showToast("Task timer started.");
+      } else {
+        const billable = root.querySelector(`[data-time-billable="${taskId}"]`).checked;
+        const note = root.querySelector(`[data-time-note="${taskId}"]`).value;
+        const minutes = timeAction.hasAttribute("data-time-stop")
+          ? Math.max(1, Math.ceil((Date.now() - state.activeTimeTimer.startedAt) / 60000))
+          : Number(timeAction.dataset.timePreset
+            || root.querySelector(`[data-time-custom="${taskId}"]`).value);
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+          throw new Error("Enter a custom duration between 1 and 1440 minutes.");
+        }
+        await api(`/api/product/implementations/${state.selectedImplementationId}/steps/${taskId}/time-entries`, {
+          method: "POST",
+          body: {
+            minutes,
+            workDate: new Date().toISOString().slice(0, 10),
+            isBillable: billable,
+            note
+          }
+        });
+
+        window.setInterval(updateTaskTimerDisplay, 1000);
+        if (timeAction.hasAttribute("data-time-stop")) saveTaskTimer(null);
+        await openImplementation(state.selectedImplementationId);
+        showToast(`Logged ${minutes} minutes.`);
+      }
+    } catch (error) {
+      showError(error);
+    }
+    return;
+  }
+  const escalation = event.target.closest("[data-engineering-escalate]");
+  if (escalation) {
+    const root = escalation.closest(".step-card");
+    const taskId = escalation.dataset.engineeringEscalate;
+    const implementationId = escalation.dataset.engineeringImplementation;
+    const provider = root.querySelector(`[data-engineering-provider="${taskId}"]`)?.value;
+    const status = root.querySelector(`[data-engineering-status="${taskId}"]`);
+    escalation.disabled = true;
+    status.textContent = "";
+    try {
+      const result = await api(`/api/product/implementations/${implementationId}/tasks/${taskId}/escalate`, {
+        method: "POST",
+        body: { provider }
+      });
+      await openImplementation(implementationId);
+      showToast(`Created ${result.issueKey} in ${provider === "jira" ? "Jira" : "Linear"}.`);
+    } catch (error) {
+      status.textContent = error.message;
+      status.setAttribute("role", "alert");
+      escalation.disabled = false;
+    }
+    return;
+  }
   const save = event.target.closest("[data-save-task]");
   if (!save || !state.selectedImplementationId) return;
   const stepId = save.dataset.saveTask;
@@ -2709,6 +3657,17 @@ document.getElementById("implementation-step-list").addEventListener("click", as
       taskUpdate.isBlocked = root.querySelector(`[data-task-blocked="${stepId}"]`).checked;
       taskUpdate.blockerReason = root.querySelector(`[data-task-reason="${stepId}"]`).value;
       taskUpdate.blockerNextAction = root.querySelector(`[data-task-action="${stepId}"]`).value;
+    }
+    if (state.data.plan?.features.csvSchemaValidation && state.data.capabilities?.administerWorkspace) {
+      try {
+        taskUpdate.csvSchema = JSON.parse(root.querySelector(`[data-task-csv-schema="${stepId}"]`).value);
+      } catch {
+        failForm(root, new Error("Enter a valid JSON schema before saving."));
+        return;
+      }
+    }
+    if (state.data.plan?.features.credentialVerification && state.data.capabilities?.administerWorkspace) {
+      taskUpdate.credentialProvider = root.querySelector(`[data-task-credential-provider="${stepId}"]`).value;
     }
     await api(`/api/product/implementations/${state.selectedImplementationId}/steps/${stepId}`, {
       method: "PATCH",
@@ -2857,11 +3816,44 @@ document.getElementById("implementation-financial-form").addEventListener("submi
   try { await api(`/api/product/implementations/${state.selectedImplementationId}/financial-plan`, { method: "PATCH", body: { budgetAmount: document.getElementById("finance-budget").value, forecastAmount: document.getElementById("finance-forecast").value, actualCost: document.getElementById("finance-cost").value, invoiceStatus: document.getElementById("finance-invoice-status").value, invoiceReference: document.getElementById("finance-invoice-reference").value, marginNote: document.getElementById("finance-margin-note").value } }); status.textContent = "Financial plan saved."; } catch (error) { status.textContent = error.message; }
 });
 
-document.getElementById("time-entry-form").addEventListener("submit", async (event) => {
+document.getElementById("budget-cap-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.selectedImplementationId) return;
-  const status = document.getElementById("time-status");
-  try { await api(`/api/product/implementations/${state.selectedImplementationId}/time-entries`, { method: "POST", body: { workDate: document.getElementById("time-work-date").value, minutes: Number(document.getElementById("time-minutes").value), hourlyRate: document.getElementById("time-rate").value, billable: document.getElementById("time-billable").checked, note: document.getElementById("time-note").value } }); event.currentTarget.reset(); await openImplementation(state.selectedImplementationId); status.textContent = "Time entry logged."; } catch (error) { status.textContent = error.message; }
+  const status = document.getElementById("budget-cap-status");
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/budget`, {
+      method: "PATCH",
+      body: {
+        baseOnboardingFee: document.getElementById("budget-base-fee").value,
+        budgetType: document.getElementById("budget-type").value,
+        budgetLimit: document.getElementById("budget-limit").value,
+        hardLockOnExceed: document.getElementById("budget-hard-lock").checked
+      }
+    });
+    await openImplementation(state.selectedImplementationId);
+    status.textContent = "Budget cap saved.";
+  } catch (error) {
+    status.textContent = error.message;
+  }
+});
+
+document.getElementById("budget-override-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedImplementationId) return;
+  const status = document.getElementById("budget-override-status");
+  try {
+    await api(`/api/product/implementations/${state.selectedImplementationId}/budget-overrides`, {
+      method: "POST",
+      body: {
+        reason: document.getElementById("budget-override-reason").value,
+        durationHours: Number(document.getElementById("budget-override-hours").value)
+      }
+    });
+    event.currentTarget.reset();
+    status.textContent = "Time-entry override granted.";
+  } catch (error) {
+    status.textContent = error.message;
+  }
 });
 
 document.getElementById("approval-form").addEventListener("submit", async (event) => {
@@ -2955,6 +3947,87 @@ document.getElementById("customer-contact-list").addEventListener("click", async
           email: resendButton.dataset.contactEmail
         }
       });
+
+      document.getElementById("change-order-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!state.selectedImplementationId) return;
+        const status = document.getElementById("change-order-status");
+        const taskIds = [...document.getElementById("change-order-task-ids").selectedOptions].map((option) => Number(option.value));
+        status.textContent = "";
+        try {
+          await api(`/api/product/implementations/${state.selectedImplementationId}/change-orders`, {
+            method: "POST",
+            body: {
+              title: document.getElementById("change-order-title").value,
+              scopeDescription: document.getElementById("change-order-description").value,
+              additionalFee: document.getElementById("change-order-fee").value,
+              timelineExtensionDays: Number(document.getElementById("change-order-days").value),
+              taskIds
+            }
+          });
+          event.currentTarget.reset();
+          await openImplementation(state.selectedImplementationId);
+          status.textContent = "Change order draft created.";
+        } catch (error) {
+          status.textContent = error.message;
+        }
+      });
+
+      document.getElementById("change-order-list").addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-send-change-order]");
+        if (!button || !state.selectedImplementationId) return;
+        try {
+          await api(`/api/product/implementations/${state.selectedImplementationId}/change-orders/${button.dataset.sendChangeOrder}/send`, {
+            method: "POST"
+          });
+          await openImplementation(state.selectedImplementationId);
+          showToast("Change order sent to the primary customer contact.");
+        } catch (error) {
+          showError(error);
+        }
+      });
+
+      document.getElementById("customer-delegation-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!state.selectedImplementationId) return;
+        const status = document.getElementById("delegation-status");
+        const taskIds = [...document.getElementById("delegation-task-ids").selectedOptions].map((option) => Number(option.value));
+        status.textContent = "";
+        try {
+          const result = await api(`/api/product/implementations/${state.selectedImplementationId}/delegations`, {
+            method: "POST",
+            body: {
+              displayName: document.getElementById("delegation-name").value,
+              email: document.getElementById("delegation-email").value,
+              stakeholderRole: document.getElementById("delegation-role").value,
+              taskIds
+            }
+          });
+          event.currentTarget.reset();
+          await openImplementation(state.selectedImplementationId);
+          status.textContent = result.invitationSent
+            ? `Scoped invitation sent to ${result.delegation.email}.`
+            : `${result.message || "Invitation email was not sent."}${result.delegationPortalUrl ? ` Copy this private link: ${result.delegationPortalUrl}` : ""}`;
+        } catch (error) {
+          status.textContent = error.message;
+        }
+      });
+
+      document.getElementById("delegation-list").addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-revoke-delegation]");
+        if (!button || !state.selectedImplementationId
+          || !window.confirm("Revoke this teammate’s task-specific portal access immediately?")) return;
+        try {
+          await api(`/api/product/implementations/${state.selectedImplementationId}/delegations/${button.dataset.revokeDelegation}/revoke`, {
+            method: "POST"
+          });
+          await openImplementation(state.selectedImplementationId);
+          showToast("Scoped task access revoked.");
+        } catch (error) {
+          showError(error);
+        }
+      });
+
       await openImplementation(state.selectedImplementationId);
       status.textContent = result.invitationSent
         ? `Fresh portal invitation sent to ${result.contact.email}. The personal link expires ${new Date(result.contact.expires_at).toLocaleDateString()}.`

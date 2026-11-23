@@ -40,10 +40,13 @@ function relayHelpReply(message) {
     return "I’m Ray, Relay’s built-in product guide. I use prepared Relay-specific answers—not an external AI service—and can’t access private workspace records.";
   }
   if (/(jira|slack|integration|integrate|synchronize|sync with|external project)/.test(question)) {
-    return "Workspace owners can configure the HubSpot connection for Closed Won handoff and progress summaries. Slack, Salesforce, Microsoft Teams, Jira, Linear, and Asana are not connected today.";
+    return "Growth and Custom workspace admins can configure Slack alerts with an encrypted incoming webhook; selected implementation and budget alerts are delivered after scheduled event processing is configured. Growth and Custom admins can configure HubSpot Closed Won handoff. Custom admins can map Salesforce product SKUs to Relay templates and connect Jira Cloud or Linear to escalate internal tasks; Relay polls linked issue status and completes a task only when the issue is done. Provider accounts, encrypted credentials, and scheduled processing are required. Engineering links and financial details stay out of the client portal. CSV export is available on all plans.";
   }
   if (/(?:relay.{0,35}(?:price|pricing|cost|subscription)|(?:price|pricing|cost|subscription).{0,35}relay|₹|rupee)/.test(question)) {
-    return "Relay offers Starter at ₹2,999 per month (3 team members, 5 active implementations, 3 templates) and Growth at ₹3,999 per month (10 members, 20 active implementations, unlimited templates, plus prerequisites, blocker tracking, and template history/restore). Prices are before applicable taxes. Custom limits and pricing are agreed in advance. See the Pricing page for details.";
+    return "Relay offers Starter at ₹2,999 per month (3 team members, 5 active implementations, and 3 templates), Growth at ₹3,999 per month (10 members, 20 active implementations, and unlimited templates), and Custom with agreed member and implementation limits plus unlimited templates. Growth adds critical-path shifts, change orders, a full portfolio view, HubSpot, Slack alerts, blockers, and template history. Custom adds time tracking, budgets, burn alerts, margin reporting, Salesforce SKU onboarding, and Jira/Linear task sync. Provider setup is required for integrations. Prices are before applicable taxes; see Pricing for details.";
+  }
+  if (/(?:what|which).{0,25}(?:features|included|capabilities).{0,25}(?:starter|growth|custom|plan)|(?:starter|growth|custom).{0,25}(?:features|include|capabilities)/.test(question)) {
+    return "Starter includes the customer portal and delegation, validated inputs, ordered steps and prerequisites, up to three templates, stage gates, email reminders after setup, a basic portfolio view, and CSV export. Growth adds critical-path shifts, change orders, the full portfolio view, HubSpot, Slack alerts, blocker tracking, and template history. Custom adds task time tracking, budget caps and burn alerts, margin/overage reporting, Salesforce SKU onboarding, and Jira/Linear task sync. Provider setup is required for integrations.";
   }
   if (/(import|migrat|move|bring|transfer).{0,45}(spreadsheet|excel|csv|customer|task|process|workflow|data)|(spreadsheet|excel|csv).{0,45}(import|migrat|move|bring|transfer)/.test(question)) {
     return "Relay does not currently import onboarding processes, customers, or tasks from spreadsheets. Rebuild your workflow in Process map, check it, then save it as a template. Relay can export portfolio summaries to CSV, but that export is not an import format.";
@@ -76,22 +79,22 @@ function relayHelpReply(message) {
     return "Refreshing or updating a template changes the version used by future implementations. Existing implementations keep their copied task plans and are not changed by template updates.";
   }
   if (/\b(?:reach|hit|exceed|maximum|max|limit|full|capacity|seat)\b.{0,40}\b(?:plan|workspace|member|seat|implementation|template|limit)\b|\b(?:plan|workspace|member|seat|implementation|template)\b.{0,40}\b(?:limit|full|maximum|max|capacity)\b|how many.{0,30}\b(?:members?|seats|implementations?|templates)\b|\b(?:add|create)\b.{0,25}\b(?:more|another|extra)\b.{0,15}\b(?:members?|teammates?|seats|implementations?|templates)\b/.test(question)) {
-    return "Starter includes up to 3 members, 5 active implementations, and 3 templates; Growth includes up to 10 members, 20 active implementations, and unlimited templates. Custom limits are agreed in advance. If you reach a limit, review the Pricing page or contact Relay about changing plans; completing an implementation or removing an unused template may also free capacity.";
+    return "Starter includes up to 3 members, 5 active implementations, and 3 templates; Growth includes up to 10 members, 20 active implementations, and unlimited templates. Custom member and active-implementation limits are agreed in advance, with unlimited templates. If you reach a limit, review the Pricing page or contact Relay about changing plans; completing an implementation or removing an unused template may also free capacity.";
   }
   if (/(?:change|upgrade|downgrade|cancel|renew).{0,35}(?:plan|subscription|billing|workspace)|(?:plan|subscription|billing).{0,35}(?:change|upgrade|downgrade|cancel|renew)/.test(question)) {
     return "Plan changes and cancellation are handled by contacting Relay; there is no self-service billing or cancellation control in the workspace. Check the Pricing page for plan details. Your confirmed billing, renewal, cancellation terms, and any taxes should be provided before payment.";
   }
   if (/(?:custom|bespoke).{0,30}(?:plan|price|pricing|limit)|(?:plan|price|pricing|limit).{0,30}(?:custom|bespoke)/.test(question)) {
-    return "Relay offers a Custom plan with team-member, active-implementation, and template limits agreed in advance, plus Growth features. Contact Relay through the Contact page to discuss your requirements; pricing and terms are confirmed in writing before purchase.";
+    return "Relay Custom includes Growth features, unlimited templates, time tracking, budgets, burn alerts, margin reporting, Salesforce SKU onboarding, Jira/Linear task sync, and dedicated setup with a custom SLA. Salesforce and engineering integrations require connected provider accounts and workspace setup. Team-member and active-implementation limits are agreed in advance. Contact Relay for written pricing and terms.";
   }
   if (/(invoice|receipt|billing document|tax invoice|bill me|billing details)/.test(question)) {
-    return "Relay tracks budget, forecast, actual cost, margin notes, invoice status, and an invoice reference. It does not generate invoices, accept payments, connect to an accounting system, or reconcile revenue.";
+    return "Custom tracks budget caps, task time, burn alerts, portfolio margin, and manual invoice status/reference. Relay does not generate invoices, accept payments, connect to an accounting system, or reconcile revenue.";
   }
   if (/(?:where|how).{0,35}(?:submit|send|enter).{0,40}(?:information|answer|details)|(?:where|how).{0,35}(?:information|answer|details).{0,35}(?:submit|send|enter)/.test(question)) {
     return "Open the private customer-information link shared by your implementation team. Enter the requested details in the form and choose Send information. If you do not have the link, ask the team that invited you.";
   }
   if (/(?:upload|attach|attachment|file|document).{0,40}(?:customer|client|portal|information|answer)|(?:customer|client|portal|information|answer).{0,40}(?:upload|attach|attachment|file|document)/.test(question)) {
-    return "Relay’s customer portal supports typed information fields, selected customer-visible tasks, messages, and PDF, PNG, or JPG uploads up to 5 MB each. An implementation can store up to 20 files and 25 MB total. Never upload passwords or other secrets.";
+    return "Relay accepts CSV or XLSX uploads only from a scoped task delegate, and only for a customer-visible task configured with a validation schema. Files are scanned before parsing; uploads and unscanned legacy-file downloads are unavailable until the workspace has its self-hosted ClamAV scanner configured. The customer portal does not accept arbitrary PDF or image attachments. Never upload passwords or other secrets.";
   }
   if (/(?:change|edit|update|correct).{0,35}(?:answer|response|information|details|field)|(?:answer|response|information|details).{0,35}(?:change|edit|update|correct).{0,35}(?:later|already sent|submitted)?/.test(question)) {
     return "If your private customer link is still available, reopen it to see your saved answers, make changes, and submit again. If the link no longer works, contact the implementation team that sent it and ask for help.";
@@ -100,7 +103,7 @@ function relayHelpReply(message) {
     return "Open Settings → Team capacity to set a teammate’s available minutes for a week. Relay shows saved capacity plans beside the implementation tools. Capacity is planning data and should be kept current.";
   }
   if (/(time entr|billable|non-billable|hourly rate|logged time)/.test(question)) {
-    return "Open an implementation’s Delivery operations section and use Log time. Enter the work date, minutes, optional hourly rate, and whether the entry is billable or non-billable. Time entries can be deleted from the delivery summary.";
+    return "Custom workspaces include task-level billable and non-billable time tracking, with timers and quick-log presets in each implementation task. Time entries can be deleted from the delivery summary. Starter and Growth do not include financial time tracking.";
   }
   if (/(sow|statement of work|scope of work|stage gate|milestone|exclusion)/.test(question)) {
     return "Open an implementation’s Delivery operations section to record SOW scope, milestones, exclusions, and the current stage gate: kickoff, configuration, testing, launch, hypercare, or complete.";
@@ -112,7 +115,7 @@ function relayHelpReply(message) {
     return "Open an implementation’s Delivery operations section and add a timeline event with a title, start, optional end, type, and optional external link. Events can be deleted from the delivery summary.";
   }
   if (/(budget|forecast|actual cost|margin|invoice status|invoice reference)/.test(question)) {
-    return "Open an implementation’s Delivery operations section to record budget, forecast, actual cost, margin/risk notes, invoice status, and an invoice reference. Relay tracks this status but does not generate invoices, accept payments, or connect to accounting systems.";
+    return "Custom includes project budget caps, 75/90/100% burn alerts, and a portfolio gross-margin and overage-leakage dashboard. Relay can track a manual invoice status and reference, but it does not generate invoices, accept payments, or connect to accounting systems.";
   }
   if (/(?:where|how).{0,35}(?:find|jump|navigate|open|go to|get to).{0,35}(?:implementation|work plan|customer information|portal access|communication|delivery|launch readiness|messages|files)|implementation sections?/.test(question)) {
     return "Open the customer’s implementation and use the Implementation sections row to jump to Work plan, Customer information, Portal access, Communication and setup, Delivery, Launch readiness, or Messages and files. It opens the destination without closing other sections or discarding unsaved details.";
@@ -124,7 +127,7 @@ function relayHelpReply(message) {
     return "Use the implementation’s Launch readiness and stakeholder/risk sections to record stakeholders, procurement and security status, technical setup, change/adoption progress, early validation, and risks. Give each risk or blocker an owner, severity, due date, and next action.";
   }
   if (/(hubspot|closed won|crm handoff|sales deal)/.test(question)) {
-    return "A workspace owner can connect HubSpot, select one pipeline, its Closed Won stage, and a Relay template. Matching Closed Won deals start one Relay implementation; Relay deduplicates imports and does not modify the original sales deal. Live authorization and Closed Won polling require provider setup and testing.";
+    return "Growth and Custom workspace owners can connect HubSpot, select one pipeline, its Closed Won stage, and a Relay template. Matching Closed Won deals start one Relay implementation; Relay deduplicates imports and does not modify the original sales deal. Live authorization and Closed Won polling require provider setup and testing.";
   }
   if (/(email reminder|reminder|email notification|overdue email|customer escalation)/.test(question)) {
     return "Workspace owners can enable email notifications and choose reminder timing in Settings. Task reminders use due dates, and overdue tasks can be reminded daily. Customer escalation can email a backup customer contact after the configured quiet period. Resend and the scheduled event processor must be configured.";
@@ -135,11 +138,11 @@ function relayHelpReply(message) {
   }
   if (/\btemplate(s)?\b/.test(question)
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {
-    return "A template is a checked snapshot of a process map and a dependable starting point for future customer implementations. Growth and Custom plans keep revision history and let you restore an earlier version; Starter includes up to three templates without that history feature. Updating a template does not change customer work that has already started.";
+    return "A template is a checked snapshot of a process map and a dependable starting point for future customer implementations. Growth and Custom plans keep revision history and let you restore an earlier version; Starter includes up to three templates without that history feature. Custom plans have unlimited templates. Updating a template does not change customer work that has already started.";
   }
   if (/\bimplementation(s)?\b|\bonboarding\b|\bcustomer work\b/.test(question)
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {
-    return "An implementation is the customer-specific workspace for one onboarding. Relay copies tasks from a template so your team can assign owners, set due dates, and collect the information needed from that customer. Growth and Custom also support prerequisites and blocker tracking. Relay helps everyone see progress; it does not automatically configure the customer’s product.";
+    return "An implementation is the customer-specific workspace for one onboarding. Relay copies tasks from a template so your team can assign owners, set due dates, prerequisites, and collect the information needed from that customer. Growth and Custom also support blocker tracking. Relay helps everyone see progress; it does not automatically configure the customer’s product.";
   }
   if (/\bprivate link\b|\bcustomer link\b/.test(question)
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {
@@ -175,6 +178,11 @@ function relayHelpReply(message) {
   if (/(live|current|my |our )?.{0,30}(customer|implementation|task|workspace).{0,30}(status|progress|data|details)|what is blocked|what is overdue/.test(question)) {
     return "I can’t see your workspace data. Open Overview for a summary, or open Implementations and select a customer to review task owners, due dates, blockers, prerequisites, and customer responses.";
   }
+  if (/\b(?:archive|restore|unarchive)\b/.test(question)
+    && !/\b(?:delete|permanently|erase)\b/.test(question)
+    && /\b(?:implementation|customer|client|project|onboarding)\b/.test(question)) {
+    return "A workspace owner can open Implementations, select the customer, and choose Archive. Archived work is hidden from active delivery and pauses customer portal access; its history is kept. Choose View archived to restore it later. Only workspace owners can archive or restore implementations.";
+  }
   if (/\b(?:delete|remove|erase|clear|discard|trash)\b/.test(question)) {
     if (/\b(?:help|ray)\b.{0,25}\b(?:chat|conversation|history|messages?)\b|\b(?:chat|conversation|history|messages?)\b.{0,25}\b(?:help|ray)\b/.test(question)) {
       return "Open Ray and choose Clear my help history. This removes your saved Ray conversations from your account.";
@@ -205,7 +213,7 @@ function relayHelpReply(message) {
       return "In Process map, find the map and choose Delete process. If saved templates use it, delete those templates first. A template used by an existing customer implementation cannot be deleted, and deleting a process map does not delete customer work.";
     }
     if (/\b(?:implementation|customer|client|customer record|onboarding)\b/.test(question)) {
-      return "Relay currently has no workspace control to delete an individual customer implementation or its copied tasks. If it’s a duplicate or test record that must be removed, contact Relay support. Deleting its template will not delete the implementation.";
+      return "A workspace owner can open Implementations, select the customer, and choose Archive to hide it while keeping its history; archived work can be restored from View archived. To remove it permanently, choose Permanently delete and confirm. This cannot be undone and deletes the implementation’s tasks, customer information, portal messages, and uploaded files.";
     }
     if (/\b(?:answer|response|submission|customer data)\b/.test(question)) {
       return "Relay has no control to delete one saved customer answer by itself. A customer can update an answer through their active private link. Deleting the related Customer information request removes that request’s saved responses, so use that only if all of those responses should be removed.";

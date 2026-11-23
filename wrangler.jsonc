@@ -5,7 +5,7 @@
   "compatibility_date": "2026-11-02",
   "compatibility_flags": ["nodejs_compat"],
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": ["*/5 * * * *", "0 0 * * *"]
   },
   // Keep iconv-lite on its browser path; Wrangler otherwise bundles its Node stream helpers as disabled stubs.
   "define": {

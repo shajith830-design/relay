@@ -85,6 +85,37 @@
     if (!response.ok) throw new Error(result?.error || "The upload could not be completed.");
     return result;
   }
+  async function uploadTaskCsv(taskId, file, mapping) {
+    if (isDemo) throw new Error("CSV validation is not available in the sample workspace.");
+    const contentTypes = {
+      csv: "text/csv",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    };
+    const headers = {
+      "Content-Type": contentTypes[extensionOf(file.name)],
+      "X-Relay-Filename": encodeURIComponent(file.name)
+    };
+    if (mapping) {
+      const bytes = new TextEncoder().encode(JSON.stringify(mapping));
+      let binary = "";
+      bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+      headers["X-Relay-Csv-Mapping"] = btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    }
+    let response;
+    try {
+      response = await fetch(`${base}/tasks/${taskId}/csv`, {
+        method: "POST", credentials: "same-origin", cache: "no-store",
+        headers, body: file
+      });
+    } catch {
+      throw Object.assign(new Error("Could not connect. Check your connection and try again."), { offline: true });
+    }
+    const result = await response.json().catch(() => null);
+    if (!response.ok && response.status !== 422) {
+      throw new Error(result?.error || "The CSV could not be validated.");
+    }
+    return result;
+  }
 
   /* ───────────── 2. store ───────────── */
   const draftKey = `relay-portal-draft:${[...token].reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)}`;
@@ -114,7 +145,14 @@
     notice: "",            // transient success message for the current step
     sent: false,           // information was sent during this visit
     fileStatus: "",        // inline message under the upload control
-    uploadOk: false
+    uploadOk: false,
+    csvFiles: {},
+    csvHeaders: {},
+    csvMappings: {},
+    csvResults: {},
+    csvValidated: {},
+    credentialResults: {},
+    credentialVerified: {}
   };
 
   const requirements = () => store.data?.requirements || [];
@@ -126,10 +164,12 @@
 
   function stepList() {
     const list = [{ id: "overview", label: "Welcome" }];
-    if (requirements().length) list.push({ id: "info", label: "Your information" });
+    const taskOnly = store.data?.accessRole === "delegate";
+    const readOnlyMaster = store.data?.accessRole === "primary" || store.data?.accessRole === "viewer";
+    if (!readOnlyMaster && !taskOnly && requirements().length) list.push({ id: "info", label: "Your information" });
     if (tasks().length) list.push({ id: "tasks", label: "Your tasks" });
-    list.push({ id: "files", label: "Files" });
-    list.push({ id: "review", label: requirements().length ? "Review & send" : "All set" });
+    if (!readOnlyMaster && !taskOnly) list.push({ id: "files", label: "Files" });
+    if (!readOnlyMaster && !taskOnly) list.push({ id: "review", label: requirements().length ? "Review & send" : "All set" });
     return list;
   }
 
@@ -228,8 +268,29 @@
     const progress = d.progress === null || d.progress === undefined ? null : Math.max(0, Math.min(100, Number(d.progress) || 0));
     const milestones = (d.milestones || []).map((m) =>
       `<li><span>${escapeHtml(m.name)}</span><span>${m.completed} of ${m.total}</span></li>`).join("");
+    const goLiveBanner = d.goLiveShifts?.length
+      ? `<div class="status warning" role="status"><strong>Projected go-live updated</strong><p>${d.goLiveShifts.map((shift) =>
+        `${escapeHtml(shift.title)} was overdue and shifted the date ${shift.days_shifted} day${shift.days_shifted === 1 ? "" : "s"}`
+      ).join(". ")}.</p></div>`
+      : "";
+    const changeOrders = d.accessRole === "primary"
+      ? (d.changeOrders || []).filter((order) => order.status === "pending_client").map((order) => `
+        <article class="wizard-task">
+          <div class="wizard-task-head"><strong>${escapeHtml(order.title)}</strong><span class="badge attention">Approval needed</span></div>
+          <p>${escapeHtml(order.scope_description)}</p>
+          <small>${Number(order.additional_fee || 0).toLocaleString(undefined, { style: "currency", currency: "USD" })} · ${order.timeline_extension_days || 0} day timeline extension</small>
+          <label class="check-field"><input type="checkbox" data-change-order-consent="${order.id}"> I confirm this scope, fee, and timeline change.</label>
+          <div class="button-row">
+            <button class="button primary" type="button" data-action="approve-change-order" data-change-order="${order.id}">Approve</button>
+            <button class="button secondary" type="button" data-action="reject-change-order" data-change-order="${order.id}">Reject</button>
+          </div>
+        </article>`).join("")
+      : "";
     return `<h2 id="step-heading" tabindex="-1">Welcome${d.customerName ? `, ${escapeHtml(d.customerName)}` : ""}</h2>
       <p class="muted">Your setup checklist keeps requests, tasks, and files together. Review your answers before sending them.</p>
+      ${d.projectedGoLiveDate ? `<dl class="wizard-facts"><div><dt>Projected go-live</dt><dd>${escapeHtml(formatDate(d.projectedGoLiveDate))}</dd></div></dl>` : ""}
+      ${goLiveBanner}
+      ${changeOrders ? `<section aria-label="Change orders"><h3>Scope changes</h3>${changeOrders}</section>` : ""}
       ${facts ? `<dl class="wizard-facts">${facts}</dl>` : ""}
       ${progress === null ? "" : `<div class="wizard-progress"><label for="customer-progress-bar">Implementation progress · ${progress}%</label><progress id="customer-progress-bar" max="100" value="${progress}">${progress}%</progress></div>`}
       ${milestones ? `<ul class="wizard-milestones" aria-label="Progress by stage">${milestones}</ul>` : ""}
@@ -249,15 +310,55 @@
 
   function taskCard(task) {
     const blocked = task.is_blocked;
+    const csvSchema = Array.isArray(task.csvSchema) ? task.csvSchema : [];
+    const csvStatus = store.csvResults[task.id];
+    const credentialStatus = store.credentialResults[task.id];
+    const needsCredentialTest = Boolean(task.credentialProvider);
     const status = task.status === "done"
       ? '<span class="badge ready">Complete</span>'
+      : task.locked_pending_co || task.status === "locked_pending_co"
+        ? '<span class="badge attention">Locked pending approval</span>'
       : blocked ? '<span class="badge attention">Blocked</span>'
         : task.waiting ? '<span class="badge attention">Waiting</span>' : "";
     const meta = [task.stage, task.due_at ? `Due ${formatDate(task.due_at)}` : ""].filter(Boolean).map(escapeHtml).join(" · ");
     let action = "";
-    if (task.status !== "done" && !blocked && !task.waiting) {
-      action = `<button class="button primary" type="button" data-action="complete-task" data-task="${task.id}">Mark complete</button>`;
+    if (store.data.accessRole === "delegate" && task.status !== "done" && !blocked && !task.waiting && !task.locked_pending_co) {
+      action = `<button class="button primary" type="button" data-action="complete-task" data-task="${task.id}"
+        ${(csvSchema.length && !store.csvValidated[task.id]) || (needsCredentialTest && !store.credentialVerified[task.id]) ? "disabled" : ""}>Mark complete</button>`;
     }
+    const csvUpload = csvSchema.length ? `<section class="customer-csv" aria-label="CSV validation">
+      <h3>Upload your data file</h3>
+      <p class="muted">Choose a CSV or XLSX file. Relay checks its columns and every row before it can be accepted. XLSX uses the first worksheet.</p>
+      <label for="customer-csv-${task.id}">CSV or XLSX file</label>
+      <input id="customer-csv-${task.id}" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-csv-file="${task.id}">
+      ${store.csvFiles[task.id] ? `<small>Selected: ${escapeHtml(store.csvFiles[task.id].name)}</small>` : ""}
+      <button class="button secondary" type="button" data-action="map-csv" data-task="${task.id}">Read columns</button>
+      ${store.csvHeaders[task.id]?.length ? `<div class="customer-csv-mapping">
+        <p>Confirm which file column matches each requested field:</p>
+        ${csvSchema.map((column, index) => {
+          const selected = store.csvMappings[task.id]?.[column.column_name] || "";
+          return `<label>${escapeHtml(column.column_name)}${column.required ? " · Required" : " · Optional"}
+            <select data-csv-mapping="${task.id}" data-csv-column="${escapeHtml(column.column_name)}">
+              <option value="">${column.required ? "Choose a column" : "Leave unmapped"}</option>
+              ${store.csvHeaders[task.id].map((header) => `<option value="${escapeHtml(header)}" ${selected === header ? "selected" : ""}>${escapeHtml(header)}</option>`).join("")}
+            </select>
+          </label>`;
+        }).join("")}
+        <button class="button secondary" type="button" data-action="validate-csv" data-task="${task.id}">Validate &amp; upload</button>
+      </div>` : ""}
+      ${csvStatus?.errors?.length ? `<ul class="customer-csv-errors" role="alert">${csvStatus.errors.map((error) =>
+        `<li>${error.row ? `Row ${error.row}${error.column ? `, ${escapeHtml(error.column)}` : ""}: ` : ""}${escapeHtml(error.message)}</li>`
+      ).join("")}</ul>` : ""}
+      ${csvStatus?.message ? `<p class="status ${csvStatus.valid ? "ok" : ""}" role="status" aria-live="polite">${escapeHtml(csvStatus.message)}</p>` : ""}
+    </section>` : "";
+    const credentialTest = needsCredentialTest ? `<section class="customer-credential" aria-label="Connection verification">
+      <h3>Test ${escapeHtml(humanize(task.credentialProvider))} connection</h3>
+      <p class="muted">Enter the provider API token. Relay sends it only to the selected provider for this test and does not save it.</p>
+      <label for="customer-credential-${task.id}">API token</label>
+      <input id="customer-credential-${task.id}" type="password" autocomplete="new-password" data-credential="${task.id}">
+      <button class="button secondary" type="button" data-action="verify-credential" data-task="${task.id}">Test connection</button>
+      ${credentialStatus?.message ? `<p class="status ${credentialStatus.success ? "ok" : "warning"}" role="status" aria-live="polite">${escapeHtml(credentialStatus.message)}${credentialStatus.status ? ` · HTTP ${credentialStatus.status}` : ""}</p>` : ""}
+    </section>` : "";
     return `<article class="wizard-task">
       <div class="wizard-task-head"><strong>${escapeHtml(task.title)}</strong>${status}</div>
       ${task.description ? `<p>${escapeHtml(task.description)}</p>` : ""}
@@ -265,6 +366,8 @@
       ${task.waiting && task.status !== "done" ? '<p class="customer-waiting">This unlocks after an earlier step is finished.</p>' : ""}
       ${blocked && task.status !== "done" ? `<p class="customer-waiting"><strong>Blocked:</strong> ${escapeHtml(task.blocker_reason || "The team is working through a dependency.")}<br>
         <strong>Next update:</strong> ${escapeHtml(task.blocker_next_action || "Your implementation contact will share an update.")}</p>` : ""}
+      ${csvUpload}
+      ${credentialTest}
       ${action}
     </article>`;
   }
@@ -418,6 +521,14 @@
   async function refresh() {
     const data = await request(base);
     store.data = data;
+    for (const task of data.tasks || []) {
+      if (Array.isArray(task.csvSchema) && task.csvSchema.length) {
+        store.csvValidated[task.id] = task.csvUploadValidated === true;
+      }
+      if (task.credentialProvider) {
+        store.credentialVerified[task.id] = task.credentialVerified === true;
+      }
+    }
     return data;
   }
   async function safeRefresh() {
@@ -455,6 +566,77 @@
   }
 
   const actions = {
+    "verify-credential"(target) {
+      const id = Number(target.dataset.task);
+      const input = $(`customer-credential-${id}`);
+      const credential = input?.value || "";
+      if (!credential) {
+        store.credentialResults[id] = { success: false, message: "Enter the provider API token." };
+        render({ focus: false });
+        return;
+      }
+      return guarded(`credential-test-${id}`, async () => {
+        try {
+          const result = await request(`${base}/tasks/${id}/credentials/test`, {
+            method: "POST",
+            body: { credential }
+          });
+          store.credentialResults[id] = result;
+          store.credentialVerified[id] = result.success === true;
+        } finally {
+          input.value = "";
+        }
+      }, target, "Testing…");
+    },
+
+    "map-csv"(target) {
+      const id = Number(target.dataset.task);
+      const file = store.csvFiles[id];
+      if (!file) {
+        store.csvResults[id] = { valid: false, message: "Choose a CSV file first." };
+        render({ focus: false });
+        return;
+      }
+      if (file.size < 1 || file.size > MAX_FILE_BYTES || !["csv", "xlsx"].includes(extensionOf(file.name))) {
+        store.csvResults[id] = { valid: false, message: "Choose a CSV or XLSX file no larger than 5 MB." };
+        render({ focus: false });
+        return;
+      }
+      return guarded(`csv-map-${id}`, async () => {
+        const result = await uploadTaskCsv(id, file);
+        store.csvHeaders[id] = result.headers || [];
+        store.csvMappings[id] = result.suggestions || {};
+        store.csvValidated[id] = false;
+        store.csvResults[id] = {
+          valid: false,
+          message: `${result.rowCount || 0} rows found. Confirm the column mapping, then validate the file.`,
+          errors: result.errors || []
+        };
+      }, target, "Reading…");
+    },
+
+    "validate-csv"(target) {
+      const id = Number(target.dataset.task);
+      const file = store.csvFiles[id];
+      if (!file) {
+        store.csvResults[id] = { valid: false, message: "Choose a CSV file first." };
+        render({ focus: false });
+        return;
+      }
+      const mapping = store.csvMappings[id] || {};
+      return guarded(`csv-validate-${id}`, async () => {
+        const result = await uploadTaskCsv(id, file, mapping);
+        store.csvValidated[id] = result.valid === true;
+        store.csvResults[id] = result.valid
+          ? { valid: true, message: `${result.rowCount} rows validated. Your file is ready to upload.` }
+          : {
+            valid: false,
+            message: `${result.errorCount || 0} validation issue${result.errorCount === 1 ? "" : "s"} found. Correct the file and upload it again.`,
+            errors: result.errors || []
+          };
+      }, target, "Validating…");
+    },
+
     next() {
       if (store.step === "info" && !validateInfoStep()) return;
       move(1);
@@ -470,6 +652,33 @@
     "prev-task"() { store.taskIndex = Math.max(0, store.taskIndex - 1); store.notice = ""; render({ focus: false }); },
     "next-task"() { store.taskIndex = Math.min(tasks().length - 1, store.taskIndex + 1); store.notice = ""; render({ focus: false }); },
     "goto-task"(target) { store.taskIndex = Number(target.dataset.index); store.notice = ""; render({ focus: false }); },
+
+    "approve-change-order"(target) {
+      const id = Number(target.dataset.changeOrder);
+      const consent = document.querySelector(`[data-change-order-consent="${id}"]`);
+      if (!consent?.checked) {
+        showBanner("Confirm the scope, fee, and timeline before approving.");
+        return;
+      }
+      return guarded(`change-order-${id}`, async () => {
+        await request(`${base}/change-orders/${id}/decision`, {
+          method: "POST",
+          body: { decision: "approved", consent: true }
+        });
+        await safeRefresh();
+      }, target, "Approving…");
+    },
+
+    "reject-change-order"(target) {
+      const id = Number(target.dataset.changeOrder);
+      return guarded(`change-order-${id}`, async () => {
+        await request(`${base}/change-orders/${id}/decision`, {
+          method: "POST",
+          body: { decision: "rejected", consent: false }
+        });
+        await safeRefresh();
+      }, target, "Rejecting…");
+    },
 
     "complete-task"(target) {
       const id = Number(target.dataset.task);
@@ -543,6 +752,27 @@
         field.closest(".field").classList.remove("has-error");
         $(`customer-input-${req.id}-error`).textContent = "";
       }
+    }
+  });
+  el.body.addEventListener("change", (event) => {
+    const fileInput = event.target.closest("[data-csv-file]");
+    if (fileInput) {
+      const id = fileInput.dataset.csvFile;
+      store.csvFiles[id] = fileInput.files?.[0] || null;
+      delete store.csvHeaders[id];
+      delete store.csvMappings[id];
+      delete store.csvResults[id];
+      delete store.csvValidated[id];
+      render({ focus: false });
+      return;
+    }
+    const mappingInput = event.target.closest("[data-csv-mapping]");
+    if (mappingInput) {
+      const taskId = mappingInput.dataset.csvMapping;
+      store.csvMappings[taskId] ||= {};
+      store.csvMappings[taskId][mappingInput.dataset.csvColumn] = mappingInput.value;
+      store.csvValidated[taskId] = false;
+      delete store.csvResults[taskId];
     }
   });
   // Inline validation when leaving a field. Empty fields are not scolded on tab-through;

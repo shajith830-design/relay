@@ -57,11 +57,11 @@
                 <option value="growth">Growth · ₹3,999/month</option>
                 <option value="custom">Custom · agreed price</option>
               </select>
+              <p class="mt-1 text-xs leading-5 text-slate-500">Starter: 3 members, 5 active implementations, 3 templates. Growth: 10 members, 20 active implementations, unlimited templates. Custom: agreed member and implementation limits, unlimited templates, and financial controls.</p>
             </div>
-            <div id="provision-custom-limits" class="grid gap-3 sm:grid-cols-3" hidden>
+            <div id="provision-custom-limits" class="grid gap-3 sm:grid-cols-2" hidden>
               <label class="text-sm font-medium text-slate-700">Team members<input name="memberLimit" type="number" min="1" step="1" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"></label>
               <label class="text-sm font-medium text-slate-700">Active implementations<input name="activeImplementationLimit" type="number" min="1" step="1" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"></label>
-              <label class="text-sm font-medium text-slate-700">Templates<input name="templateLimit" type="number" min="1" step="1" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"></label>
             </div>
             <button id="provision-submit" type="submit" class="min-h-11 justify-self-start rounded-lg bg-sky-700 px-5 text-sm font-semibold text-white hover:bg-sky-800 disabled:opacity-60">Approve payment & create access</button>
               <p id="provision-status" class="text-sm" role="status" aria-live="polite"></p>
@@ -132,8 +132,7 @@
     const workspaceStatus = document.getElementById("workspace-status");
     const customLimitFields = [
       ["memberLimit", "member_limit", "Members"],
-      ["activeImplementationLimit", "active_implementation_limit", "Active implementations"],
-      ["templateLimit", "template_limit", "Templates"]
+      ["activeImplementationLimit", "active_implementation_limit", "Active implementations"]
     ];
 
     function planBody(plan, controls) {
@@ -141,7 +140,7 @@
       if (plan === "custom") {
         for (const [key] of customLimitFields) {
           const value = Number(controls[key].value);
-          if (!Number.isSafeInteger(value) || value < 1) throw new Error("Custom limits must be positive whole numbers.");
+          if (!Number.isSafeInteger(value) || value < 1) throw new Error("Custom member and implementation limits must be positive whole numbers.");
           body[key] = value;
         }
       }
@@ -171,6 +170,16 @@
     function formatDate(value) {
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+    }
+
+    function planEntitlements(plan) {
+      if (plan === "custom") {
+        return "Everything in Growth, plus task time tracking, budgets, burn alerts, margin/overage reporting; unlimited templates.";
+      }
+      if (plan === "growth") {
+        return "Critical path, change orders, full portfolio, HubSpot, blockers, and template history; no financial controls.";
+      }
+      return "Portal, delegation, validated inputs, prerequisites, stage gates, reminders, basic portfolio, and CSV; no Growth or financial features.";
     }
 
     async function ownerRequest(url, options = {}) {
@@ -243,6 +252,10 @@
         limitsSummary.textContent =
           `${displayLimit(workspace.member_limit)} members · ${displayLimit(workspace.active_implementation_limit)} active · ${displayLimit(workspace.template_limit)} templates`;
         planCell.append(limitsSummary);
+        const entitlements = document.createElement("p");
+        entitlements.className = "mb-2 text-[10px] leading-4 text-slate-500";
+        entitlements.textContent = planEntitlements(workspace.plan);
+        planCell.append(entitlements);
         const controls = {};
         const limitsContainer = document.createElement("div");
         limitsContainer.className = "grid gap-1";
@@ -268,7 +281,10 @@
         savePlan.className = "mt-2 rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60";
         savePlan.textContent = "Save plan";
         planCell.append(savePlan);
-        planSelect.addEventListener("change", () => setCustomFields(planSelect, limitsContainer));
+        planSelect.addEventListener("change", () => {
+          setCustomFields(planSelect, limitsContainer);
+          entitlements.textContent = planEntitlements(planSelect.value);
+        });
         setCustomFields(planSelect, limitsContainer);
         row.append(planCell);
         const expiryCell = document.createElement("td");
