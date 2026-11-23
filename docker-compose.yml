@@ -1,4 +1,21 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: relay
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: relay
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relay -d relay"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   relay:
     build:
       context: .
@@ -11,21 +28,38 @@ services:
     environment:
       PORT: "3000"
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the Supabase PostgreSQL pooler URL}
-      INQUIRIES_API_TOKEN: ${INQUIRIES_API_TOKEN:?Set a strong INQUIRIES_API_TOKEN}
-      OWNER_ADMIN_TOKEN: ${OWNER_ADMIN_TOKEN:?Set a strong OWNER_ADMIN_TOKEN}
-      RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY for password recovery}
-      AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM:?Set a verified AUTH_EMAIL_FROM address}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set the public HTTPS URL}
+      DATABASE_URL: postgresql://relay:relay@postgres:5432/relay?sslmode=disable
+      INQUIRIES_API_TOKEN: ${INQUIRIES_API_TOKEN:-dev-inquiries-token}
+      OWNER_ADMIN_TOKEN: ${OWNER_ADMIN_TOKEN:-dev-owner-token}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM:-"Relay <no-reply@localhost>"}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       INQUIRY_NOTIFICATION_EMAIL: ${INQUIRY_NOTIFICATION_EMAIL:-}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:-dGVzdC1lbmNyeXB0aW9uLWtleS1mb3ItZGV2LW9ubHk=}
+      MALWARE_SCANNER_URL: ${MALWARE_SCANNER_URL:-}
+      MALWARE_SCANNER_TOKEN: ${MALWARE_SCANNER_TOKEN:-}
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+      CLAMAV_PORT: ${CLAMAV_PORT:-}
+      SCANNER_HOST: ${SCANNER_HOST:-}
+      SCANNER_PORT: ${SCANNER_PORT:-}
+      HUBSPOT_CLIENT_ID: ${HUBSPOT_CLIENT_ID:-}
+      HUBSPOT_CLIENT_SECRET: ${HUBSPOT_CLIENT_SECRET:-}
+      SALESFORCE_CLIENT_ID: ${SALESFORCE_CLIENT_ID:-}
+      SALESFORCE_CLIENT_SECRET: ${SALESFORCE_CLIENT_SECRET:-}
+      SALESFORCE_LOGIN_URL: ${SALESFORCE_LOGIN_URL:-https://login.salesforce.com}
+      JUSTONECX_SECRET_KEY: ${JUSTONECX_SECRET_KEY:-}
+      NOTIFICATIONS_CRON_SECRET: ${NOTIFICATIONS_CRON_SECRET:-dev-cron-secret}
     read_only: true
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -36,3 +70,6 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+
+volumes:
+  postgres_data:
