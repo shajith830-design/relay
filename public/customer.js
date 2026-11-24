@@ -479,7 +479,7 @@
       <article class="customer-message ${m.sender_role === "customer" ? "from-customer" : "from-team"}">
         <strong>${escapeHtml(m.sender_name || (m.sender_role === "customer" ? "Customer" : "Implementation team"))}</strong>
         <p>${escapeHtml(m.body)}</p><small>${escapeHtml(new Date(m.created_at).toLocaleString())}</small>
-      </article>`).join("") : '<p class="muted">No messages yet. Send your implementation team a question here.</p>';
+      </article>`).join("") : '<p class="muted">No messages yet.</p>';
     el.messages.scrollTop = el.messages.scrollHeight;
   }
 
@@ -801,29 +801,6 @@
 
   window.addEventListener("beforeunload", (event) => {
     if (store.data && dirtyRequirements().length) { event.preventDefault(); event.returnValue = ""; }
-  });
-
-  /* messages (static form, independent of the wizard) */
-  $("customer-message-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const statusEl = $("customer-message-status");
-    const button = event.currentTarget.querySelector("button[type=submit]");
-    const textarea = $("customer-message");
-    const body = textarea.value.trim();
-    if (!body) { statusEl.textContent = "Enter a message before sending."; return; }
-    if (button.disabled) return;
-    button.disabled = true;
-    statusEl.textContent = "";
-    try {
-      await request(`${base}/messages`, { method: "POST", body: { body } });
-      textarea.value = "";
-      statusEl.textContent = "Message sent to your implementation team.";
-      await safeRefresh();
-    } catch (error) {
-      statusEl.textContent = error.message;
-    } finally {
-      button.disabled = false;
-    }
   });
 
   /* expired / invalid link recovery */

@@ -1143,116 +1143,33 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   assert.equal(updatedCustomerForm.data.requirements.length, 4);
   assert.equal(updatedCustomerForm.data.requirements.find((item) => item.id === secondRequirementId).input_type, "email");
   assert.equal(updatedCustomerForm.data.requirements.find((item) => item.id === dateRequirement.data.requirement.id).input_type, "date");
-  const emptySubmission = await request(`/api/product/customer/${customerToken}`, {
+  const readOnlyCustomerSubmission = await request(`/api/product/customer/${customerToken}`, {
     method: "POST",
     body: { inputs: [] }
   });
-  assert.equal(emptySubmission.response.status, 400);
-  assert.match(emptySubmission.data.error, /Company website/);
-  const partialSubmission = await request(`/api/product/customer/${customerToken}`, {
+  assert.equal(readOnlyCustomerSubmission.response.status, 403);
+  assert.match(readOnlyCustomerSubmission.data.error, /read-only/);
+  const readOnlyCustomerMessage = await request(`/api/product/customer/${customerToken}/messages`, {
     method: "POST",
-    body: { inputs: [{ requirementId, value: "https://acme.example" }] }
+    body: { body: "Can we review the launch date?" }
   });
-  assert.equal(partialSubmission.response.status, 400);
-  assert.match(partialSubmission.data.error, /Admin email/);
-  const invalidEmail = await request(`/api/product/customer/${customerToken}`, {
+  assert.equal(readOnlyCustomerMessage.response.status, 403);
+  assert.match(readOnlyCustomerMessage.data.error, /read-only/);
+  const readOnlyCustomerFile = await request(`/api/product/customer/${customerToken}/files`, {
     method: "POST",
-    body: { inputs: [
-      { requirementId, value: "https://acme.example" },
-      { requirementId: secondRequirementId, value: "not-an-email" }
-    ] }
+    body: { filename: "requirements.csv", contentType: "text/csv", size: 12 }
   });
-  assert.equal(invalidEmail.response.status, 400);
-  assert.match(invalidEmail.data.error, /valid email address/);
+  assert.equal(readOnlyCustomerFile.response.status, 403);
+  assert.match(readOnlyCustomerFile.data.error, /read-only/);
   const beforeCustomerSubmit = await request("/api/product/workspace", { cookie: ownerCookie });
   assert.equal(beforeCustomerSubmit.data.implementations[0].missing_inputs, 2);
   assert.match(beforeCustomerSubmit.data.implementations[0].missing_input_names, /Company website/);
   assert.match(beforeCustomerSubmit.data.implementations[0].missing_input_names, /Admin email/);
-  const submitted = await request(`/api/product/customer/${customerToken}`, {
-    method: "POST",
-    body: { inputs: [
-      { requirementId, value: "https://acme.example" },
-      { requirementId: secondRequirementId, value: "admin@acme.example" }
-    ] }
-  });
-  assert.equal(submitted.response.status, 200);
-  const invalidWebsite = await request(`/api/product/customer/${customerToken}`, {
-    method: "POST",
-    body: { inputs: [
-      { requirementId, value: "not-a-website" },
-      { requirementId: secondRequirementId, value: "admin@acme.example" }
-    ] }
-  });
-  assert.equal(invalidWebsite.response.status, 400);
-  assert.match(invalidWebsite.data.error, /complete website URL/);
-  const invalidDate = await request(`/api/product/customer/${customerToken}`, {
-    method: "POST",
-    body: { inputs: [
-      { requirementId, value: "https://acme.example" },
-      { requirementId: secondRequirementId, value: "admin@acme.example" },
-      { requirementId: dateRequirement.data.requirement.id, value: "2026-02-31" }
-    ] }
-  });
-  assert.equal(invalidDate.response.status, 400);
-  assert.match(invalidDate.data.error, /valid date/);
-  const invalidNumber = await request(`/api/product/customer/${customerToken}`, {
-    method: "POST",
-    body: { inputs: [{ requirementId: numericRequirement.data.requirement.id, value: "many" }] }
-  });
-  assert.equal(invalidNumber.response.status, 400);
-  assert.match(invalidNumber.data.error, /valid number/);
-  const partialUpdate = await request(`/api/product/customer/${customerToken}`, {
-    method: "POST",
-    body: { inputs: [{ requirementId, value: "https://acme.example/updated" }] }
-  });
-  assert.equal(partialUpdate.response.status, 200);
-  const duplicateRequirement = await request(`/api/product/customer/${customerToken}`, {
-    method: "POST",
-    body: { inputs: [
-      { requirementId, value: "https://acme.example" },
-      { requirementId, value: "https://duplicate.example" }
-    ] }
-  });
-  assert.equal(duplicateRequirement.response.status, 400);
-  const unknownRequirement = await request(`/api/product/customer/${customerToken}`, {
-    method: "POST",
-    body: { inputs: [{ requirementId: 999999, value: "unknown" }] }
-  });
-  assert.equal(unknownRequirement.response.status, 400);
-  const blankRequiredUpdate = await request(`/api/product/customer/${customerToken}`, {
-    method: "POST",
-    body: { inputs: [{ requirementId, value: "   " }] }
-  });
-  assert.equal(blankRequiredUpdate.response.status, 400);
-
-  const largerFormRequirements = [];
-  for (let index = 0; index < 9; index += 1) {
+  for (let index = 0; index < 46; index += 1) {
     const optionalRequirement = await request("/api/product/requirements", {
       method: "POST",
       cookie: ownerCookie,
       body: { name: `Optional input ${index + 1}`, description: "", required: false }
-    });
-    assert.equal(optionalRequirement.response.status, 201);
-    largerFormRequirements.push(optionalRequirement.data.requirement.id);
-  }
-  const blankOptionalSubmission = await request(`/api/product/customer/${customerToken}`, {
-    method: "POST",
-    body: { inputs: [{ requirementId: largerFormRequirements[0], value: "" }] }
-  });
-  assert.equal(blankOptionalSubmission.response.status, 200);
-  const largerSubmission = await request(`/api/product/customer/${customerToken}`, {
-    method: "POST",
-    body: {
-      inputs: largerFormRequirements.map((id) => ({ requirementId: id, value: "x".repeat(2000) }))
-    }
-  });
-  assert.equal(largerSubmission.response.status, 200);
-
-  for (let index = 0; index < 37; index += 1) {
-    const optionalRequirement = await request("/api/product/requirements", {
-      method: "POST",
-      cookie: ownerCookie,
-      body: { name: `Capped input ${index + 1}`, description: "", required: false }
     });
     assert.equal(optionalRequirement.response.status, 201);
   }
@@ -1270,7 +1187,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   assert.equal(details.data.implementation.steps[0].stage, "Configure");
   assert.match(details.data.implementation.steps[0].due_at, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(details.data.implementation.steps[1].waiting_on, "Configure workspace");
-  assert.equal(details.data.implementation.requirements[0].value, "https://acme.example/updated");
+  assert.equal(details.data.implementation.requirements[0].value, "");
   const firstTaskId = details.data.implementation.steps[0].id;
   const secondTaskId = details.data.implementation.steps[1].id;
   const blockedWithoutAction = await request(`/api/product/implementations/${implementationId}/steps/${secondTaskId}`, {

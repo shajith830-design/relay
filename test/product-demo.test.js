@@ -753,6 +753,8 @@ test("customer portal wizard keeps Relay launch details and prevents lost or mis
   assert.match(customerHtml, /id="wizard-steps"/);
   assert.match(customerHtml, /id="wizard-body"/);
   assert.match(customerHtml, /id="customer-conversation-section"/);
+  assert.doesNotMatch(customerHtml, /id="customer-message-form"/);
+  assert.match(customerHtml, /cannot send messages here/i);
   assert.match(customerScript, /sessionStorage\.setItem\(draftKey, JSON\.stringify\(store\.drafts\)\)/);
   assert.match(customerScript, /Rollback plan/);
   assert.match(customerScript, /Adoption and change management/);
