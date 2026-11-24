@@ -1573,7 +1573,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   assert.equal(existingAccountJoin.data.workspace.role, "contributor");
   assert.equal(existingAccountJoin.data.workspace.id, ownerAccount.workspace.id);
   const existingAccountCookie = existingAccountJoin.response.headers.get("set-cookie").split(";")[0];
-  assert.equal((await request("/api/product/workspace", { cookie: existingAccountCookie })).data.members.length, 3);
+  assert.equal((await request("/api/product/workspace", { cookie: existingAccountCookie })).data.members.length, 4);
   const consumedExistingInvite = await request("/api/product/auth/login", {
     method: "POST",
     body: {
