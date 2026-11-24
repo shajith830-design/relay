@@ -651,6 +651,8 @@ test("Relay product supports the six connected jobs with workspace isolation", {
       assigneeUserId: teammateId,
       stage: "Launch",
       dueOffsetDays: 7,
+      estimatedDurationDays: 1,
+      responsibleParty: "relay",
       dependsOn: [firstProcessStepId]
     }
   });
@@ -1810,16 +1812,28 @@ test("Starter plan enforces limits while keeping included prerequisites and gati
   });
   await testQuery(`
     UPDATE product_workspace_subscriptions
-    SET plan = 'starter', member_limit = 1, active_implementation_limit = 1, template_limit = 3
+    SET plan = 'starter'
     WHERE workspace_id = $1
   `, [account.workspace.id]);
 
-  const invite = await request("/api/product/invites", {
+  const firstInvite = await request("/api/product/invites", {
     method: "POST",
     cookie: account.cookie,
-    body: { email: `teammate-${suffix}@example.test` }
+    body: { email: `teammate-one-${suffix}@example.test` }
   });
-  assert.equal(invite.response.status, 409);
+  assert.equal(firstInvite.response.status, 201, JSON.stringify(firstInvite.data));
+  const secondInvite = await request("/api/product/invites", {
+    method: "POST",
+    cookie: account.cookie,
+    body: { email: `teammate-two-${suffix}@example.test` }
+  });
+  assert.equal(secondInvite.response.status, 201, JSON.stringify(secondInvite.data));
+  const inviteAtLimit = await request("/api/product/invites", {
+    method: "POST",
+    cookie: account.cookie,
+    body: { email: `teammate-three-${suffix}@example.test` }
+  });
+  assert.equal(inviteAtLimit.response.status, 409);
 
   const processResponse = await request("/api/product/processes", {
     method: "POST",
@@ -1913,10 +1927,18 @@ test("Starter plan enforces limits while keeping included prerequisites and gati
     }
   );
   assert.equal(blocker.response.status, 403);
+  for (let index = 1; index < 5; index += 1) {
+    const implementation = await request("/api/product/implementations", {
+      method: "POST",
+      cookie: account.cookie,
+      body: { templateId: templates[0].id, customerName: `Starter Customer ${index + 1}` }
+    });
+    assert.equal(implementation.response.status, 201, JSON.stringify(implementation.data));
+  }
   const overLimitImplementation = await request("/api/product/implementations", {
     method: "POST",
     cookie: account.cookie,
-    body: { templateId: templates[1].id, customerName: "Second Customer" }
+    body: { templateId: templates[1].id, customerName: "Sixth Customer" }
   });
   assert.equal(overLimitImplementation.response.status, 409);
 });
@@ -2075,7 +2097,11 @@ test("public pages and the inquiry app remain available", {
   assert.doesNotMatch(productScript, /consentAccepted|helpConsented/);
   assert.match(relayHelpReply("hi"), /Hi! I’m Ray/);
   assert.match(relayHelpReply("hello Ray"), /What are you working on today/);
-  assert.match(relayHelpReply("Does Relay integrate with Jira and Slack?"), /Slack alerts.*HubSpot.*provider setup.*Jira Cloud or Linear.*internal tasks/i);
+  const integrationAnswer = relayHelpReply("Does Relay integrate with Jira and Slack?");
+  assert.match(integrationAnswer, /Slack alerts/i);
+  assert.match(integrationAnswer, /HubSpot/i);
+  assert.match(integrationAnswer, /Jira Cloud or Linear.*internal tasks/i);
+  assert.match(integrationAnswer, /Provider accounts, encrypted credentials, and scheduled processing are required/i);
   assert.match(relayHelpReply("How do I map prerequisites between process steps?"), /Process map/i);
   assert.match(relayHelpReply("If I update a template, will existing plans change?"), /existing.*not changed/i);
   assert.match(relayHelpReply("Can I delete my account, and what happens to customer information?"), /private link/i);
