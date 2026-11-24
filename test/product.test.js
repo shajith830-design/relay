@@ -1483,7 +1483,9 @@ test("Relay product supports the six connected jobs with workspace isolation", {
 
   const workspace = await request("/api/product/workspace", { cookie: ownerCookie });
   const completedWorkspace = workspace.data.implementations.find((item) => item.id === implementationId);
-  assert.equal(completedWorkspace.missing_inputs, 0);
+  assert.equal(completedWorkspace.missing_inputs, 2);
+  assert.match(completedWorkspace.missing_input_names, /Company website/);
+  assert.match(completedWorkspace.missing_input_names, /Admin email/);
   assert.equal(completedWorkspace.unowned_steps, 0);
   assert.equal(completedWorkspace.open_steps, 0);
 
