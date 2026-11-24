@@ -263,7 +263,7 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(homePage, /Explore the sample workspace/i);
   assert.match(homePage, /B2B SaaS customer onboarding/i);
   assert.match(aboutPage, /B2B SaaS customer onboarding teams/i);
-  assert.match(homePage, /Take every customer from kickoff to go-live/i);
+  assert.match(homePage, /A clearer path from kickoff to go-live/i);
   assert.match(aboutPage, /Mohamed Shajith is the founder of Relay Automation/);
   assert.match(founderPage, /Mohamed Shajith, Founder of Relay Automation/);
   assert.match(founderPage, /B2B SaaS customer onboarding workspace/i);
@@ -297,11 +297,6 @@ test("marketing pages expose the sample demo and disclose current product bounda
   ]) {
     assert.equal(existsSync(path.join(publicDir, "assets", obsolete)), false);
   }
-  assert.match(homePage, /HubSpot/);
-  assert.match(homePage, /separate HubSpot onboarding deal/i);
-  assert.match(homePage, /one HubSpot pipeline, its Closed Won stage, and a Relay template/i);
-  assert.match(homePage, /does not modify the original sales deal or import unrelated CRM records/i);
-  assert.match(homePage, /customers use Relay’s secure portal and do not need HubSpot/i);
   assert.doesNotMatch(homePage, /href="founder\.html"|class="founder-grid"|design partner/i);
   assert.match(aboutPage, /href="\/founder"/);
   assert.match(aboutPage, /<a[^>]*href="https:\/\/www\.linkedin\.com\/in\/mohamed-shajith-relay\/"[^>]*>LinkedIn profile<\/a>/);
@@ -314,7 +309,10 @@ test("marketing pages expose the sample demo and disclose current product bounda
   for (const illustration of ["readiness", "ownership", "customer", "process"]) {
     assert.ok(existsSync(path.join(publicDir, "assets", `relay-home-${illustration}.svg`)));
   }
-  assert.doesNotMatch(homePage, /Plans from ₹2,999 per month/);
+  assert.match(homePage, /See plans from ₹2,999/);
+  assert.match(homePage, /₹3,999 <span>\/ month<\/span>/);
+  assert.match(homePage, /id="pricing"/);
+  assert.match(homePage, /class="home-plan-grid"/);
   assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
   assert.match(demoPage, /fictional data/i);
   assert.match(demoPage, /does not connect to your Relay account or backend/i);
@@ -326,8 +324,10 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match([homePage, solutionsPage].join("\n"), /daily reminders/i);
   assert.match(solutionsPage, /private portal/i);
   assert.match(solutionsPage, /newly matching deals start one implementation/i);
-  assert.match(pricingPage, /Only scoped CSV\/XLSX uploads for tasks configured with a validation schema are supported/i);
+  assert.match(pricingPage, /Validated CSV\/XLSX task uploads/);
   assert.doesNotMatch(pricingPage, /PDF, PNG, or JPG files/i);
+  assert.doesNotMatch(pricingPage, /after (?:provider|email|scanner) setup|requires? provider setup|scheduled processing setup/i);
+  assert.doesNotMatch(pricingPage, /<details\b|<summary\b/);
   assert.match(aboutPage, /does not currently publish customer case studies/i);
   assert.match(pricingPage, /₹2,999/);
   assert.match(pricingPage, /₹3,999/);
@@ -335,6 +335,9 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(pricingPage, /template revision history and restore/i);
   assert.match(pricingPage, /before applicable taxes/i);
   assert.match(pricingPage, /class="plan-grid"/);
+  assert.match(pricingPage, /class="plan-comparison"/);
+  assert.match(pricingPage, /id="plans"/);
+  assert.match(pricingPage, /HubSpot handoff and Slack alerts<\/th><td>—<\/td><td>Included<\/td><td>Included/);
   assert.match(readFileSync(path.join(publicDir, "relay-motion.js"), "utf8"), /\.plan-card/);
 });
 
@@ -407,14 +410,10 @@ test("public marketing pages expose canonical SEO metadata and factual GEO conte
   }
 
   const pricingPage = readFileSync(path.join(publicDir, "pricing.html"), "utf8");
-  const pricingFaqSchema = pricingPage.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
-  assert.ok(pricingFaqSchema, "pricing page FAQ JSON-LD");
-  const pricingFaq = JSON.parse(pricingFaqSchema[1]);
-  assert.equal(pricingFaq["@type"], "FAQPage");
-  for (const { name, acceptedAnswer } of pricingFaq.mainEntity) {
-    assert.ok(pricingPage.includes(name), `visible pricing FAQ question: ${name}`);
-    assert.ok(pricingPage.includes(acceptedAnswer.text), `visible pricing FAQ answer: ${name}`);
-  }
+  assert.match(pricingPage, /₹2,999/);
+  assert.match(pricingPage, /₹3,999/);
+  assert.match(pricingPage, /class="plan-comparison"/);
+  assert.doesNotMatch(pricingPage, /<details\b|<summary\b/);
 
   const robots = readFileSync(path.join(publicDir, "robots.txt"), "utf8");
   assert.match(robots, /User-agent: \*/);
@@ -653,11 +652,11 @@ test("public pages describe only verified product capabilities", () => {
 
   for (const supported of [
     "Process maps", "named customer contacts.*revocable", "HubSpot", "email notifications",
-    "SOW scope", "team capacity", "invoice status", "Customer questions"
+    "SOW scope", "team capacity", "invoice status", "Task delegation"
   ]) {
     assert.match(publicCopy, new RegExp(supported, "i"));
   }
-  assert.doesNotMatch(publicCopy, /<li[^>]*>[^<]*(?:Slack|Salesforce|Jira|Zapier|Workato|native (?:iOS|Android|mobile)|SSO|SCIM|SOC 2|ISO certification)[^<]*<\/li>|generate invoices on the platform|automatically process payments/i);
+  assert.doesNotMatch(publicCopy, /<li[^>]*>[^<]*(?:Salesforce|Jira|Zapier|Workato|native (?:iOS|Android|mobile)|SSO|SCIM|SOC 2|ISO certification)[^<]*<\/li>|generate invoices on the platform|automatically process payments/i);
 });
 
 test("password reset can reveal passwords and resets the form after submission", () => {

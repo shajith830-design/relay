@@ -52,8 +52,8 @@ test("pricing and workspace controls state the implemented plan boundaries", () 
   assert.match(pricing, /Critical-path shifts and change-order task locks<\/th><td>—<\/td><td>Included<\/td><td>Included/);
   assert.match(pricing, /Task-level time and financial controls<\/th><td>—<\/td><td>—<\/td><td>Included/);
   assert.match(pricing, /Template revision history and restore<\/th><td>—<\/td><td>Included<\/td><td>Included/);
-  assert.match(pricing, /HubSpot handoff and Slack alerts/);
-  assert.match(pricing, /workspace admin must configure Slack alerts/i);
+  assert.match(pricing, /HubSpot handoff and Slack alerts<\/th><td>—<\/td><td>Included<\/td><td>Included/);
+  assert.doesNotMatch(pricing, /after provider setup|requires? provider setup/i);
   assert.match(product, /data-plan-feature="financialProtection"/);
   assert.match(admin, /Custom: agreed member and implementation limits, unlimited templates/);
   assert.doesNotMatch(admin, /name="templateLimit"/);
