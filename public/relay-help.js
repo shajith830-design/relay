@@ -38,7 +38,8 @@ function relayHelpReply(message) {
     && /(hourly|rate|time entr|budget|burn|margin|profit|financial|internal note|engineering|jira|linear)/.test(question)) {
     return "Customers using a private portal link can see the go-live banner, tasks explicitly marked customer-visible, requested information, supported uploads or connection checks, and change-order approvals. Hourly rates, time entries, budgets, burn, margins, internal notes, and Jira/Linear issue links remain internal.";
   }
-  if (/(customer|client|stakeholder).{0,40}(login|account|invite|delegat|access)|(?:login|account|invite|delegat|access).{0,40}(customer|client|stakeholder)/.test(question)) {
+  if (!/\b(delete|remove|erase|close|clear)\b/.test(question)
+    && (/(customer|client|stakeholder).{0,40}(login|account|invite|delegat|access)|(?:login|account|invite|delegat|access).{0,40}(customer|client|stakeholder)/.test(question))) {
     return "Customers do not need a Relay login. Workspace members can invite named customer contacts and share each contact’s private, expiring portal link. Assign customer-owned tasks to the appropriate stakeholder and mark only the tasks they should see as customer-visible.";
   }
   if (/(soc.?2|certif|compliance|uptime|availability|service.level|\bsla\b|security audit)/.test(question)) {
@@ -156,7 +157,8 @@ function relayHelpReply(message) {
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {
     return "A customer information link lets the intended customer submit the setup details requested for their implementation without needing a Relay workspace account. Treat the link like a secret: share it only with that customer. Creating a replacement link revokes the old one.";
   }
-  if (/\bcustomer information\b|\bcustomer form\b|\bcustomer link\b|\brequirements\b/.test(question)
+  if (!/\b(delete|remove|erase|close|clear)\b/.test(question)
+    && (/\bcustomer information\b|\bcustomer form\b|\bcustomer link\b|\brequirements\b/.test(question))
     && /(what|why|purpose|used for|useful|explain|mean|help me understand)/.test(question)) {
     return "Customer information lets your team define the setup details a customer needs to provide, such as a contact email or website. You can make a request required or optional, choose the response type, and share a private link tied to an implementation. It keeps setup answers together with the customer’s work. Only request information needed for onboarding—never passwords, payment-card details, or other secrets.";
   }
@@ -196,7 +198,7 @@ function relayHelpReply(message) {
       return "Open Ray and choose Clear my help history. This removes your saved Ray conversations from your account.";
     }
     if (/\b(?:account|workspace)\b/.test(question)) {
-      return "For account deletion, open Settings → Delete your Relay account, review the workspace impact, enter your password, and type DELETE. If you’re the only workspace member, that workspace and its customer data are deleted too. For a shared workspace you own, transfer ownership first; the workspace remains for its members. Relay has no separate workspace-delete control.";
+      return "For account deletion, open Settings → Delete your Relay account, review the workspace impact, enter your password, and type DELETE. If you’re the only workspace member, that workspace and its customer data, including its customer portal links, are deleted too. For a shared workspace you own, transfer ownership first; the workspace remains for its members. Relay has no separate workspace-delete control.";
     }
     if (/\b(?:invitation|invite)\b/.test(question)) {
       return "A workspace owner can open Settings → Workspace team, find the pending invitation, and choose Revoke. Accepted invitations are now members; the workspace does not currently have a control for an owner to remove an existing member.";

@@ -108,6 +108,7 @@ test("Ray explains supported and unsupported delete actions", () => {
     ["How do I delete a task?", /step in a reusable Process map or a task in an existing customer implementation/i],
     ["How do I remove a pending invitation?", /Workspace team.*pending invitation.*Revoke/i],
     ["How do I delete my account?", /Settings.*Delete your Relay account.*type DELETE.*only workspace member/i],
+    ["Can I delete my account, and what happens to customer information?", /Delete your Relay account.*customer portal links/i],
     ["How can I delete something?", /What would you like to delete.*process map.*template.*customer implementation/i],
     ["Can I remove my Ray conversation history?", /Clear my help history.*saved Ray conversations/i]
   ];

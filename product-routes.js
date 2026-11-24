@@ -1666,7 +1666,7 @@ function installProductRoutes(app, db, isProduction) {
 
   async function requireSession(req, res, next) {
     const authorize = () => {
-      if (!canAccessWorkspaceRequest(req.product.role, req.method, req.path)) {
+      if (!canAccessWorkspaceRequest(req.product.role, req.method, req.originalUrl || req.path)) {
         return sendError(res, 403, "Your workspace role does not allow this action.");
       }
       return next();
