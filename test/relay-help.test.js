@@ -31,6 +31,12 @@ test("Ray answers supported Relay workflows", () => {
   assert.match(relayHelpReply("How do invoice status and margin tracking work?"), /Custom.*budget caps.*burn alerts.*margin/i);
   assert.match(relayHelpReply("Does Relay connect to Slack?"), /Growth and Custom.*Slack alerts.*encrypted incoming webhook.*HubSpot.*CSV export/i);
   assert.match(relayHelpReply("Can I connect Salesforce and Jira?"), /Custom admins.*Salesforce product SKUs.*Jira Cloud or Linear.*financial details stay out of the client portal/i);
+  assert.match(relayHelpReply("Can customers see our hourly rates, budget burn, or profit margin?"),
+    /Customers.*tasks explicitly marked customer-visible.*Hourly rates, time entries, budgets, burn, margins.*remain internal/i);
+  assert.match(relayHelpReply("What can customers see in the login-less portal? Are internal notes and Jira issues visible?"),
+    /tasks explicitly marked customer-visible.*internal notes, and Jira\/Linear issue links remain internal/i);
+  assert.match(relayHelpReply("Do customers need a Relay login, and can I delegate tasks to IT, Legal, and Ops?"),
+    /Customers do not need a Relay login.*named customer contacts.*appropriate stakeholder.*customer-visible/i);
   assert.match(relayHelpReply("How do I jump to launch readiness?"), /Implementation sections row.*Launch readiness.*without closing.*unsaved details/i);
   assert.match(relayHelpReply("How do I add a process step?"), /Open Process map; Relay opens your selected map automatically/);
   assert.match(relayHelpReply("How do I update a template without changing existing work?"), /Existing implementations.*not changed/i);

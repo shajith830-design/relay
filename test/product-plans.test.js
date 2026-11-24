@@ -48,12 +48,12 @@ test("pricing and workspace controls state the implemented plan boundaries", () 
   const product = readFileSync(path.join(__dirname, "..", "public", "product.html"), "utf8");
   const admin = readFileSync(path.join(__dirname, "..", "public", "relay-owner-console.html"), "utf8");
 
-  assert.match(pricing, /4\. Ordered steps, owners, and prerequisites<\/th><td>Included<\/td><td>Included<\/td><td>Included/);
-  assert.match(pricing, /8\. Critical path and dynamic go-live auto-shifting<\/th><td>—<\/td><td>Included<\/td><td>Included/);
-  assert.match(pricing, /12\. Task-level billable and non-billable time tracking<\/th><td>—<\/td><td>—<\/td><td>Included/);
-  assert.match(pricing, /14\. Gross-margin and overage-leakage dashboard<\/th><td>—<\/td><td>—<\/td><td>Included/);
-  assert.match(pricing, /HubSpot handoff, Slack alerts, and CSV exports/);
-  assert.match(pricing, /Slack alerts require a workspace admin/);
+  assert.match(pricing, /Ordered tasks, owners, prerequisites, and stage gates<\/th><td>Included<\/td><td>Included<\/td><td>Included/);
+  assert.match(pricing, /Critical-path shifts and change-order task locks<\/th><td>—<\/td><td>Included<\/td><td>Included/);
+  assert.match(pricing, /Task-level time and financial controls<\/th><td>—<\/td><td>—<\/td><td>Included/);
+  assert.match(pricing, /Template revision history and restore<\/th><td>—<\/td><td>Included<\/td><td>Included/);
+  assert.match(pricing, /HubSpot handoff and Slack alerts/);
+  assert.match(pricing, /workspace admin must configure Slack alerts/i);
   assert.match(product, /data-plan-feature="financialProtection"/);
   assert.match(admin, /Custom: agreed member and implementation limits, unlimited templates/);
   assert.doesNotMatch(admin, /name="templateLimit"/);

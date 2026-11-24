@@ -14,6 +14,14 @@
     date.setDate(date.getDate() + days);
     return date.toISOString().slice(0, 10);
   };
+  const stageGateOrder = ["kickoff", "configuration", "testing", "launch", "hypercare", "complete"];
+  const approvalStageGates = stageGateOrder.slice(0, -1);
+  const stageGatesToPass = (currentStage, nextStage) => {
+    const currentIndex = stageGateOrder.indexOf(currentStage);
+    const nextIndex = stageGateOrder.indexOf(nextStage);
+    if (currentIndex < 0 || nextIndex < 0) return null;
+    return nextIndex > currentIndex ? stageGateOrder.slice(currentIndex, nextIndex) : [];
+  };
   const data = {
     user: { id: ownerId, email: "owner@demo.invalid" },
     workspace: {
@@ -994,10 +1002,18 @@
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/sow$/)) && method === "PATCH") {
       const implementation = findImplementation(match[1]);
       if (!implementation) return Promise.reject(new Error("Implementation not found."));
+      const nextStage = String(body.stageGateStatus || "kickoff");
+      const gatesToPass = stageGatesToPass(implementation.stage_gate_status || "kickoff", nextStage);
+      if (!gatesToPass) return Promise.reject(new Error("The selected stage gate is invalid."));
+      const blockingApproval = (implementation.approvals || []).find((approval) =>
+        gatesToPass.includes(approval.stage_gate) && approval.status !== "approved");
+      if (blockingApproval) {
+        return Promise.reject(new Error(`Approve all required ${blockingApproval.stage_gate} approvals before moving to ${nextStage}.`));
+      }
       implementation.sow_scope = String(body.sowScope || "").trim();
       implementation.sow_milestones = String(body.sowMilestones || "").trim();
       implementation.sow_exclusions = String(body.sowExclusions || "").trim();
-      implementation.stage_gate_status = String(body.stageGateStatus || "kickoff");
+      implementation.stage_gate_status = nextStage;
       return Promise.resolve(clone(body));
     }
     if ((match = path.match(/^\/api\/product\/implementations\/(\d+)\/financial-plan$/)) && method === "PATCH") {
@@ -1118,9 +1134,17 @@
       const implementation = findImplementation(match[1]);
       if (!implementation) return Promise.reject(new Error("Implementation not found."));
       implementation.approvals ||= [];
+      const stageGate = String(body.stageGate || "");
+      if (!approvalStageGates.includes(stageGate)) {
+        return Promise.reject(new Error("Choose a required stage gate for this approval."));
+      }
+      if (stageGateOrder.indexOf(stageGate) < stageGateOrder.indexOf(implementation.stage_gate_status || "kickoff")) {
+        return Promise.reject(new Error("Choose the current stage or a later stage for this approval."));
+      }
       const approval = {
         id: nextId++, title: String(body.title || "").trim(),
         approval_type: String(body.approvalType || "other"),
+        stage_gate: stageGate,
         approver_name: String(body.approverName || ""), approver_email: String(body.approverEmail || "").toLowerCase(),
         status: "pending", due_at: String(body.dueAt || ""), created_at: new Date().toISOString()
       };

@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY --chown=node:node package.json server.js db.js product-auth.js product-routes.js product-plans.js product-authorization.js financial-protection.js implementation-scheduling.js malware-scanning.js phase-three-capabilities.js enterprise-integrations.js justonecx-identity.js product-starter-templates.js ./
+COPY --chown=node:node package.json server.js db.js product-auth.js product-routes.js product-plans.js product-authorization.js financial-protection.js implementation-scheduling.js malware-scanning.js phase-three-capabilities.js enterprise-integrations.js justonecx-identity.js product-starter-templates.js stage-gates.js ./
 COPY --chown=node:node migrations ./migrations
 COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node public ./public

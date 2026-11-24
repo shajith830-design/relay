@@ -7,6 +7,7 @@ const { test } = require("node:test");
 const { runInNewContext } = require("node:vm");
 
 const adapterSource = readFileSync(path.join(__dirname, "..", "public", "product-demo.js"), "utf8");
+const productRoutesSource = readFileSync(path.join(__dirname, "..", "product-routes.js"), "utf8");
 
 function makeDemoAdapter(storage = new Map(), { search = "?demo=workspace", hostname = "127.0.0.1" } = {}) {
   const window = {
@@ -32,6 +33,20 @@ test("public sample workspace requires an explicit demo query and uses only the 
   assert.ok(publicDemo.adapter);
   const response = await publicDemo.adapter.request("/api/product/me");
   assert.equal(response.workspace.name, "Northstar Demo Workspace");
+});
+
+test("financial read routes require a session without requiring an Origin header", () => {
+  for (const routePath of [
+    "/api/product/analytics/portfolio-margins",
+    "/api/product/implementations/:implementationId/time-entries"
+  ]) {
+    const start = productRoutesSource.indexOf(`app.get("${routePath}"`);
+    assert.notEqual(start, -1, `${routePath} should be registered`);
+    const nextRoute = productRoutesSource.indexOf("\n  app.", start + 1);
+    const registration = productRoutesSource.slice(start, nextRoute === -1 ? undefined : nextRoute);
+    assert.match(registration.split("\n", 1)[0], /, requireSession,/);
+    assert.doesNotMatch(registration, /\bsameOrigin\b/);
+  }
 });
 
 test("sample workspace previews portfolio health, notification settings, and integration connections locally", async () => {
@@ -244,13 +259,17 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/founder\.html<\/loc>/);
   assert.doesNotMatch(sitemapXml, /dashboard\.html|customer\.html|relay-owner-console\.html/);
   assert.match(homePage, /product\.html\?demo=workspace/);
-  assert.match(homePage, /Try the Sample Workspace/);
+  assert.match(homePage, /Explore the sample workspace/i);
   assert.match(homePage, /B2B SaaS customer onboarding/i);
   assert.match(aboutPage, /B2B SaaS customer onboarding teams/i);
-  assert.match(homePage, /Relay Automation builds Relay/);
+  assert.match(homePage, /Take every customer from kickoff to go-live/i);
   assert.match(aboutPage, /Mohamed Shajith is the founder of Relay Automation/);
   assert.match(founderPage, /Mohamed Shajith, Founder of Relay Automation/);
   assert.match(founderPage, /B2B SaaS customer onboarding workspace/i);
+  assert.match(founderPage, /building technology that addresses real-world challenges/i);
+  assert.match(founderPage, /business strategy, product innovation/i);
+  assert.match(founderPage, /Personal Philosophy/);
+  assert.match(founderPage, /Try through failure, chase through fatigue, endure past effort, and rest only in triumph/);
   assert.match(solutionsPage, /B2B SaaS customer onboarding/i);
   assert.match(demoPage, /B2B SaaS customer onboarding/i);
   assert.match(contactPage, /B2B SaaS customer onboarding/i);
@@ -267,7 +286,6 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(homePage, /relay-home-hero\.svg/);
   assert.match(homePage, /Relay onboarding workspace showing launch readiness, next actions, and customer setup progress/);
   assert.match(homePage, /class="hero-logo" src="assets\/Futuristic%20RA%20Tech%20Monogram%20Logo\.png"/);
-  assert.match(homePage, /relay-home-(?:readiness|ownership|customer|process)\.svg/);
   assert.doesNotMatch(homePage, /relay-preview-|sample workspace overview|real screens from Relay/i);
   for (const obsolete of [
     "relay-60-second-overview.mp4",
@@ -283,10 +301,10 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(homePage, /one HubSpot pipeline, its Closed Won stage, and a Relay template/i);
   assert.match(homePage, /does not modify the original sales deal or import unrelated CRM records/i);
   assert.match(homePage, /customers use Relay’s secure portal and do not need HubSpot/i);
-  assert.match(homePage, /<p class="eyebrow">Founder of Relay Automation<\/p>/);
-  assert.match(homePage, /Mohamed Shajith/);
-  assert.match(homePage, /<a href="https:\/\/www\.linkedin\.com\/in\/mohamed-shajith-relay\/"[^>]*>LinkedIn<\/a>/);
-  assert.match(homePage, /three months of Relay access/i);
+  assert.doesNotMatch(homePage, /href="founder\.html"|class="founder-grid"|design partner/i);
+  assert.match(aboutPage, /href="founder\.html"/);
+  assert.match(founderPage, /Mohamed Shajith/);
+  assert.match(founderPage, /<a[^>]*href="https:\/\/www\.linkedin\.com\/in\/mohamed-shajith-relay\/"[^>]*>LinkedIn<\/a>/);
   assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-overview.mp4")));
   const heroImage = readFileSync(path.join(publicDir, "assets", "relay-home-hero.svg"), "utf8");
   assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-hero.svg")));
@@ -305,13 +323,14 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match([homePage, solutionsPage].join("\n"), /CSV/i);
   assert.match([homePage, solutionsPage].join("\n"), /daily reminders/i);
   assert.match(solutionsPage, /private portal/i);
-  assert.match(pricingPage, /newly matching deals start one implementation/i);
-  assert.match(pricingPage, /PDF, PNG, or JPG files up to 5 MB/i);
+  assert.match(solutionsPage, /newly matching deals start one implementation/i);
+  assert.match(pricingPage, /Only scoped CSV\/XLSX uploads for tasks configured with a validation schema are supported/i);
+  assert.doesNotMatch(pricingPage, /PDF, PNG, or JPG files/i);
   assert.match(aboutPage, /does not currently publish customer case studies/i);
   assert.match(pricingPage, /₹2,999/);
   assert.match(pricingPage, /₹3,999/);
   assert.match(pricingPage, /5 active implementations/);
-  assert.match(pricingPage, /template revision history and restore/);
+  assert.match(pricingPage, /template revision history and restore/i);
   assert.match(pricingPage, /before applicable taxes/i);
   assert.match(pricingPage, /class="plan-grid"/);
   assert.match(readFileSync(path.join(publicDir, "relay-motion.js"), "utf8"), /\.plan-card/);
@@ -624,7 +643,7 @@ test("public pages describe only verified product capabilities", () => {
   const publicCopy = [home, about, solutions, pricing].join("\n");
 
   for (const supported of [
-    "Process maps", "named, revocable", "HubSpot", "email notifications",
+    "Process maps", "named customer contacts.*revocable", "HubSpot", "email notifications",
     "SOW scope", "team capacity", "invoice status", "Customer questions"
   ]) {
     assert.match(publicCopy, new RegExp(supported, "i"));
@@ -862,11 +881,24 @@ test("sample delivery operations track SOW, financial plans, time, approvals, an
   assert.equal(timeEntry.entry.minutes, 90);
   const approval = await adapter.request("/api/product/implementations/9040/approvals", {
     method: "POST",
-    body: { title: "Security approval", approvalType: "security", approverName: "Security Lead", approverEmail: "security@example.test", dueAt: "2027-01-12" }
+    body: { title: "Security approval", stageGate: "testing", approvalType: "security", approverName: "Security Lead", approverEmail: "security@example.test", dueAt: "2027-01-12" }
   });
+  assert.equal(approval.approval.stage_gate, "testing");
+  await assert.rejects(adapter.request("/api/product/implementations/9040/sow", {
+    method: "PATCH",
+    body: { stageGateStatus: "launch" }
+  }), /Approve all required testing approvals/);
   await adapter.request(`/api/product/implementations/9040/approvals/${approval.approval.id}`, {
     method: "PATCH",
     body: { status: "approved" }
+  });
+  await adapter.request("/api/product/implementations/9040/sow", {
+    method: "PATCH",
+    body: { stageGateStatus: "launch" }
+  });
+  await adapter.request("/api/product/implementations/9040/sow", {
+    method: "PATCH",
+    body: { stageGateStatus: "testing" }
   });
   const implementation = (await adapter.request("/api/product/implementations/9040")).implementation;
   assert.equal(implementation.stage_gate_status, "testing");
@@ -979,4 +1011,9 @@ test("local process steps preserve customer visibility", async () => {
   assert.equal(step.customer_visible, true);
   const { process } = await adapter.request("/api/product/processes/9010");
   assert.equal(process.steps.at(-1).customer_visible, true);
+  const workspace = await adapter.request("/api/product/workspace");
+  assert.equal(
+    workspace.processes.find((item) => item.id === process.id).steps_count,
+    process.steps.length
+  );
 });

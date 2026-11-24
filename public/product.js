@@ -16,6 +16,7 @@ let appearanceSaveQueue = Promise.resolve();
 let subscriptionExpiryTimer;
 let processLoadRequestId = 0;
 let workspaceLoadRequestId = 0;
+const deletedProcessIds = new Set();
 const state = {
   authMode: "login",
   inviteToken: new URLSearchParams(window.location.search).get("invite") || "",
@@ -724,7 +725,12 @@ async function loadWorkspace() {
   const data = await api("/api/product/workspace");
   if (requestId !== workspaceLoadRequestId) return false;
   if (dirtyScopes.size && !confirmDiscardChanges()) return false;
+  data.processes = data.processes.filter((process) => !deletedProcessIds.has(Number(process.id)));
   state.data = data;
+  if (state.selectedProcessId !== null
+    && !data.processes.some((process) => Number(process.id) === Number(state.selectedProcessId))) {
+    clearSelectedProcess();
+  }
   renderWorkspace();
   if (data.role === "executive_viewer") {
     setView(data.plan?.features.financialProtection && data.capabilities?.viewFinancials ? "financials" : "guide");
@@ -741,6 +747,27 @@ async function loadWorkspace() {
     window.history.replaceState(null, "", window.location.pathname);
   }
   return true;
+}
+
+function clearSelectedProcess() {
+  state.selectedProcessId = null;
+  state.process = null;
+  state.editingStepId = null;
+  document.getElementById("process-meta-form").hidden = true;
+  document.getElementById("step-form").hidden = true;
+  document.getElementById("process-actions").hidden = true;
+  document.getElementById("process-editor-title").textContent = "Select a process";
+  document.getElementById("process-test-result").hidden = true;
+  document.getElementById("process-step-list").innerHTML =
+    '<strong>No process selected</strong><p>Choose an existing process map or create your first one to begin.</p><button class="button secondary" type="button" data-workflow-action="create-process">Create a process map</button>';
+}
+
+function removeDeletedProcess(processId) {
+  const id = Number(processId);
+  deletedProcessIds.add(id);
+  state.data.processes = state.data.processes.filter((process) => Number(process.id) !== id);
+  if (Number(state.selectedProcessId) === id) clearSelectedProcess();
+  renderProcesses();
 }
 
 async function loadOnboarding() {
@@ -865,6 +892,7 @@ function setView(name) {
 }
 
 async function showProcessWorkspace() {
+  if (!await loadWorkspace()) return false;
   if (!setView("processes")) return false;
   const process = state.data.processes.find((item) => item.id === state.selectedProcessId)
     || state.data.processes[0];
@@ -872,7 +900,7 @@ async function showProcessWorkspace() {
     focusProcessCreation();
     return true;
   }
-  if (state.process?.id !== process.id) await loadProcess(process.id);
+  await loadProcess(process.id);
   return true;
 }
 
@@ -2029,7 +2057,7 @@ async function openImplementation(implementationId) {
   deliveryItems.push(...timeEntries.slice(0, 5).map((entry) =>
     `<article class="list-row"><div><strong>${Math.floor(entry.minutes / 60)}h ${entry.minutes % 60}m</strong><small>${escapeHtml(entry.work_date)} · ${entry.billable ? "Billable" : "Non-billable"} · ${escapeHtml(entry.user_email || "Team member")}${entry.labor_cost === undefined ? "" : ` · ${entry.rate_snapshot_present === false ? "Cost snapshot unavailable" : `${formatMoney(entry.labor_cost)} labor`}`}</small></div>${canDeleteTimeEntry(entry) ? `<button class="text-button danger-text" type="button" data-delete-time-entry="${entry.id}">Delete</button>` : ""}</article>`));
   deliveryItems.push(...(implementation.approvals || []).map((approval) =>
-    `<article class="list-row"><div><strong>${escapeHtml(approval.title)}</strong><small>${escapeHtml(approval.approval_type)} · ${escapeHtml(approval.status)}${approval.due_at ? ` · Due ${escapeHtml(approval.due_at)}` : ""}</small></div><div class="button-row">${approval.status !== "approved" ? `<button class="text-button" type="button" data-approval-status="${approval.id}">Approve</button>` : ""}<button class="text-button danger-text" type="button" data-delete-approval="${approval.id}">Delete</button></div></article>`));
+    `<article class="list-row"><div><strong>${escapeHtml(approval.title)}</strong><small>${escapeHtml(approval.approval_type)} · ${escapeHtml(approval.status)} · Required before leaving ${escapeHtml(approval.stage_gate || "kickoff")}${approval.due_at ? ` · Due ${escapeHtml(approval.due_at)}` : ""}</small></div><div class="button-row">${approval.status !== "approved" ? `<button class="text-button" type="button" data-approval-status="${approval.id}">Approve</button>` : ""}<button class="text-button danger-text" type="button" data-delete-approval="${approval.id}">Delete</button></div></article>`));
   deliveryItems.push(...(implementation.calendarEvents || []).slice(0, 5).map((event) =>
     `<article class="list-row"><div><strong>${escapeHtml(event.title)}</strong><small>${escapeHtml(event.event_type)} · ${escapeHtml(event.start_at)}</small></div><button class="text-button danger-text" type="button" data-delete-calendar-event="${event.id}">Delete</button></article>`));
   document.getElementById("delivery-operations-summary").innerHTML = deliveryItems.length
@@ -3085,17 +3113,7 @@ document.getElementById("process-list").addEventListener("click", (event) => {
     || !confirmDiscardChanges()) return;
   api(`/api/product/processes/${deleteButton.dataset.deleteProcess}`, { method: "DELETE" })
     .then(async () => {
-      if (state.selectedProcessId === Number(deleteButton.dataset.deleteProcess)) {
-        state.selectedProcessId = null;
-        state.process = null;
-        state.editingStepId = null;
-        document.getElementById("process-meta-form").hidden = true;
-        document.getElementById("step-form").hidden = true;
-        document.getElementById("process-actions").hidden = true;
-        document.getElementById("process-editor-title").textContent = "Select a process";
-        document.getElementById("process-test-result").hidden = true;
-        document.getElementById("process-step-list").innerHTML = '<strong>No process selected</strong><p>Choose an existing process map or create your first one to start outlining the work.</p><button class="button secondary" type="button" data-workflow-action="create-process">Create a process map</button>';
-      }
+      removeDeletedProcess(deleteButton.dataset.deleteProcess);
       await loadWorkspace();
       showToast("Process map deleted.");
     })
@@ -3860,7 +3878,7 @@ document.getElementById("approval-form").addEventListener("submit", async (event
   event.preventDefault();
   if (!state.selectedImplementationId) return;
   const status = document.getElementById("approval-status");
-  try { await api(`/api/product/implementations/${state.selectedImplementationId}/approvals`, { method: "POST", body: { title: document.getElementById("approval-title").value, approvalType: document.getElementById("approval-type").value, approverName: document.getElementById("approval-name").value, approverEmail: document.getElementById("approval-email").value, dueAt: document.getElementById("approval-due").value } }); event.currentTarget.reset(); await openImplementation(state.selectedImplementationId); status.textContent = "Approval requested."; } catch (error) { status.textContent = error.message; }
+  try { await api(`/api/product/implementations/${state.selectedImplementationId}/approvals`, { method: "POST", body: { title: document.getElementById("approval-title").value, stageGate: document.getElementById("approval-stage").value, approvalType: document.getElementById("approval-type").value, approverName: document.getElementById("approval-name").value, approverEmail: document.getElementById("approval-email").value, dueAt: document.getElementById("approval-due").value } }); event.currentTarget.reset(); await openImplementation(state.selectedImplementationId); status.textContent = "Approval requested."; } catch (error) { status.textContent = error.message; }
 });
 
 document.getElementById("calendar-event-form").addEventListener("submit", async (event) => {

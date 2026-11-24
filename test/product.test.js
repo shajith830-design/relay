@@ -41,9 +41,9 @@ async function availablePort() {
 
 async function request(route, options = {}) {
   const headers = new Headers(options.headers || {});
-  const { adminToken, ...requestOptions } = options;
+  const { adminToken, omitOrigin, ...requestOptions } = options;
   if (adminToken) headers.set("Authorization", `Bearer ${adminToken}`);
-  headers.set("Origin", options.origin || baseUrl);
+  if (!omitOrigin) headers.set("Origin", options.origin || baseUrl);
   if (options.cookie) headers.set("Cookie", options.cookie);
   if (options.body !== undefined) headers.set("Content-Type", "application/json");
   const response = await fetch(`${baseUrl}${route}`, {
@@ -202,7 +202,7 @@ before(async () => {
   });
   await waitForServer();
   const initializedMigration = await testQuery("SELECT version FROM relay_schema_migrations");
-  assert.deepEqual(initializedMigration.rows.map((row) => row.version), Array.from({ length: 17 }, (_, index) => index + 1));
+  assert.deepEqual(initializedMigration.rows.map((row) => row.version), Array.from({ length: 19 }, (_, index) => index + 1));
   const removedHelpConsentTable = await testQuery("SELECT to_regclass('product_help_consents') AS relation");
   assert.equal(removedHelpConsentTable.rows[0].relation, null);
 });
@@ -633,6 +633,14 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   });
   assert.equal(addStep.response.status, 201);
   const firstProcessStepId = addStep.data.step.id;
+  const firstStepDetails = await request(`/api/product/processes/${processId}`, { cookie: ownerCookie });
+  assert.equal(firstStepDetails.response.status, 200);
+  assert.deepEqual(firstStepDetails.data.process.steps.map((step) => step.id), [firstProcessStepId]);
+  const workspaceAfterFirstStep = await request("/api/product/workspace", { cookie: ownerCookie });
+  assert.equal(
+    workspaceAfterFirstStep.data.processes.find((process) => process.id === processId).steps_count,
+    1
+  );
   const secondStepResponse = await request(`/api/product/processes/${processId}/steps`, {
     method: "POST",
     cookie: ownerCookie,
@@ -913,6 +921,10 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   });
   assert.equal(overrideTaskTime.response.status, 201, JSON.stringify(overrideTaskTime.data));
   const listedTimeEntries = await request(`/api/product/implementations/${implementationId}/time-entries`, { cookie: ownerCookie });
+  const listedTimeEntriesWithoutOrigin = await request(`/api/product/implementations/${implementationId}/time-entries`, {
+    cookie: ownerCookie,
+    omitOrigin: true
+  });
   await testQuery(
     "UPDATE product_time_entries SET rate_snapshot_present = FALSE WHERE id = $1",
     [memberTaskTime.data.entry.id]
@@ -921,6 +933,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
     cookie: ownerCookie
   });
   assert.equal(listedTimeEntries.response.status, 200);
+  assert.equal(listedTimeEntriesWithoutOrigin.response.status, 200, JSON.stringify(listedTimeEntriesWithoutOrigin.data));
   assert.equal(listedTimeEntries.data.entries.length, 2);
   assert.equal(Number(listedTimeEntries.data.entries[0].labor_cost), 1);
   const legacyEntry = entriesWithLegacySnapshot.data.entries.find((entry) => entry.id === memberTaskTime.data.entry.id);
@@ -930,7 +943,10 @@ test("Relay product supports the six connected jobs with workspace isolation", {
     const deleted = await request(`/api/product/time-entries/${entry.id}`, { method: "DELETE", cookie: ownerCookie });
     assert.equal(deleted.response.status, 200);
   }
-  const financialDashboard = await request("/api/product/analytics/portfolio-margins", { cookie: ownerCookie });
+  const financialDashboard = await request("/api/product/analytics/portfolio-margins", {
+    cookie: ownerCookie,
+    omitOrigin: true
+  });
   assert.equal(financialDashboard.response.status, 200, JSON.stringify(financialDashboard.data));
   assert.equal(financialDashboard.data.projects.find((project) => project.id === implementationId).contract_value, 1000);
   const promoteToManager = await request(`/api/product/team-members/${teammateId}/role`, {
@@ -1027,15 +1043,35 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   const approval = await request(`/api/product/implementations/${implementationId}/approvals`, {
     method: "POST",
     cookie: ownerCookie,
-    body: { title: "Security approval", approvalType: "security", approverName: "Security Lead", approverEmail: "security@relaytest.example", dueAt: "2027-01-12" }
+    body: { title: "Security approval", stageGate: "testing", approvalType: "security", approverName: "Security Lead", approverEmail: "security@relaytest.example", dueAt: "2027-01-12" }
   });
   assert.equal(approval.response.status, 201, JSON.stringify(approval.data));
+  assert.equal(approval.data.approval.stage_gate, "testing");
+  const blockedStageAdvance = await request(`/api/product/implementations/${implementationId}/sow`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { sowScope: "Configure and launch", sowMilestones: "Kickoff, test, launch", sowExclusions: "Custom development", stageGateStatus: "launch" }
+  });
+  assert.equal(blockedStageAdvance.response.status, 409);
+  assert.match(blockedStageAdvance.data.error, /Approve all required testing approvals/);
   const approvalUpdate = await request(`/api/product/implementations/${implementationId}/approvals/${approval.data.approval.id}`, {
     method: "PATCH",
     cookie: ownerCookie,
     body: { status: "approved" }
   });
   assert.equal(approvalUpdate.response.status, 200);
+  const passedStageGate = await request(`/api/product/implementations/${implementationId}/sow`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { sowScope: "Configure and launch", sowMilestones: "Kickoff, test, launch", sowExclusions: "Custom development", stageGateStatus: "launch" }
+  });
+  assert.equal(passedStageGate.response.status, 200);
+  const restoredStage = await request(`/api/product/implementations/${implementationId}/sow`, {
+    method: "PATCH",
+    cookie: ownerCookie,
+    body: { sowScope: "Configure and launch", sowMilestones: "Kickoff, test, launch", sowExclusions: "Custom development", stageGateStatus: "testing" }
+  });
+  assert.equal(restoredStage.response.status, 200);
   const deleteApproval = await request(`/api/product/implementations/${implementationId}/approvals/${approval.data.approval.id}`, {
     method: "DELETE",
     cookie: ownerCookie

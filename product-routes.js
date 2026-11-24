@@ -18,6 +18,11 @@ const { getPlanDetails } = require("./product-plans");
 const { relayHelpReply } = require("./public/relay-help");
 const { createJustOneCXIdentity } = require("./justonecx-identity");
 const { overdueCriticalClientTaskIds } = require("./implementation-scheduling");
+const {
+  APPROVAL_STAGE_GATES,
+  STAGE_GATE_ORDER,
+  stagesRequiringApprovalBeforeMove
+} = require("./stage-gates");
 const { MalwareScannerError, scanCustomerUpload } = require("./malware-scanning");
 const {
   SALESFORCE_API_VERSION,
@@ -4551,7 +4556,7 @@ function installProductRoutes(app, db, isProduction) {
           EXISTS (
             SELECT 1 FROM product_change_order_steps linked
             JOIN product_change_orders co ON co.id = linked.change_order_id
-            WHERE linked.step_id = s.id AND co.status IN ('pending_client', 'rejected')
+            WHERE linked.step_id = s.id AND co.status = 'pending_client'
           ) AS change_order_locked,
           EXISTS (
             SELECT 1 FROM product_change_order_steps linked
@@ -4617,7 +4622,7 @@ function installProductRoutes(app, db, isProduction) {
           created_at DESC, id DESC
       `).all(implementationId),
       database.prepare(`
-        SELECT id, title, approval_type, approver_name, approver_email, status, due_at, created_at
+        SELECT id, title, approval_type, approver_name, approver_email, stage_gate, status, due_at, created_at
         FROM product_approval_requests WHERE implementation_id = $1
         ORDER BY created_at DESC, id DESC
       `).all(implementationId),
@@ -4693,7 +4698,7 @@ function installProductRoutes(app, db, isProduction) {
     return res.json({ implementation });
   });
 
-  app.get("/api/product/analytics/portfolio-margins", sameOrigin, requireSession, async (req, res) => {
+  app.get("/api/product/analytics/portfolio-margins", requireSession, async (req, res) => {
     if (!requirePlanFeature(req, res, "financialProtection", "Time tracking, budget caps, and margin reporting", "custom")) return;
     const projects = await database.prepare(`
       SELECT id, customer_name, base_onboarding_fee, budget_type, budget_limit,
@@ -5022,7 +5027,24 @@ function installProductRoutes(app, db, isProduction) {
         WHERE id = $1 AND workspace_id = $2 AND archived_at IS NULL
         FOR UPDATE
       `).get(implementationId, req.product.workspaceId);
-      if (!previous) return null;
+      if (!previous) return { error: "Implementation not found.", status: 404 };
+      const gatesToPass = stagesRequiringApprovalBeforeMove(previous.stage_gate_status, stageGateStatus);
+      if (!gatesToPass) return { error: "The saved stage-gate status is invalid.", status: 409 };
+      if (gatesToPass.length) {
+        const blockingApproval = await database.prepare(`
+          SELECT stage_gate FROM product_approval_requests
+          WHERE implementation_id = $1 AND stage_gate = ANY($2::text[])
+            AND status != 'approved'
+          ORDER BY array_position($2::text[], stage_gate), created_at, id
+          LIMIT 1
+        `).get(implementationId, gatesToPass);
+        if (blockingApproval) {
+          return {
+            error: `Approve all required ${blockingApproval.stage_gate} approvals before moving to ${stageGateStatus}.`,
+            status: 409
+          };
+        }
+      }
       await database.prepare(`
         UPDATE product_implementations
         SET sow_scope = $1, sow_milestones = $2, sow_exclusions = $3, stage_gate_status = $4
@@ -5045,9 +5067,9 @@ function installProductRoutes(app, db, isProduction) {
           }
         }
       });
-      return true;
+      return { success: true };
     });
-    if (!updated) return sendError(res, 404, "Implementation not found.");
+    if (updated.error) return sendError(res, updated.status, updated.error);
     return res.json({ sowScope, sowMilestones, sowExclusions, stageGateStatus });
   });
 
@@ -5396,7 +5418,7 @@ function installProductRoutes(app, db, isProduction) {
     return res.status(201).json(result);
   });
 
-  app.get("/api/product/implementations/:implementationId/time-entries", sameOrigin, requireSession, async (req, res) => {
+  app.get("/api/product/implementations/:implementationId/time-entries", requireSession, async (req, res) => {
     if (!requirePlanFeature(req, res, "financialProtection", "Task time tracking", "custom")) return;
     const implementationId = validId(req.params.implementationId);
     if (!implementationId) return sendError(res, 400, "Invalid implementation.");
@@ -5487,22 +5509,31 @@ function installProductRoutes(app, db, isProduction) {
     const implementationId = validId(req.params.implementationId);
     const title = requiredText(req.body.title, 240);
     const approvalType = typeof req.body.approvalType === "string" ? req.body.approvalType.trim().slice(0, 80) : "other";
+    const stageGate = typeof req.body.stageGate === "string" ? req.body.stageGate : "";
     const approverName = typeof req.body.approverName === "string" ? req.body.approverName.trim().slice(0, 120) : "";
     const approverEmail = typeof req.body.approverEmail === "string" ? req.body.approverEmail.trim().toLowerCase().slice(0, 254) : "";
     const dueAt = req.body.dueAt ?? "";
     if (!implementationId || !title || (approverEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(approverEmail))
-      || (dueAt !== "" && !validDate(dueAt))) return sendError(res, 400, "Enter a valid approval and approver.");
-    const implementation = await database.prepare(
-      "SELECT id FROM product_implementations WHERE id = $1 AND workspace_id = $2"
-    ).get(implementationId, req.product.workspaceId);
-    if (!implementation) return sendError(res, 404, "Implementation not found.");
-    const approval = await database.transaction(async () => {
+      || (dueAt !== "" && !validDate(dueAt)) || !APPROVAL_STAGE_GATES.includes(stageGate)) {
+      return sendError(res, 400, "Enter a valid approval, approver, and required stage gate.");
+    }
+    const result = await database.transaction(async () => {
+      const implementation = await database.prepare(`
+        SELECT id, stage_gate_status FROM product_implementations
+        WHERE id = $1 AND workspace_id = $2 AND archived_at IS NULL
+        FOR UPDATE
+      `).get(implementationId, req.product.workspaceId);
+      if (!implementation) return { error: "Implementation not found.", status: 404 };
+      if (STAGE_GATE_ORDER.indexOf(stageGate)
+        < STAGE_GATE_ORDER.indexOf(implementation.stage_gate_status)) {
+        return { error: "Choose the current stage or a later stage for this approval.", status: 409 };
+      }
       const created = await database.prepare(`
         INSERT INTO product_approval_requests
-          (implementation_id, title, approval_type, approver_name, approver_email, status, due_at)
-        VALUES ($1, $2, $3, $4, $5, 'pending', $6)
-        RETURNING id, title, approval_type, approver_name, approver_email, status, due_at, created_at
-      `).get(implementationId, title, approvalType, approverName, approverEmail, dueAt);
+          (implementation_id, title, approval_type, approver_name, approver_email, stage_gate, status, due_at)
+        VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
+        RETURNING id, title, approval_type, approver_name, approver_email, stage_gate, status, due_at, created_at
+      `).get(implementationId, title, approvalType, approverName, approverEmail, stageGate, dueAt);
       await writeAuditLog({
         workspaceId: req.product.workspaceId,
         implementationId,
@@ -5510,11 +5541,12 @@ function installProductRoutes(app, db, isProduction) {
         actorEmail: req.product.email,
         ipAddress: req.ip,
         action: "stage_gate.approval_created",
-        diff: { approvalId: created.id, title, approvalType, approverEmail, status: "pending" }
+        diff: { approvalId: created.id, title, approvalType, approverEmail, stageGate, status: "pending" }
       });
-      return created;
+      return { approval: created };
     });
-    return res.status(201).json({ approval });
+    if (result.error) return sendError(res, result.status, result.error);
+    return res.status(201).json({ approval: result.approval });
   });
 
   app.patch("/api/product/implementations/:implementationId/approvals/:approvalId", sameOrigin, requireSession, async (req, res) => {
@@ -6097,7 +6129,7 @@ function installProductRoutes(app, db, isProduction) {
       const activeChangeOrder = await database.prepare(`
         SELECT 1 FROM product_change_order_steps linked
         JOIN product_change_orders co ON co.id = linked.change_order_id
-        WHERE linked.step_id = $1 AND co.status IN ('pending_client', 'rejected')
+        WHERE linked.step_id = $1 AND co.status = 'pending_client'
         LIMIT 1
       `).get(stepId);
       if (activeChangeOrder && status !== "not_started") return false;
@@ -6254,12 +6286,12 @@ function installProductRoutes(app, db, isProduction) {
           CASE WHEN EXISTS (
             SELECT 1 FROM product_change_order_steps linked
             JOIN product_change_orders co ON co.id = linked.change_order_id
-            WHERE linked.step_id = s.id AND co.status IN ('pending_client', 'rejected')
+            WHERE linked.step_id = s.id AND co.status = 'pending_client'
           ) THEN 'locked_pending_co' ELSE s.status END AS status,
           EXISTS (
             SELECT 1 FROM product_change_order_steps linked
             JOIN product_change_orders co ON co.id = linked.change_order_id
-            WHERE linked.step_id = s.id AND co.status IN ('pending_client', 'rejected')
+            WHERE linked.step_id = s.id AND co.status = 'pending_client'
           ) AS locked_pending_co,
           s.due_at, s.is_blocked, s.blocker_reason, s.blocker_next_action,
           EXISTS (
@@ -6278,12 +6310,12 @@ function installProductRoutes(app, db, isProduction) {
           CASE WHEN EXISTS (
             SELECT 1 FROM product_change_order_steps linked
             JOIN product_change_orders co ON co.id = linked.change_order_id
-            WHERE linked.step_id = s.id AND co.status IN ('pending_client', 'rejected')
+            WHERE linked.step_id = s.id AND co.status = 'pending_client'
           ) THEN 'locked_pending_co' ELSE s.status END AS status,
           EXISTS (
             SELECT 1 FROM product_change_order_steps linked
             JOIN product_change_orders co ON co.id = linked.change_order_id
-            WHERE linked.step_id = s.id AND co.status IN ('pending_client', 'rejected')
+            WHERE linked.step_id = s.id AND co.status = 'pending_client'
           ) AS locked_pending_co,
           s.due_at, s.is_blocked, s.blocker_reason, s.blocker_next_action,
           EXISTS (
@@ -6596,7 +6628,7 @@ function installProductRoutes(app, db, isProduction) {
           SELECT 1 FROM product_change_order_steps linked
           JOIN product_change_orders co ON co.id = linked.change_order_id
           WHERE linked.implementation_id = $1 AND linked.step_id = $2
-            AND co.status IN ('pending_client', 'rejected')
+            AND co.status = 'pending_client'
         ) AS locked
       `).get(implementationId, stepId);
       if (taskLock?.locked) return sendError(res, 409, "This task is locked until its change order is approved.");
@@ -6807,7 +6839,7 @@ function installProductRoutes(app, db, isProduction) {
         FROM product_change_order_steps linked
         JOIN product_change_orders co ON co.id = linked.change_order_id
         WHERE linked.implementation_id = $1 AND linked.step_id = ANY($2::integer[])
-          AND co.status IN ('pending_client', 'rejected')
+          AND co.status = 'pending_client'
       `).all(implementationId, stepIds);
       if (lockedTasks.length) return { locked: true, count: 0 };
       const result = await database.prepare(`

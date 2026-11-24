@@ -33,6 +33,14 @@ function relayHelpReply(message) {
   if (/(?:collect|ask for|request|enter|submit|share|send|store|include|put).{0,40}(?:password|payment card|credit card|card number|api key|credential|secret)|(?:password|payment card|credit card|card number|api key|credential|secret).{0,40}(?:collect|ask for|request|enter|submit|share|send|store|include|put)/.test(question)) {
     return "Don’t collect passwords, payment-card details, API keys, or other authentication secrets in Relay. Use an appropriate secure channel instead.";
   }
+  if (/(customer|client|portal)/.test(question)
+    && /(see|view|access|visible|show|expose)/.test(question)
+    && /(hourly|rate|time entr|budget|burn|margin|profit|financial|internal note|engineering|jira|linear)/.test(question)) {
+    return "Customers using a private portal link can see the go-live banner, tasks explicitly marked customer-visible, requested information, supported uploads or connection checks, and change-order approvals. Hourly rates, time entries, budgets, burn, margins, internal notes, and Jira/Linear issue links remain internal.";
+  }
+  if (/(customer|client|stakeholder).{0,40}(login|account|invite|delegat|access)|(?:login|account|invite|delegat|access).{0,40}(customer|client|stakeholder)/.test(question)) {
+    return "Customers do not need a Relay login. Workspace members can invite named customer contacts and share each contact’s private, expiring portal link. Assign customer-owned tasks to the appropriate stakeholder and mark only the tasks they should see as customer-visible.";
+  }
   if (/(soc.?2|certif|compliance|uptime|availability|service.level|\bsla\b|security audit)/.test(question)) {
     return "I can’t verify Relay’s certifications, audit results, uptime, or service-level commitments. Please check your current agreement or contact Relay support.";
   }

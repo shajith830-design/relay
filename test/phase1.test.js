@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { criticalPathTaskIds, overdueCriticalClientTaskIds } = require("../implementation-scheduling");
+const { stagesRequiringApprovalBeforeMove } = require("../stage-gates");
 
 test("critical path identifies the longest unfinished path and overdue client tasks", () => {
   const tasks = [
@@ -34,4 +35,26 @@ test("Phase 1 migration adds scoped delegation, change orders, shift ledger, and
   assert.match(migration, /CREATE TABLE IF NOT EXISTS audit_logs/);
   assert.match(migration, /prevent_audit_log_mutation/);
   assert.match(migration, /pending_client/);
+});
+
+test("rejected change orders release their linked tasks", () => {
+  const routes = fs.readFileSync(path.join(__dirname, "..", "product-routes.js"), "utf8");
+  assert.doesNotMatch(routes, /co\.status IN \('pending_client', 'rejected'\)/);
+  assert.match(routes, /co\.status = 'pending_client'/);
+});
+
+test("stage gates require approvals only for stages being passed", () => {
+  assert.deepEqual(stagesRequiringApprovalBeforeMove("kickoff", "configuration"), ["kickoff"]);
+  assert.deepEqual(stagesRequiringApprovalBeforeMove("testing", "launch"), ["testing"]);
+  assert.deepEqual(stagesRequiringApprovalBeforeMove("kickoff", "complete"),
+    ["kickoff", "configuration", "testing", "launch", "hypercare"]);
+  assert.deepEqual(stagesRequiringApprovalBeforeMove("launch", "testing"), []);
+  assert.equal(stagesRequiringApprovalBeforeMove("unknown", "launch"), null);
+});
+
+test("stage-gated approval migration assigns legacy approvals and validates stage values", () => {
+  const migration = fs.readFileSync(path.join(__dirname, "..", "migrations", "019_stage_gated_approvals.sql"), "utf8");
+  assert.match(migration, /SET stage_gate = implementation\.stage_gate_status/);
+  assert.match(migration, /stage_gate IN \('kickoff', 'configuration', 'testing', 'launch', 'hypercare', 'complete'\)/);
+  assert.match(migration, /product_approval_requests_gate_status_idx/);
 });

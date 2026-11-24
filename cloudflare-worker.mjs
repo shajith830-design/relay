@@ -18,6 +18,7 @@ import enterpriseRolesMigration from "./migrations/015_enterprise_roles.sql";
 import phaseThreeCsvValidationMigration from "./migrations/016_phase3_csv_validation.sql";
 import enterpriseOperationsMigration from "./migrations/017_enterprise_operations.sql";
 import enterpriseIntegrationsMigration from "./migrations/018_enterprise_integrations.sql";
+import stageGatedApprovalsMigration from "./migrations/019_stage_gated_approvals.sql";
 
 const backendPaths = [
   "/api",
@@ -77,7 +78,8 @@ async function getBackendHandler(env) {
     "015_enterprise_roles.sql": enterpriseRolesMigration,
     "016_phase3_csv_validation.sql": phaseThreeCsvValidationMigration,
     "017_enterprise_operations.sql": enterpriseOperationsMigration,
-    "018_enterprise_integrations.sql": enterpriseIntegrationsMigration
+    "018_enterprise_integrations.sql": enterpriseIntegrationsMigration,
+    "019_stage_gated_approvals.sql": stageGatedApprovalsMigration
   };
 
   handlerPromise ??= (async () => {

@@ -634,9 +634,11 @@
                 </details>
                 <details class="implementation-subsection" aria-labelledby="delivery-approval-heading">
                   <summary class="implementation-subsection-summary"><h4 id="delivery-approval-heading">Request approval</h4><span class="implementation-subsection-toggle">Edit details</span></summary>
+                  <p class="muted">Choose the stage this approval is required for. Relay blocks moving past that stage until its approvals are approved.</p>
                   <form id="approval-form" class="implementation-form-group" data-role-capability="manageImplementations">
                   <div class="implementation-field-grid">
                     <label class="implementation-field-wide">Approval title<input id="approval-title" maxlength="240" required></label>
+                    <label>Required stage<select id="approval-stage" required><option value="kickoff">Kickoff</option><option value="configuration">Configuration</option><option value="testing">Testing</option><option value="launch">Launch</option><option value="hypercare">Hypercare</option></select></label>
                     <label>Type<input id="approval-type" maxlength="80" placeholder="Security, contract, launch"></label>
                     <label>Approver name<input id="approval-name" maxlength="120"></label>
                     <label>Approver email<input id="approval-email" type="email" maxlength="254"></label>

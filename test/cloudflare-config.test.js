@@ -30,6 +30,7 @@ test("Cloudflare configuration routes production and backend requests through Re
   assert.match(worker, /016_phase3_csv_validation\.sql/);
   assert.match(worker, /017_enterprise_operations\.sql/);
   assert.match(worker, /018_enterprise_integrations\.sql/);
+  assert.match(worker, /019_stage_gated_approvals\.sql/);
   assert.match(worker, /"SALESFORCE_CLIENT_SECRET"/);
   assert.match(worker, /salesforceImportsCreated/);
   assert.match(worker, /scheduled_job_completed/);
