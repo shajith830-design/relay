@@ -931,7 +931,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   });
   await testQuery(
     "UPDATE product_time_entries SET rate_snapshot_present = FALSE WHERE id = $1",
-    [memberTaskTime.data.entry.id]
+    [managerTaskTime.data.entry.id]
   );
   const entriesWithLegacySnapshot = await request(`/api/product/implementations/${implementationId}/time-entries`, {
     cookie: ownerCookie
@@ -940,7 +940,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   assert.equal(listedTimeEntriesWithoutOrigin.response.status, 200, JSON.stringify(listedTimeEntriesWithoutOrigin.data));
   assert.equal(listedTimeEntries.data.entries.length, 2);
   assert.equal(Number(listedTimeEntries.data.entries[0].labor_cost), 1);
-  const legacyEntry = entriesWithLegacySnapshot.data.entries.find((entry) => entry.id === memberTaskTime.data.entry.id);
+  const legacyEntry = entriesWithLegacySnapshot.data.entries.find((entry) => entry.id === managerTaskTime.data.entry.id);
   assert.equal(legacyEntry.rate_snapshot_present, false);
   assert.equal(legacyEntry.labor_cost, null);
   for (const entry of listedTimeEntries.data.entries) {

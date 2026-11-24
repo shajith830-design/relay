@@ -198,7 +198,7 @@ function relayHelpReply(message) {
       return "Open Ray and choose Clear my help history. This removes your saved Ray conversations from your account.";
     }
     if (/\b(?:account|workspace)\b/.test(question)) {
-      return "For account deletion, open Settings → Delete your Relay account, review the workspace impact, enter your password, and type DELETE. If you’re the only workspace member, that workspace and its customer data, including private customer portal links, are deleted too. For a shared workspace you own, transfer ownership first; the workspace remains for its members. Relay has no separate workspace-delete control.";
+      return "For account deletion, open Settings → Delete your Relay account, review the workspace impact, enter your password, and type DELETE. If you’re the only workspace member, that workspace and its customer data, including private links to customer portals, are deleted too. For a shared workspace you own, transfer ownership first; the workspace remains for its members. Relay has no separate workspace-delete control.";
     }
     if (/\b(?:invitation|invite)\b/.test(question)) {
       return "A workspace owner can open Settings → Workspace team, find the pending invitation, and choose Revoke. Accepted invitations are now members; the workspace does not currently have a control for an owner to remove an existing member.";
