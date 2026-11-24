@@ -924,6 +924,10 @@ test("Relay product supports the six connected jobs with workspace isolation", {
     body: { minutes: 1, workDate: "2027-01-10" }
   });
   assert.equal(overrideTaskTime.response.status, 201, JSON.stringify(overrideTaskTime.data));
+  await testQuery(
+    "UPDATE product_budget_overrides SET revoked_at = CURRENT_TIMESTAMP WHERE implementation_id = $1",
+    [implementationId]
+  );
   const listedTimeEntries = await request(`/api/product/implementations/${implementationId}/time-entries`, { cookie: ownerCookie });
   const listedTimeEntriesWithoutOrigin = await request(`/api/product/implementations/${implementationId}/time-entries`, {
     cookie: ownerCookie,
