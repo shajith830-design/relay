@@ -1415,13 +1415,8 @@ test("Relay product supports the six connected jobs with workspace isolation", {
     method: "POST",
     body: { body: "Can you confirm the launch checklist?" }
   });
-  assert.equal(customerMessage.response.status, 201);
-  const implementationCollaboration = await request(
-    `/api/product/implementations/${universalImplementation.data.implementation.id}`,
-    { cookie: ownerCookie }
-  );
-  assert.equal(implementationCollaboration.data.implementation.customerMessages.at(-1).body,
-    "Can you confirm the launch checklist?");
+  assert.equal(customerMessage.response.status, 403);
+  assert.match(customerMessage.data.error, /read-only/);
 
   const uploadResponse = await fetch(
     `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
@@ -1435,103 +1430,14 @@ test("Relay product supports the six connected jobs with workspace isolation", {
       body: Buffer.from("%PDF-1.7\nCustomer onboarding document")
     }
   );
-  const uploadResult = await uploadResponse.json();
-  assert.equal(uploadResponse.status, 201, JSON.stringify(uploadResult));
-  assert.equal(uploadResult.file.filename, "onboarding.pdf");
-  const invalidUpload = await fetch(
-    `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
-    {
-      method: "POST",
-      headers: {
-        Origin: baseUrl,
-        "Content-Type": "text/plain",
-        "X-File-Name": "notes.txt"
-      },
-      body: Buffer.from("not an allowed file")
-    }
-  );
-  assert.equal(invalidUpload.status, 400);
-  const customerFileDownload = await fetch(
-    `${baseUrl}/api/product/customer/${namedCustomerToken}/files/${uploadResult.file.id}`
-  );
-  assert.equal(customerFileDownload.status, 200);
-  assert.equal(customerFileDownload.headers.get("content-type"), "application/pdf");
-  assert.match(customerFileDownload.headers.get("content-disposition"), /onboarding\.pdf/);
-
-  await testQuery(`
-    INSERT INTO product_customer_files
-      (implementation_id, contact_id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, content)
-    SELECT $1, $2, 'customer', 'Test', 'count-' || n || '.pdf',
-      'application/pdf', 5, decode('255044462d', 'hex')
-    FROM generate_series(1, 19) AS series(n)
-  `, [universalImplementation.data.implementation.id, customerInvitation.data.contact.id]);
-  const fileCountLimit = await fetch(
-    `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
-    {
-      method: "POST",
-      headers: {
-        Origin: baseUrl,
-        "Content-Type": "application/pdf",
-        "X-File-Name": "too-many.pdf"
-      },
-      body: Buffer.from("%PDF-1.7\nAnother file")
-    }
-  );
-  assert.equal(fileCountLimit.status, 409);
-
-  await testQuery("DELETE FROM product_customer_files WHERE filename LIKE 'count-%'");
-  await testQuery(`
-    UPDATE product_customer_files SET size_bytes = 5242880
-    WHERE id = $1
-  `, [uploadResult.file.id]);
-  await testQuery(`
-    INSERT INTO product_customer_files
-      (implementation_id, contact_id, uploaded_by_role, uploaded_by_name, filename, content_type, size_bytes, content)
-    SELECT $1, $2, 'customer', 'Test', 'size-' || n || '.pdf',
-      'application/pdf', 5242880, decode('255044462d', 'hex')
-    FROM generate_series(1, 4) AS series(n)
-  `, [universalImplementation.data.implementation.id, customerInvitation.data.contact.id]);
-  const fileSizeLimit = await fetch(
-    `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
-    {
-      method: "POST",
-      headers: {
-        Origin: baseUrl,
-        "Content-Type": "application/pdf",
-        "X-File-Name": "over-total.pdf"
-      },
-      body: Buffer.from("%PDF-1.7\nAnother file")
-    }
-  );
-  assert.equal(fileSizeLimit.status, 409);
-  for (let index = 0; index < 6; index += 1) {
-    const excessUpload = await fetch(
-      `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
-      {
-        method: "POST",
-        headers: {
-          Origin: baseUrl,
-          "Content-Type": "application/pdf",
-          "X-File-Name": `excess-${index}.pdf`
-        },
-        body: Buffer.from("%PDF-1.7\nAnother file")
-      }
-    );
-    assert.equal(excessUpload.status, 409);
-  }
-  const rateLimitedUpload = await fetch(
-    `${baseUrl}/api/product/customer/${namedCustomerToken}/files`,
-    {
-      method: "POST",
-      headers: {
-        Origin: baseUrl,
-        "Content-Type": "application/pdf",
-        "X-File-Name": "rate-limited.pdf"
-      },
-      body: Buffer.from("%PDF-1.7\nAnother file")
-    }
-  );
-  assert.equal(rateLimitedUpload.status, 429);
+  assert.equal(uploadResponse.status, 403);
+  const customerWriteCounts = await testQuery(`
+    SELECT
+      (SELECT count(*)::int FROM product_customer_messages WHERE implementation_id = $1) AS messages,
+      (SELECT count(*)::int FROM product_customer_files WHERE implementation_id = $1) AS files
+  `, [universalImplementation.data.implementation.id]);
+  assert.equal(customerWriteCounts.rows[0].messages, 0);
+  assert.equal(customerWriteCounts.rows[0].files, 0);
 
   await testQuery(
     "UPDATE product_customer_contacts SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 day' WHERE id = $1",
