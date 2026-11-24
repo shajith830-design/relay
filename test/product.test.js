@@ -1111,7 +1111,7 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   const implementationDetailsAfterDelivery = await request(`/api/product/implementations/${implementationId}`, { cookie: ownerCookie });
   assert.equal(implementationDetailsAfterDelivery.data.implementation.stage_gate_status, "testing");
   assert.equal(implementationDetailsAfterDelivery.data.implementation.financialPlan.invoice_status, "draft");
-  assert.equal(implementationDetailsAfterDelivery.data.implementation.timeEntries.length, 0);
+  assert.equal(implementationDetailsAfterDelivery.data.implementation.timeEntries.length, 2);
   assert.equal(implementationDetailsAfterDelivery.data.implementation.approvals.length, 0);
   assert.equal(implementationDetailsAfterDelivery.data.implementation.calendarEvents.length, 0);
   const savedEscalation = await request(`/api/product/implementations/${implementationId}/customer-escalation`, {
