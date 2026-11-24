@@ -255,8 +255,9 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.equal(favicon.readUInt32BE(20), 96);
   assert.equal(favicon[25], 6);
   assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/<\/loc>/);
-  assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/pricing\.html<\/loc>/);
-  assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/founder\.html<\/loc>/);
+  assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/pricing<\/loc>/);
+  assert.match(sitemapXml, /<loc>https:\/\/relayautomation\.tech\/founder<\/loc>/);
+  assert.doesNotMatch(sitemapXml, /\.html<\/loc>/);
   assert.doesNotMatch(sitemapXml, /dashboard\.html|customer\.html|relay-owner-console\.html/);
   assert.match(homePage, /product\.html\?demo=workspace/);
   assert.match(homePage, /Explore the sample workspace/i);
@@ -302,7 +303,8 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(homePage, /does not modify the original sales deal or import unrelated CRM records/i);
   assert.match(homePage, /customers use Relay’s secure portal and do not need HubSpot/i);
   assert.doesNotMatch(homePage, /href="founder\.html"|class="founder-grid"|design partner/i);
-  assert.match(aboutPage, /href="founder\.html"/);
+  assert.match(aboutPage, /href="\/founder"/);
+  assert.match(aboutPage, /<a[^>]*href="https:\/\/www\.linkedin\.com\/in\/mohamed-shajith-relay\/"[^>]*>LinkedIn profile<\/a>/);
   assert.match(founderPage, /Mohamed Shajith/);
   assert.match(founderPage, /<a[^>]*href="https:\/\/www\.linkedin\.com\/in\/mohamed-shajith-relay\/"[^>]*>LinkedIn<\/a>/);
   assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-overview.mp4")));
@@ -340,14 +342,14 @@ test("public marketing pages expose canonical SEO metadata and factual GEO conte
   const publicDir = path.join(__dirname, "..", "public");
   const canonicalPages = [
     ["/", "index.html"],
-    ["/about.html", "about.html"],
-    ["/founder.html", "founder.html"],
-    ["/features-services.html", "features-services.html"],
-    ["/pricing.html", "pricing.html"],
-    ["/demo.html", "demo.html"],
-    ["/contact.html", "contact.html"],
-    ["/privacy.html", "privacy.html"],
-    ["/terms.html", "terms.html"]
+    ["/about", "about.html"],
+    ["/founder", "founder.html"],
+    ["/features-services", "features-services.html"],
+    ["/pricing", "pricing.html"],
+    ["/demo", "demo.html"],
+    ["/contact", "contact.html"],
+    ["/privacy", "privacy.html"],
+    ["/terms", "terms.html"]
   ];
 
   for (const [urlPath, file] of canonicalPages) {
@@ -360,6 +362,9 @@ test("public marketing pages expose canonical SEO metadata and factual GEO conte
   const socialPages = ["index.html", "about.html", "founder.html", "features-services.html", "pricing.html", "demo.html", "contact.html"];
   for (const file of socialPages) {
     const html = readFileSync(path.join(publicDir, file), "utf8");
+    const canonical = html.match(/<link rel="canonical" href="([^"]+)">/);
+    const ogUrl = html.match(/<meta property="og:url" content="([^"]+)">/);
+    assert.equal(ogUrl?.[1], canonical?.[1], `${file} Open Graph URL matches its canonical URL`);
     assert.match(html, /<meta property="og:title" content="[^"]+">/, `${file} Open Graph title`);
     assert.match(html, /<meta property="og:description" content="[^"]+">/, `${file} Open Graph description`);
     assert.match(html, /<meta property="og:image" content="https:\/\/relayautomation\.tech\/assets\/relay-home-video-poster\.png">/, `${file} share image`);
@@ -374,6 +379,8 @@ test("public marketing pages expose canonical SEO metadata and factual GEO conte
   assert.deepEqual(homeGraph.map(({ "@type": type }) => type), ["Organization", "WebSite", "SoftwareApplication", "Person"]);
   assert.match(homeSchema[1], /Mohamed Shajith/);
   assert.match(homeSchema[1], /linkedin\.com\/in\/mohamed-shajith-relay/);
+  assert.match(homeSchema[1], /"jobTitle": "Founder of Relay Automation"/);
+  assert.match(homeSchema[1], /Relay by Relay Automation is a B2B SaaS customer onboarding workspace/);
   assert.match(homeSchema[1], /"name": "Relay Automation"/);
   assert.match(homeSchema[1], /"name": "Relay"/);
 
@@ -384,6 +391,8 @@ test("public marketing pages expose canonical SEO metadata and factual GEO conte
   assert.equal(profile["@type"], "ProfilePage");
   assert.equal(profile.mainEntity["@type"], "Person");
   assert.equal(profile.mainEntity.name, "Mohamed Shajith");
+  assert.equal(profile.mainEntity.url, "https://relayautomation.tech/founder");
+  assert.equal(profile.mainEntity.jobTitle, "Founder of Relay Automation");
   assert.equal(profile.mainEntity.sameAs, "https://www.linkedin.com/in/mohamed-shajith-relay/");
 
   const solutionsPage = readFileSync(path.join(publicDir, "features-services.html"), "utf8");
