@@ -888,24 +888,24 @@ test("Relay product supports the six connected jobs with workspace isolation", {
   });
   assert.equal(deleteTimeEntry.response.status, 200);
   const budgetTaskId = createdImplementation.data.implementation.steps[0].id;
-  const memberTaskTime = await request(`/api/product/implementations/${implementationId}/steps/${budgetTaskId}/time-entries`, {
+  const managerTaskTime = await request(`/api/product/implementations/${implementationId}/steps/${budgetTaskId}/time-entries`, {
     method: "POST",
     cookie: teammateCookie,
     body: { minutes: 90, workDate: "2027-01-10", note: "Task-scoped work" }
   });
-  assert.equal(memberTaskTime.response.status, 201, JSON.stringify(memberTaskTime.data));
-  assert.equal(memberTaskTime.data.entry.task_id, budgetTaskId);
-  assert.equal(memberTaskTime.data.entry.billable, false);
-  assert.equal(Object.hasOwn(memberTaskTime.data.entry, "hourly_rate"), false);
-  assert.equal(Object.hasOwn(memberTaskTime.data.entry, "internal_cost_rate_snapshot"), false);
-  assert.equal(Object.hasOwn(memberTaskTime.data.entry, "client_bill_rate_snapshot"), false);
-  assert.equal(Object.hasOwn(memberTaskTime.data, "burn"), false);
-  const memberTimeEntries = await request(`/api/product/implementations/${implementationId}/time-entries`, {
+  assert.equal(managerTaskTime.response.status, 201, JSON.stringify(managerTaskTime.data));
+  assert.equal(managerTaskTime.data.entry.task_id, budgetTaskId);
+  assert.equal(managerTaskTime.data.entry.billable, false);
+  assert.equal(Object.hasOwn(managerTaskTime.data.entry, "hourly_rate"), false);
+  assert.equal(Object.hasOwn(managerTaskTime.data.entry, "internal_cost_rate_snapshot"), false);
+  assert.equal(Object.hasOwn(managerTaskTime.data.entry, "client_bill_rate_snapshot"), false);
+  assert.equal(Object.hasOwn(managerTaskTime.data, "burn"), true);
+  const managerTimeEntries = await request(`/api/product/implementations/${implementationId}/time-entries`, {
     cookie: teammateCookie
   });
-  assert.equal(memberTimeEntries.response.status, 200);
-  assert.equal(Object.hasOwn(memberTimeEntries.data.entries[0], "labor_cost"), false);
-  assert.equal(Object.hasOwn(memberTimeEntries.data.entries[0], "client_bill_rate_snapshot"), false);
+  assert.equal(managerTimeEntries.response.status, 200);
+  assert.equal(Object.hasOwn(managerTimeEntries.data.entries[0], "labor_cost"), true);
+  assert.equal(Object.hasOwn(managerTimeEntries.data.entries[0], "client_bill_rate_snapshot"), false);
   const lockedTaskTime = await request(`/api/product/implementations/${implementationId}/steps/${budgetTaskId}/time-entries`, {
     method: "POST",
     cookie: teammateCookie,
