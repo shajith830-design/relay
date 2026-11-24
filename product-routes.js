@@ -6066,12 +6066,16 @@ function installProductRoutes(app, db, isProduction) {
     try {
       const storedCsvSchema = Array.isArray(step.csv_schema_json)
         ? step.csv_schema_json : JSON.parse(step.csv_schema_json || "[]");
-      currentCsvSchema = validateCsvSchema(storedCsvSchema);
+      currentCsvSchema = Array.isArray(storedCsvSchema) && storedCsvSchema.length === 0
+        ? [] : validateCsvSchema(storedCsvSchema);
     } catch {
       currentCsvSchema = null;
     }
     if (!currentCsvSchema) return sendError(res, 500, "This task’s CSV schema is invalid. Ask an administrator to review it.");
-    const csvSchema = csvSchemaRequested ? validateCsvSchema(req.body.csvSchema) : currentCsvSchema;
+    const csvSchema = csvSchemaRequested
+      ? Array.isArray(req.body.csvSchema) && req.body.csvSchema.length === 0
+        ? [] : validateCsvSchema(req.body.csvSchema)
+      : currentCsvSchema;
     const nextCsvSchemaHash = csvSchemaRequested
       ? csvSchema?.length ? csvSchemaHash(csvSchema) : ""
       : step.csv_schema_hash || (currentCsvSchema.length ? csvSchemaHash(currentCsvSchema) : "");

@@ -247,7 +247,7 @@ function relayHelpReply(message) {
     return "Relay marks an implementation complete when all its tasks are done. Review the attention indicators too: required customer information can still be missing, so confirm those answers before treating onboarding as finished.";
   }
   if (/(?:where|how).{0,35}(?:find|open|use|show).{0,35}(?:more options|advanced options|step options|prerequisites?|dependencies|due dates?|customer visibility)|where.{0,30}(?:prerequisites?|dependencies|due dates?|customer visibility)|(?:more options|advanced options|step options).{0,35}(?:prerequisite|due date|customer visibility|step)|(?:process step|step).{0,40}(?:more options|due dates?|timing|customer visibility|prerequisites?|dependencies)|(?:more options|due dates?|timing|customer visibility|prerequisites?|dependencies).{0,40}(?:process step|step)/.test(question)) {
-    return "While adding or editing a process step, open More options to set its stage, due timing, customer visibility, or prerequisites. Relay opens More options automatically when you edit a step that already uses those settings.";
+    return "In Process map, while adding or editing a process step, open More options to set its stage, due timing, customer visibility, or prerequisites. Relay opens More options automatically when you edit a step that already uses those settings.";
   }
   if (/(?:must|need to|required|have to).{0,25}(?:assign|teammate)|(?:assign|assignee).{0,25}(?:optional|required|every|each)/.test(question)
     && /(?:process step|step|process map)/.test(question)) {

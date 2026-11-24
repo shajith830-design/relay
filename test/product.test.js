@@ -687,6 +687,8 @@ test("Relay product supports the six connected jobs with workspace isolation", {
       assigneeUserId: teammateId,
       stage: "Launch",
       dueOffsetDays: 7,
+      estimatedDurationDays: 1,
+      responsibleParty: "relay",
       dependsOn: [firstProcessStepId]
     }
   });
