@@ -309,10 +309,10 @@ test("marketing pages expose the sample demo and disclose current product bounda
   for (const illustration of ["readiness", "ownership", "customer", "process"]) {
     assert.ok(existsSync(path.join(publicDir, "assets", `relay-home-${illustration}.svg`)));
   }
-  assert.match(homePage, /See plans from ₹2,999/);
-  assert.match(homePage, /₹3,999 <span>\/ month<\/span>/);
-  assert.match(homePage, /id="pricing"/);
-  assert.match(homePage, /class="home-plan-grid"/);
+  assert.doesNotMatch(homePage, /₹\s?2,999|₹\s?3,999|home-pricing-section|home-plan-(?:grid|card)|See plans from/);
+  assert.match(homePage, /href="pricing\.html">Pricing<\/a>/);
+  assert.match(homePage, /href="features-services\.html">Explore our solutions<\/a>/);
+  assert.match(readFileSync(path.join(publicDir, "relay-motion.js"), "utf8"), /"\.home-benefit-card"/);
   assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
   assert.match(demoPage, /fictional data/i);
   assert.match(demoPage, /does not connect to your Relay account or backend/i);

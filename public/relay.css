@@ -530,14 +530,19 @@ h1::after {
 .home-hero-copy .button { min-height: 50px; }
 .home-hero-copy .note { margin-bottom: 0; }
 .home-hero .hero-project-photo { width: 100%; max-width: none; margin: 0; }
-.home-hero .hero-art { border: 1px solid rgb(148 163 184 / 24%); border-radius: 22px; box-shadow: 0 30px 80px -48px rgb(15 35 62 / 48%); }
+.home-hero .hero-project-photo { perspective: 1100px; }
+.home-hero .hero-art { border: 1px solid rgb(148 163 184 / 24%); border-radius: 22px; box-shadow: 0 30px 80px -48px rgb(15 35 62 / 48%); transform-origin: center; transition: transform .55s cubic-bezier(.2,.75,.25,1), box-shadow .55s; }
+.home-hero .hero-project-photo:hover .hero-art { transform: translateY(-5px) scale(1.012); box-shadow: 0 38px 90px -48px rgb(15 35 62 / 55%); }
 .home-proof-strip { border-block: 1px solid #e8eef4; background: #f8fafc; }
 .home-proof-items { display: grid; min-height: 72px; align-items: center; gap: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.home-proof-items span { color: #334155; font-size: 14px; font-weight: 700; text-align: center; }
+.home-proof-items span { color: #334155; font-size: 14px; font-weight: 700; text-align: center; transition: color .25s, transform .25s; }
+.home-proof-items span:hover { transform: translateY(-2px); color: #0369a1; }
 .home-proof-items span + span { border-left: 1px solid #dbe3eb; }
 .home-benefit-grid { display: grid; gap: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.home-benefit-card { position: relative; min-width: 0; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; background: #fff; box-shadow: 0 10px 28px rgb(15 23 42 / 3%); }
-.home-card-number { display: grid; width: 38px; height: 38px; margin-bottom: 21px; place-items: center; border: 1px solid #dbeafe; border-radius: 12px; background: #eff6ff; color: #0369a1; font-size: 12px; font-weight: 800; }
+.home-benefit-card { position: relative; min-width: 0; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; background: #fff; box-shadow: 0 10px 28px rgb(15 23 42 / 3%); transition: transform .35s cubic-bezier(.2,.75,.25,1), border-color .35s, box-shadow .35s; }
+.home-benefit-card:hover { transform: translateY(-6px); border-color: rgb(2 132 199 / 40%); box-shadow: 0 24px 44px -30px rgb(2 132 199 / 36%); }
+.home-card-number { display: grid; width: 38px; height: 38px; margin-bottom: 21px; place-items: center; border: 1px solid #dbeafe; border-radius: 12px; background: #eff6ff; color: #0369a1; font-size: 12px; font-weight: 800; transition: transform .3s cubic-bezier(.2,.75,.25,1), box-shadow .3s; }
+.home-benefit-card:hover .home-card-number { transform: rotate(-5deg) scale(1.08); box-shadow: 0 8px 18px rgb(2 132 199 / 14%); }
 .home-benefit-card .eyebrow { margin-bottom: 14px; font-size: 11px; }
 .home-benefit-card h3 { max-width: 280px; font-size: 20px; }
 .home-benefit-card p:last-child { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
@@ -548,25 +553,29 @@ h1::after {
 .home-flow-list li { display: grid; align-items: start; gap: 16px; grid-template-columns: 36px minmax(0, 1fr); padding: 19px 0; border-bottom: 1px solid #dbe3eb; }
 .home-flow-list li:first-child { padding-top: 0; }
 .home-flow-list li:last-child { border-bottom: 0; }
-.home-flow-list li > span { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid #bae6fd; border-radius: 50%; background: #fff; color: #0369a1; font-size: 13px; font-weight: 800; }
+.home-flow-list li > span { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid #bae6fd; border-radius: 50%; background: #fff; color: #0369a1; font-size: 13px; font-weight: 800; transition: transform .25s, box-shadow .25s; }
+.home-flow-list li:hover > span { transform: scale(1.08); box-shadow: 0 5px 14px rgb(2 132 199 / 15%); }
 .home-flow-list h3 { font-size: 17px; }
 .home-flow-list p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
 .home-integration-note { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
 .home-cta-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.home-pricing-section { background: #f5f8fc; }
-.home-plan-grid { display: grid; align-items: stretch; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.home-plan-card { display: flex; min-width: 0; flex-direction: column; border: 1px solid #dbe4ee; border-radius: 16px; padding: 25px; background: #fff; box-shadow: 0 10px 28px rgb(15 23 42 / 4%); }
-.home-plan-card-featured { border-color: #0284c7; box-shadow: 0 16px 36px rgb(2 132 199 / 12%); }
-.home-plan-card h3 { margin-top: 8px; color: #102a43; font-size: 21px; }
-.home-plan-price { margin: 16px 0 6px; color: #102a43; font-size: 31px; font-weight: 800; letter-spacing: -.045em; }
-.home-plan-price span { color: #64748b; font-size: 13px; font-weight: 500; letter-spacing: 0; }
-.home-plan-price-custom { font-size: 26px; }
-.home-plan-card > p:not(.eyebrow, .home-plan-price) { min-height: 48px; margin: 4px 0 20px; color: #64748b; font-size: 13px; line-height: 1.6; }
-.home-plan-card > a { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; border-top: 1px solid #e8eef4; padding-top: 16px; color: #0369a1; font-size: 13px; font-weight: 700; text-decoration: none; }
-.home-plan-card > a:hover { color: #075985; }
-.home-pricing-note { margin: 20px 0 0; color: #64748b; font-size: 13px; }
-.home-pricing-note a { color: #0369a1; font-weight: 700; text-decoration: none; }
-.home-pricing-note a:hover { text-decoration: underline; }
+.motion-ready .home-hero-copy > .motion-reveal,
+.motion-ready .home-proof-items span.motion-reveal,
+.motion-ready .home-benefit-card.motion-reveal,
+.motion-ready .home-flow-layout > div > .motion-reveal,
+.motion-ready .home-flow-list li.motion-reveal {
+  transform: translateY(18px);
+  transition: opacity .65s cubic-bezier(.2,.75,.25,1), transform .65s cubic-bezier(.2,.75,.25,1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.motion-ready .home-hero-copy > .motion-reveal.is-visible,
+.motion-ready .home-proof-items span.motion-reveal.is-visible,
+.motion-ready .home-benefit-card.motion-reveal.is-visible,
+.motion-ready .home-flow-layout > div > .motion-reveal.is-visible,
+.motion-ready .home-flow-list li.motion-reveal.is-visible { transform: translateY(0); }
+.motion-ready .home-benefit-card.motion-reveal.is-visible:hover { transform: translateY(-6px); }
+.motion-ready .home-hero .hero-project-photo.motion-reveal { transform: translateX(24px) scale(.985); transition: opacity .75s cubic-bezier(.2,.75,.25,1), transform .75s cubic-bezier(.2,.75,.25,1); }
+.motion-ready .home-hero .hero-project-photo.motion-reveal.is-visible { transform: translateX(0) scale(1); animation: home-art-float 8s 1.2s ease-in-out infinite; }
 .pricing-page .pricing-hero-content { max-width: 850px; }
 .pricing-page .page-hero { background: linear-gradient(120deg, #f8fbff 0%, #fff 64%, #eff8ff 100%); }
 .pricing-page .pricing-hero-content h1 { max-width: 780px; color: #0f233e; letter-spacing: -.055em; }
@@ -593,7 +602,6 @@ h1::after {
   .home-hero-grid { gap: 30px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .home-hero-copy h1 { font-size: clamp(38px, 5vw, 50px); }
   .plan-grid { grid-template-columns: 1fr; max-width: 640px; margin-inline: auto; }
-  .home-plan-grid { grid-template-columns: 1fr; max-width: 640px; margin-inline: auto; }
   .plan-card .muted { min-height: 0; }
 }
 @media (max-width: 760px) {
@@ -604,7 +612,6 @@ h1::after {
   .home-proof-items span { padding: 14px 4px; font-size: 12px; }
   .home-benefit-grid { grid-template-columns: 1fr; }
   .home-benefit-card { padding: 21px; }
-  .home-plan-card { padding: 22px; }
   .home-flow-layout { gap: 26px; }
   .pricing-plans-section { padding-top: 26px; }
 }
@@ -616,3 +623,4 @@ h1::after {
   .home-cta-actions .button { width: 100%; }
   .pricing-page .plan-comparison { min-width: 700px; }
 }
+@keyframes home-art-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -7px; } }

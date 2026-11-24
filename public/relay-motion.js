@@ -91,6 +91,12 @@
 
   const targetSelector = [
     ".hero-copy > *",
+    ".home-hero-copy > *",
+    ".home-hero .hero-project-photo",
+    ".home-proof-items span",
+    ".home-benefit-card",
+    ".home-flow-layout > div > *",
+    ".home-flow-list li",
     ".preview",
     ".page-hero .wrap",
     ".section-head",
