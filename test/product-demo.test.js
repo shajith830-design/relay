@@ -260,7 +260,12 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.doesNotMatch(sitemapXml, /\.html<\/loc>/);
   assert.doesNotMatch(sitemapXml, /dashboard\.html|customer\.html|relay-owner-console\.html/);
   assert.match(homePage, /product\.html\?demo=workspace/);
-  assert.match(homePage, /Explore the sample workspace/i);
+  assert.match(homePage, /Try the sample workspace/i);
+  assert.match(demoPage, /http-equiv="refresh" content="0; url=contact\.html"/);
+  assert.match(demoPage, /href="product\.html\?demo=workspace">Try the sample workspace/);
+  assert.doesNotMatch(demoPage, /data-inquiry-type="Demo request"|what would you like to see in your Relay demo/i);
+  assert.match(contactPage, /Book a Demo/);
+  assert.doesNotMatch([homePage, aboutPage, founderPage, solutionsPage, demoPage, pricingPage].join("\n"), /Book a Demo|Book a demo|data-inquiry-type="Demo request"/);
   assert.match(homePage, /B2B SaaS customer onboarding/i);
   assert.match(aboutPage, /B2B SaaS customer onboarding teams/i);
   assert.match(homePage, /A clearer path from kickoff to go-live/i);
@@ -314,8 +319,7 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(homePage, /href="features-services\.html">Explore our solutions<\/a>/);
   assert.match(readFileSync(path.join(publicDir, "relay-motion.js"), "utf8"), /"\.home-benefit-card"/);
   assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
-  assert.match(demoPage, /fictional data/i);
-  assert.match(demoPage, /does not connect to your Relay account or backend/i);
+  assert.match(demoPage, /Taking you to the Contact page/);
   assert.match(solutionsPage, /newly matching deals start one implementation/i);
   assert.match(solutionsPage, /revocable, expiring links/i);
   assert.doesNotMatch([aboutPage, solutionsPage, pricingPage].join("\n"), /Salesforce|Microsoft Teams|Jira|Linear|Asana/i);
@@ -349,7 +353,6 @@ test("public marketing pages expose canonical SEO metadata and factual GEO conte
     ["/founder", "founder.html"],
     ["/features-services", "features-services.html"],
     ["/pricing", "pricing.html"],
-    ["/demo", "demo.html"],
     ["/contact", "contact.html"],
     ["/privacy", "privacy.html"],
     ["/terms", "terms.html"]
@@ -361,6 +364,11 @@ test("public marketing pages expose canonical SEO metadata and factual GEO conte
     assert.equal(canonical?.[1], `https://relayautomation.tech${urlPath}`, `${file} canonical URL`);
     assert.match(html, /<meta name="description" content="[^"]+">/, `${file} description`);
   }
+
+  const demoRedirect = readFileSync(path.join(publicDir, "demo.html"), "utf8");
+  assert.match(demoRedirect, /<meta http-equiv="refresh" content="0; url=contact\.html">/);
+  assert.equal(demoRedirect.match(/<link rel="canonical" href="([^"]+)">/)?.[1], "https://relayautomation.tech/contact");
+  assert.match(demoRedirect, /<meta name="robots" content="noindex, follow">/);
 
   const socialPages = ["index.html", "about.html", "founder.html", "features-services.html", "pricing.html", "demo.html", "contact.html"];
   for (const file of socialPages) {

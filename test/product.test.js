@@ -1893,7 +1893,8 @@ test("public pages and the inquiry app remain available", {
   const productHtml = await fetch(`${baseUrl}/product.html`).then((response) => response.text());
   assert.match(productHtml, /id="auth-tabs"[^>]*hidden/);
   assert.doesNotMatch(productHtml, />Create workspace</);
-  assert.match(productHtml, /href="demo\.html">Book a demo/);
+  assert.match(productHtml, /href="contact\.html">Contact us/);
+  assert.doesNotMatch(productHtml, /href="demo\.html">Book a demo/i);
   assert.match(productHtml, /href="contact\.html">contact us/);
   assert.doesNotMatch(productHtml, /owner console|Paid client access/i);
   const ownerConsoleResponse = await fetch(`${baseUrl}/relay-owner-console.html`);
