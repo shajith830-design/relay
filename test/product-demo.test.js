@@ -267,10 +267,13 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.match(contactPage, /Book a Demo/);
   assert.doesNotMatch([homePage, aboutPage, founderPage, solutionsPage, demoPage, pricingPage].join("\n"), /Book a Demo|Book a demo|data-inquiry-type="Demo request"/);
   assert.match(homePage, /B2B SaaS customer onboarding/i);
-  assert.match(aboutPage, /B2B SaaS customer onboarding teams/i);
-  assert.match(homePage, /A clearer path from kickoff to go-live/i);
-  assert.match(aboutPage, /Mohamed Shajith is the founder of Relay Automation/);
-  assert.match(founderPage, /Mohamed Shajith, Founder of Relay Automation/);
+  assert.match(aboutPage, /B2B SaaS customer onboarding workspace/i);
+  assert.match(homePage, /From kickoff to go-live/i);
+  assert.match(homePage, /One workspace for implementation teams to coordinate tasks, customer requests, and launch readiness/i);
+  assert.doesNotMatch(homePage, /home-flow-layout|home-cta-actions|guided-demo-link/);
+  assert.match(aboutPage, /Relay Automation was founded by Mohamed Shajith/);
+  assert.match(founderPage, /Mohamed Shajith/);
+  assert.match(founderPage, /Founder of Relay Automation/);
   assert.match(founderPage, /B2B SaaS customer onboarding workspace/i);
   assert.match(founderPage, /building technology that addresses real-world challenges/i);
   assert.match(founderPage, /business strategy, product innovation/i);
@@ -304,9 +307,8 @@ test("marketing pages expose the sample demo and disclose current product bounda
   }
   assert.doesNotMatch(homePage, /href="founder\.html"|class="founder-grid"|design partner/i);
   assert.match(aboutPage, /href="\/founder"/);
-  assert.match(aboutPage, /<a[^>]*href="https:\/\/www\.linkedin\.com\/in\/mohamed-shajith-relay\/"[^>]*>LinkedIn profile<\/a>/);
+  assert.doesNotMatch([aboutPage, founderPage, homePage].join("\n"), /linkedin\.com\/in\/mohamed-shajith-relay|LinkedIn profile/i);
   assert.match(founderPage, /Mohamed Shajith/);
-  assert.match(founderPage, /<a[^>]*href="https:\/\/www\.linkedin\.com\/in\/mohamed-shajith-relay\/"[^>]*>LinkedIn<\/a>/);
   assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-overview.mp4")));
   const heroImage = readFileSync(path.join(publicDir, "assets", "relay-home-hero.svg"), "utf8");
   assert.ok(existsSync(path.join(publicDir, "assets", "relay-home-hero.svg")));
@@ -316,12 +318,12 @@ test("marketing pages expose the sample demo and disclose current product bounda
   }
   assert.doesNotMatch(homePage, /₹\s?2,999|₹\s?3,999|home-pricing-section|home-plan-(?:grid|card)|See plans from/);
   assert.match(homePage, /href="pricing\.html">Pricing<\/a>/);
-  assert.match(homePage, /href="features-services\.html">Explore our solutions<\/a>/);
+  assert.match(homePage, /href="features-services\.html">Our Solutions<\/a>/);
   assert.match(readFileSync(path.join(publicDir, "relay-motion.js"), "utf8"), /"\.home-benefit-card"/);
   assert.doesNotMatch(homePage, /Built for B2B SaaS implementation teams and the customers they guide from kickoff to launch/);
   assert.match(demoPage, /Taking you to the Contact page/);
   assert.match(solutionsPage, /newly matching deals start one implementation/i);
-  assert.match(solutionsPage, /revocable, expiring links/i);
+  assert.match(solutionsPage, /Links can be revoked and expire/i);
   assert.doesNotMatch([aboutPage, solutionsPage, pricingPage].join("\n"), /Salesforce|Microsoft Teams|Jira|Linear|Asana/i);
   assert.match([homePage, solutionsPage].join("\n"), /portfolio health/i);
   assert.match([homePage, solutionsPage].join("\n"), /CSV/i);
@@ -332,7 +334,7 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.doesNotMatch(pricingPage, /PDF, PNG, or JPG files/i);
   assert.doesNotMatch(pricingPage, /after (?:provider|email|scanner) setup|requires? provider setup|scheduled processing setup/i);
   assert.doesNotMatch(pricingPage, /<details\b|<summary\b/);
-  assert.match(aboutPage, /does not currently publish customer case studies/i);
+  assert.match(aboutPage, /We make customer onboarding easier to manage/i);
   assert.match(pricingPage, /₹2,999/);
   assert.match(pricingPage, /₹3,999/);
   assert.match(pricingPage, /5 active implementations/);
@@ -389,7 +391,7 @@ test("public marketing pages expose canonical SEO metadata and factual GEO conte
   const homeGraph = JSON.parse(homeSchema[1])["@graph"];
   assert.deepEqual(homeGraph.map(({ "@type": type }) => type), ["Organization", "WebSite", "SoftwareApplication", "Person"]);
   assert.match(homeSchema[1], /Mohamed Shajith/);
-  assert.match(homeSchema[1], /linkedin\.com\/in\/mohamed-shajith-relay/);
+  assert.doesNotMatch(homeSchema[1], /linkedin\.com\/in\/mohamed-shajith-relay|sameAs/i);
   assert.match(homeSchema[1], /"jobTitle": "Founder of Relay Automation"/);
   assert.match(homeSchema[1], /Relay by Relay Automation is a B2B SaaS customer onboarding workspace/);
   assert.match(homeSchema[1], /"name": "Relay Automation"/);
@@ -404,21 +406,22 @@ test("public marketing pages expose canonical SEO metadata and factual GEO conte
   assert.equal(profile.mainEntity.name, "Mohamed Shajith");
   assert.equal(profile.mainEntity.url, "https://relayautomation.tech/founder");
   assert.equal(profile.mainEntity.jobTitle, "Founder of Relay Automation");
-  assert.equal(profile.mainEntity.sameAs, "https://www.linkedin.com/in/mohamed-shajith-relay/");
+  assert.equal(Object.hasOwn(profile.mainEntity, "sameAs"), false);
+  assert.doesNotMatch(founderPage, /linkedin\.com|LinkedIn/i);
 
-  const solutionsPage = readFileSync(path.join(publicDir, "features-services.html"), "utf8");
-  const faqSchema = solutionsPage.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
-  assert.ok(faqSchema, "solutions page FAQ JSON-LD");
+  const contactPage = readFileSync(path.join(publicDir, "contact.html"), "utf8");
+  const faqSchema = contactPage.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  assert.ok(faqSchema, "contact page FAQ JSON-LD");
   const faq = JSON.parse(faqSchema[1]);
   assert.equal(faq["@type"], "FAQPage");
-  assert.equal(faq.mainEntity.length, 7);
+  assert.equal(faq.mainEntity.length, 5);
   for (const { name, acceptedAnswer } of faq.mainEntity) {
-    assert.ok(solutionsPage.includes(name), `visible FAQ question: ${name}`);
-    assert.ok(solutionsPage.includes(acceptedAnswer.text), `visible FAQ answer: ${name}`);
+    assert.ok(contactPage.includes(`<span>${name}</span>`), `visible FAQ question: ${name}`);
+    assert.ok(contactPage.includes(acceptedAnswer.text), `visible FAQ answer: ${name}`);
   }
-  assert.match(solutionsPage, /class="faq-item faq-priority"/);
-  assert.match(solutionsPage, /href="pricing\.html">View plans and pricing/);
-  assert.match(solutionsPage, /aria-current="page"/);
+  assert.match(contactPage, /class="faq-item faq-priority"/);
+  assert.match(contactPage, /href="pricing\.html">Compare plans and pricing/);
+  assert.match(contactPage, /aria-current="page"/);
 
   const pricingPage = readFileSync(path.join(publicDir, "pricing.html"), "utf8");
   assert.match(pricingPage, /₹2,999/);
@@ -662,8 +665,8 @@ test("public pages describe only verified product capabilities", () => {
   const publicCopy = [home, about, solutions, pricing].join("\n");
 
   for (const supported of [
-    "Process maps", "named customer contacts.*revocable", "HubSpot", "email notifications",
-    "SOW scope", "team capacity", "invoice status", "Task delegation"
+    "Process maps", "named customer contacts.*revoked and expire", "HubSpot", "email notifications",
+    "SOW tracking", "team capacity", "invoice status", "Task delegation"
   ]) {
     assert.match(publicCopy, new RegExp(supported, "i"));
   }

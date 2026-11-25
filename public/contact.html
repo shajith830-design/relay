@@ -20,6 +20,54 @@
   <meta name="twitter:description" content="Talk with Relay about your B2B SaaS onboarding workflow, customer setup requirements, product fit, and pricing.">
   <meta name="twitter:image" content="https://relayautomation.tech/assets/relay-home-video-poster.png">
   <meta name="twitter:image:alt" content="Relay illustration showing the journey from signed customer agreement through setup and launch to go-live">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How much does Relay cost?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Starter is ₹2,999 per month and Growth is ₹3,999 per month, before applicable taxes. Custom pricing is based on the capacity and controls you need."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What is included in each plan?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Starter includes core onboarding workflows. Growth adds portfolio, blocker, and change controls. Custom adds tailored capacity and financial controls."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I try Relay first?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Try the sample workspace with fictional data. It does not connect to an account, and changes stay in your browser."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does Relay generate invoices or process payments?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Relay does not generate invoices or process payments. Custom can track budgets, time, invoice references, and margin."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I change plans or request a custom plan?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Contact us to discuss team size, active implementations, integrations, and delivery controls."
+          }
+        }
+      ]
+    }
+  </script>
   <link rel="stylesheet" href="relay.css">
 </head>
 <body>
@@ -33,7 +81,7 @@
   <main>
     <section class="page-hero"><div class="wrap"><p class="eyebrow">Contact Relay</p><h1>Let’s improve your B2B SaaS customer onboarding.</h1><p>Talk with our team about your onboarding process, customer setup requirements, Relay’s workflow, and pricing.</p></div></section>
     <section class="section"><div class="wrap form-layout">
-      <div><p class="eyebrow">Talk with our team</p><h2>Tell us what your implementation team needs.</h2><p class="muted">Share the type of B2B software you provide, how customers are implemented, what information is required, and where your team needs more clarity. Please do not send passwords, customer records, confidential materials, or sensitive information.</p><p class="muted">Our team can discuss Relay’s workflow, product fit, and pricing.</p><a class="button light" href="features-services.html">Explore Our Solutions <span aria-hidden="true">→</span></a></div>
+      <div><p class="eyebrow">Talk with our team</p><h2>Tell us what you need.</h2><p class="muted">Share a little about your team and onboarding process. We’ll discuss whether Relay is a good fit.</p><p class="small-print">Please don’t include passwords or confidential customer data.</p></div>
       <form class="form-card" id="inquiry-form" data-inquiry-type="Sales inquiry">
         <div class="form-grid">
           <div class="field-group"><label for="name">Your name</label><input class="field" id="name" name="name" autocomplete="name" maxlength="120" required></div>
@@ -43,12 +91,37 @@
           <div class="field-group full"><label for="details">What would you like to discuss with Relay?</label><textarea class="field" id="details" name="details" maxlength="1500" required></textarea></div>
         </div>
         <button class="button" type="submit">Send inquiry <span aria-hidden="true">→</span></button>
-        <p class="small-print">We use the contact details you provide to respond to this message. Please do not include confidential customer or implementation data.</p>
+        <p class="small-print">We’ll use your contact details to respond to your inquiry.</p>
         <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
       </form>
     </div></section>
+    <section class="section tint faq-section"><div class="wrap">
+      <div class="section-head"><p class="eyebrow">Quick answers</p><h2>Before you get in touch.</h2></div>
+      <div class="faq-list">
+        <details class="faq-item faq-priority">
+          <summary><span class="faq-question"><span class="faq-marker">01</span><span>How much does Relay cost?</span></span></summary>
+          <div class="faq-answer"><p>Starter is ₹2,999 per month and Growth is ₹3,999 per month, before applicable taxes. Custom pricing is based on the capacity and controls you need.</p><a class="faq-answer-link" href="pricing.html">Compare plans and pricing <span aria-hidden="true">→</span></a></div>
+        </details>
+        <details class="faq-item faq-priority">
+          <summary><span class="faq-question"><span class="faq-marker">02</span><span>What is included in each plan?</span></span></summary>
+          <div class="faq-answer"><p>Starter includes core onboarding workflows. Growth adds portfolio, blocker, and change controls. Custom adds tailored capacity and financial controls.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary><span class="faq-question"><span class="faq-marker">03</span><span>Can I try Relay first?</span></span></summary>
+          <div class="faq-answer"><p>Try the sample workspace with fictional data. It does not connect to an account, and changes stay in your browser.</p><a class="faq-answer-link" href="product.html?demo=workspace">Try the sample workspace <span aria-hidden="true">→</span></a></div>
+        </details>
+        <details class="faq-item">
+          <summary><span class="faq-question"><span class="faq-marker">04</span><span>Does Relay generate invoices or process payments?</span></span></summary>
+          <div class="faq-answer"><p>No. Relay does not generate invoices or process payments. Custom can track budgets, time, invoice references, and margin.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary><span class="faq-question"><span class="faq-marker">05</span><span>Can I change plans or request a custom plan?</span></summary>
+          <div class="faq-answer"><p>Yes. Contact us to discuss team size, active implementations, integrations, and delivery controls.</p><a class="faq-answer-link" href="#inquiry-form">Contact Relay <span aria-hidden="true">→</span></a></div>
+        </details>
+      </div>
+    </div></section>
   </main>
-  <footer class="foot"><div class="wrap foot-inner"><a class="brand" href="index.html"><img src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="brand-name"><span class="brand-relay">Relay</span><span class="brand-automation">Automation</span></span></a><div class="foot-links"><a href="index.html">Home</a><a href="about.html">About</a><a href="features-services.html">Our Solutions</a><a href="pricing.html">Pricing</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="demo.html">Book a Demo</a></div><span class="small-print">© 2026 Relay Automation. B2B SaaS customer onboarding.</span></div></footer>
+  <footer class="foot"><div class="wrap foot-inner"><a class="brand" href="index.html"><img src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="brand-name"><span class="brand-relay">Relay</span><span class="brand-automation">Automation</span></span></a><div class="foot-links"><a href="index.html">Home</a><a href="about.html">About</a><a href="features-services.html">Our Solutions</a><a href="pricing.html">Pricing</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></div><span class="small-print">© 2026 Relay Automation. B2B SaaS customer onboarding.</span></div></footer>
   <script src="relay-form.js" defer></script>
   <script src="relay-nav.js" defer></script>
   <script src="relay-motion.js" defer></script>
