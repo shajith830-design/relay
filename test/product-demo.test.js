@@ -403,11 +403,14 @@ test("public marketing pages expose canonical SEO metadata and factual GEO conte
   assert.ok(faqSchema, "solutions page FAQ JSON-LD");
   const faq = JSON.parse(faqSchema[1]);
   assert.equal(faq["@type"], "FAQPage");
-  assert.equal(faq.mainEntity.length, 5);
+  assert.equal(faq.mainEntity.length, 7);
   for (const { name, acceptedAnswer } of faq.mainEntity) {
     assert.ok(solutionsPage.includes(name), `visible FAQ question: ${name}`);
     assert.ok(solutionsPage.includes(acceptedAnswer.text), `visible FAQ answer: ${name}`);
   }
+  assert.match(solutionsPage, /class="faq-item faq-priority"/);
+  assert.match(solutionsPage, /href="pricing\.html">View plans and pricing/);
+  assert.match(solutionsPage, /aria-current="page"/);
 
   const pricingPage = readFileSync(path.join(publicDir, "pricing.html"), "utf8");
   assert.match(pricingPage, /₹2,999/);
