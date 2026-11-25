@@ -47,44 +47,7 @@
 }
 
 * { box-sizing: border-box; }
-*, *::before, *::after {
-  animation: none !important;
-  transition: none !important;
-  scroll-behavior: auto !important;
-}
 body { min-width: 0; margin: 0; background: var(--paper); color: var(--ink); -webkit-font-smoothing: antialiased; }
-.button::after,
-.auth-screen::before,
-.auth-screen::after,
-.welcome-card::before,
-.auth-card::after,
-.panel::after,
-.welcome-card::after,
-.metric::after,
-.template-card::after,
-.step-card::after {
-  display: none !important;
-}
-.wordmark:hover .wordmark-logo,
-.auth-card:hover,
-.panel:hover,
-.welcome-card:hover,
-.metric:hover,
-.template-card:hover,
-.step-card:hover {
-  transform: none !important;
-  box-shadow: none !important;
-}
-.motion-reveal,
-.motion-ready .motion-reveal {
-  opacity: 1 !important;
-  transform: none !important;
-}
-.field input:focus,
-.field textarea:focus,
-.field select:focus {
-  box-shadow: none !important;
-}
 button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 48%, transparent); outline-offset: 2px; }
@@ -670,8 +633,27 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .list-row:hover, .data-table tbody tr:hover { background: var(--surface-hover); }
 .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 17%, transparent); }
 .text-button:hover, .data-table .row-button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.auth-card { animation: workspace-arrive .55s cubic-bezier(.2,.75,.25,1) both; }
+.view.active > * { animation: workspace-arrive .42s cubic-bezier(.2,.75,.25,1) both; }
+.view.active > *:nth-child(2) { animation-delay: 45ms; }
+.view.active > *:nth-child(3) { animation-delay: 90ms; }
+.view.active > *:nth-child(4) { animation-delay: 135ms; }
+.welcome-card { position: relative; overflow: hidden; border-color: color-mix(in srgb, var(--blue) 38%, #183b48); background: linear-gradient(118deg, #173744 0%, #1a4655 60%, #17647a 120%); box-shadow: 0 20px 50px -38px rgb(15 50 62 / 55%); transition: box-shadow .3s, border-color .3s; }
+.welcome-card::after { position: absolute; top: -110px; right: -56px; width: 290px; aspect-ratio: 1; border: 1px solid rgb(255 255 255 / 13%); border-radius: 50%; background: radial-gradient(circle, rgb(125 211 228 / 16%), transparent 68%); box-shadow: 0 0 0 30px rgb(255 255 255 / 3%), 0 0 0 64px rgb(255 255 255 / 2%); content: ""; pointer-events: none; }
+.welcome-card > * { position: relative; z-index: 1; }
+.welcome-card:hover { border-color: color-mix(in srgb, var(--blue) 58%, #183b48); box-shadow: 0 25px 56px -38px rgb(15 50 62 / 68%); }
+.metric, .metric-card, .panel, .template-card, .step-card, .auth-card { transition: transform .24s cubic-bezier(.2,.75,.25,1), border-color .24s, box-shadow .24s, background-color .24s; }
+.metric:hover, .metric-card:hover, .template-card:hover, .step-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--blue) 38%, var(--line)); box-shadow: 0 14px 28px -24px color-mix(in srgb, var(--blue) 45%, transparent); }
+.metric-grid .metric:nth-child(3n + 1) { border-top: 2px solid color-mix(in srgb, var(--blue) 55%, var(--line)); }
+.metric strong, .metric-card strong { color: var(--ink); }
+.nav-item { transition: background-color .18s, color .18s, transform .18s; }
+.nav-item:hover { transform: translateX(2px); }
+.button { transition: transform .18s, background-color .18s, border-color .18s, color .18s, box-shadow .18s; }
+.button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px -10px color-mix(in srgb, var(--blue) 70%, transparent); }
+@keyframes workspace-arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+  .metric:hover, .metric-card:hover, .template-card:hover, .step-card:hover, .nav-item:hover, .button:hover:not(:disabled) { transform: none; }
 }
 .metric-card { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 16px; background: var(--surface); overflow-wrap: anywhere; }
 .metric-card span { display: block; color: var(--muted); font-size: 11px; font-weight: 700; }

@@ -1968,7 +1968,8 @@ test("public pages and the inquiry app remain available", {
   const inquiryScript = await fetch(`${baseUrl}/relay-form.js`).then((response) => response.text());
   assert.match(inquiryScript, /local HTML file cannot submit inquiries/);
   const productStyles = await fetch(`${baseUrl}/product.css`).then((response) => response.text());
-  assert.match(productStyles, /\*, \*::before, \*::after\s*\{\s*animation:\s*none !important;\s*transition:\s*none !important;/);
+  assert.match(productStyles, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\*, \*::before, \*::after \{\s*scroll-behavior: auto !important;\s*animation: none !important;\s*transition: none !important;/);
+  assert.doesNotMatch(productStyles.slice(0, productStyles.indexOf(".auth-screen {")), /animation:\s*none !important;\s*transition:\s*none !important;/);
 
   const invalidInquiry = await request("/api/inquiries", {
     method: "POST",
