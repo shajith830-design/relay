@@ -1966,6 +1966,68 @@ async function openImplementation(implementationId) {
   panel.hidden = false;
   document.getElementById("implementation-detail-title").textContent = implementation.customer_name;
   document.getElementById("implementation-detail-subtitle").textContent = `Started from ${implementation.template_name}`;
+  const sampleStory = document.getElementById("sample-story-card");
+  sampleStory.hidden = !isWorkspaceDemo;
+  if (isWorkspaceDemo) {
+    const completed = implementation.steps.filter((step) => step.status === "done").length;
+    const total = implementation.steps.length;
+    const progress = total ? Math.round(completed / total * 100) : 0;
+    const blockers = implementation.steps.filter((step) => step.is_blocked && step.status !== "done");
+    const blocker = blockers[0];
+    const ring = document.getElementById("sample-progress-ring");
+    ring.style.setProperty("--progress", `${progress}%`);
+    ring.setAttribute("aria-valuenow", String(progress));
+    document.getElementById("sample-progress-value").textContent = `${progress}%`;
+    document.getElementById("sample-story-title").textContent = implementation.customer_name;
+    document.getElementById("sample-story-progress").textContent =
+      `${completed} of ${total} tasks done. ${blockers.length} ${blockers.length === 1 ? "blocker remains" : "blockers remain"} open.`;
+    const blockerOwner = blocker?.is_blocked
+      ? blocker.owner || blocker.waiting_on || "the next owner"
+      : blocker?.waiting_on || blocker?.owner || "the next owner";
+    const waitDays = blocker?.updated_at
+      ? Math.max(0, Math.floor((Date.now() - Date.parse(blocker.updated_at)) / 86400000))
+      : 0;
+    document.getElementById("sample-blocker-title").textContent = blocker
+      ? `Waiting on ${blockerOwner} · ${blocker.title}`
+      : "No open blocker in this sample";
+    document.getElementById("sample-blocker-description").textContent = blocker
+      ? `Day ${waitDays} · ${blocker.blocker_reason || "The next item is still open."} ${blocker.blocker_next_action || ""}`.trim()
+      : "The current sample has no blocked task. No follow-up is needed.";
+    document.getElementById("sample-story-explanation").textContent = blocker
+      ? `The sample task is assigned to ${blockerOwner}. This status is fictional local data; no reminder was scheduled and no customer activity was recorded.`
+      : "This sample view is fictional local data. No reminder was scheduled and no customer activity was recorded.";
+
+    const item = blocker
+      ? blocker.title.toLowerCase().replace(/^(?:add|configure|prepare|approve)\s+/i, "").replace(/\bdns\b/gi, "DNS")
+      : "the next onboarding step";
+    const customer = implementation.customer_name;
+    const messages = {
+      soft: `Hi ${blockerOwner}, hope your week is going well. We’re waiting on ${item} to continue ${customer}’s onboarding. Could you share an update when you have a moment? Happy to clarify anything that would help.`,
+      firm: `Hi ${blockerOwner}, to keep ${customer}’s onboarding moving, we need ${item}. Please let us know by [date] whether you can provide it or if another owner should help.`,
+      escalation: `Hi ${blockerOwner}, ${customer}’s onboarding is waiting on ${item}. If someone else owns this, please forward this note or share their name so we can agree on the next step and a realistic timeline.`
+    };
+    const draft = document.getElementById("sample-nudge-draft");
+    const toneButtons = [...sampleStory.querySelectorAll("[data-sample-tone]")];
+    for (const button of toneButtons) {
+      button.onclick = () => {
+        for (const toneButton of toneButtons) {
+          toneButton.setAttribute("aria-pressed", String(toneButton === button));
+        }
+        draft.value = messages[button.dataset.sampleTone];
+        document.getElementById("sample-nudge-status").textContent = "";
+      };
+    }
+    draft.value = messages.soft;
+    document.getElementById("copy-sample-nudge").onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(draft.value);
+        document.getElementById("sample-nudge-status").textContent = "Copied. No message was sent.";
+      } catch {
+        document.getElementById("sample-nudge-status").textContent =
+          "Copy unavailable. Select the draft and copy it manually.";
+      }
+    };
+  }
   const budgetBurn = implementation.budgetBurn || {};
   const budgetTypeNames = {
     fixed_hours: "Fixed hours",
@@ -4156,11 +4218,13 @@ async function initialize() {
     appShell.hidden = false;
     document.getElementById("local-demo-banner").hidden = false;
     document.getElementById("help-privacy-note").textContent =
-      "Sample workspace: fictional records only. Changes stay in this browser and no Relay account or backend is used. Ray uses built-in answers; no external AI service is contacted.";
+      "Sample workspace: fictional records only. Most edits are local and reset on refresh; customer portal previews may keep a sample snapshot in this browser. No Relay account or backend is used, and no customer message is sent. Ray uses built-in answers; no external AI service is contacted.";
     await loadPreferences();
     await loadOnboarding();
     showProduct();
     await loadWorkspace();
+    setView("implementations");
+    await openImplementation(9040);
     await loadHelpHistory();
     return;
   }

@@ -5,6 +5,7 @@ const { existsSync, readFileSync } = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 const { runInNewContext } = require("node:vm");
+const { calculateDelayEstimate, estimateEarlierTiming } = require("../public/relay-estimate.js");
 
 const adapterSource = readFileSync(path.join(__dirname, "..", "public", "product-demo.js"), "utf8");
 const productRoutesSource = readFileSync(path.join(__dirname, "..", "product-routes.js"), "utf8");
@@ -24,6 +25,47 @@ function makeDemoAdapter(storage = new Map(), { search = "?demo=workspace", host
   runInNewContext(adapterSource, { window, URLSearchParams, URL });
   return { adapter: window.relayWorkspaceDemo, storage };
 }
+
+test("delay estimate separates contract-value timing from follow-up labor and clamps negative delay", () => {
+  const defaults = {
+    customersPerMonth: 5,
+    annualContractValue: 120000,
+    actualDays: 38,
+    bestCaseDays: 14,
+    chaseHoursPerWeek: 6,
+    hourlyCost: 800
+  };
+  const estimate = calculateDelayEstimate(defaults);
+
+  assert.equal(estimate.delayedDays, 24);
+  assert.equal(Math.round(estimate.contractValueTimingPerCustomer), 7890);
+  assert.equal(Math.round(estimate.annualizedContractValueTiming), 473425);
+  assert.equal(estimate.annualChaseHours, 312);
+  assert.equal(estimate.annualChaseLaborEstimate, 249600);
+  assert.equal(Math.round(estimateEarlierTiming(defaults, 10)), 197260);
+  assert.equal(calculateDelayEstimate({ ...defaults, actualDays: 10 }).annualizedContractValueTiming, 0);
+  assert.equal(estimateEarlierTiming({ ...defaults, actualDays: 10 }, 0), 0);
+  assert.throws(() => calculateDelayEstimate({ ...defaults, customersPerMonth: -1 }), RangeError);
+  assert.throws(() => estimateEarlierTiming(defaults, 25), RangeError);
+});
+
+test("landing page exposes an editable, clearly qualified estimate and copy-only nudge writer", () => {
+  const publicDir = path.join(__dirname, "..", "public");
+  const homePage = readFileSync(path.join(publicDir, "index.html"), "utf8");
+  const landingTools = readFileSync(path.join(publicDir, "landing-tools.js"), "utf8");
+
+  assert.match(homePage, /Signed 24 days ago/);
+  assert.match(homePage, /id="delay-estimator-form"/);
+  assert.match(homePage, /id="days-shaved"/);
+  assert.match(homePage, /id="calm-range"/);
+  assert.match(homePage, /id="nudge-writer-form"/);
+  assert.match(homePage, /contract-value timing/);
+  assert.match(homePage, /This is a capacity comparison, not a savings or break-even claim/);
+  assert.match(homePage, /₹2,999\/month/);
+  assert.match(landingTools, /No message was sent/);
+  assert.match(landingTools, /Copy message/);
+  assert.doesNotMatch(landingTools, /\bfetch\s*\(/);
+});
 
 test("public sample workspace requires an explicit demo query and uses only the local adapter", async () => {
   const regularPage = makeDemoAdapter(new Map(), { search: "", hostname: "relayautomation.tech" });
@@ -53,6 +95,8 @@ test("sample workspace previews portfolio health, notification settings, and int
   const { adapter } = makeDemoAdapter();
   const workspace = await adapter.request("/api/product/workspace");
   const implementation = workspace.implementations.find((item) => item.id === 9040);
+  const acme = (await adapter.request("/api/product/implementations/9040")).implementation;
+  const brightwave = workspace.implementations.find((item) => item.customer_name === "Brightwave");
   assert.equal(implementation.blocked_steps, 1);
   assert.equal(implementation.overdue_steps, 1);
   assert.equal(implementation.quiet_customer, true);
@@ -60,6 +104,13 @@ test("sample workspace previews portfolio health, notification settings, and int
   assert.equal(implementation.escalation_email, "");
   assert.equal(implementation.escalation_delay_days, 5);
   assert.match(implementation.projected_completion, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(implementation.customer_name, "Acme Logistics");
+  assert.equal(acme.steps.filter((step) => step.status === "done").length, 11);
+  assert.equal(acme.steps.length, 13);
+  assert.equal(acme.steps.find((step) => step.is_blocked).owner, "Acme IT");
+  assert.equal(brightwave.completed_steps, 2);
+  assert.equal(brightwave.total_steps, 5);
+  assert.equal(brightwave.blocked_steps, 3);
   assert.equal(workspace.notificationSettings.email_enabled, false);
 
   const savedEscalation = await adapter.request("/api/product/implementations/9040/customer-escalation", {
@@ -268,8 +319,8 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.doesNotMatch([homePage, aboutPage, founderPage, solutionsPage, demoPage, pricingPage].join("\n"), /Book a Demo|Book a demo|data-inquiry-type="Demo request"/);
   assert.match(homePage, /B2B SaaS customer onboarding/i);
   assert.match(aboutPage, /B2B SaaS customer onboarding workspace/i);
-  assert.match(homePage, /From kickoff to go-live/i);
-  assert.match(homePage, /One workspace for implementation teams to coordinate tasks, customer requests, and launch readiness/i);
+  assert.match(homePage, /Signed 24 days ago/i);
+  assert.match(homePage, /How many new customers are signed but still waiting to go live/i);
   assert.doesNotMatch(homePage, /home-flow-layout|home-cta-actions|guided-demo-link/);
   assert.match(aboutPage, /Relay Automation was founded by Mohamed Shajith/);
   assert.match(founderPage, /Mohamed Shajith/);
@@ -291,10 +342,7 @@ test("marketing pages expose the sample demo and disclose current product bounda
   assert.doesNotMatch(homePage, /No Login Required/i);
   assert.doesNotMatch(homePage, /<video\b/i);
   assert.doesNotMatch(homePage, /relay-home-overview\.mp4/);
-  assert.match(homePage, /class="hero-project-photo"/);
-  assert.match(homePage, /relay-home-hero\.svg/);
-  assert.match(homePage, /Relay onboarding workspace showing launch readiness, next actions, and customer setup progress/);
-  assert.match(homePage, /class="hero-logo" src="assets\/Futuristic%20RA%20Tech%20Monogram%20Logo\.png"/);
+  assert.doesNotMatch(homePage, /class="hero-project-photo"|relay-home-hero\.svg/);
   assert.doesNotMatch(homePage, /relay-preview-|sample workspace overview|real screens from Relay/i);
   for (const obsolete of [
     "relay-60-second-overview.mp4",
@@ -316,7 +364,10 @@ test("marketing pages expose the sample demo and disclose current product bounda
   for (const illustration of ["readiness", "ownership", "customer", "process"]) {
     assert.ok(existsSync(path.join(publicDir, "assets", `relay-home-${illustration}.svg`)));
   }
-  assert.doesNotMatch(homePage, /₹\s?2,999|₹\s?3,999|home-pricing-section|home-plan-(?:grid|card)|See plans from/);
+  assert.match(homePage, /₹2,999\/month/);
+  assert.match(homePage, /class="section home-pricing-section"/);
+  assert.match(homePage, /capacity comparison, not a savings or break-even claim/i);
+  assert.doesNotMatch(homePage, /₹\s?3,999|home-plan-(?:grid|card)|See plans from/);
   assert.match(homePage, /href="pricing\.html">Pricing<\/a>/);
   assert.match(homePage, /href="features-services\.html">Our Solutions<\/a>/);
   assert.match(readFileSync(path.join(publicDir, "relay-motion.js"), "utf8"), /"\.home-benefit-card"/);
@@ -704,7 +755,7 @@ test("local customer links work across tabs, validate submissions, and rotate", 
   const firstPage = makeDemoAdapter(storage).adapter;
   const portal = await firstPage.request(`/api/product/customer/${firstToken}`);
 
-  assert.equal(portal.customerName, "Acme Example Co.");
+  assert.equal(portal.customerName, "Acme Logistics");
   assert.equal(portal.requirements.find((item) => item.name === "Project contact email").required, true);
   assert.equal(portal.tasks.length, 2);
   assert.equal(portal.tasks[1].waiting, false);
@@ -753,7 +804,7 @@ test("local customer links work across tabs, validate submissions, and rotate", 
   );
   assert.equal(
     (await makeDemoAdapter(storage).adapter.request(`/api/product/customer/${replacementToken}`)).customerName,
-    "Acme Example Co."
+    "Acme Logistics"
   );
 });
 
@@ -980,6 +1031,17 @@ test("customer-visible tasks stay blocked until their prerequisite is complete",
     "/api/product/implementations/9040/customer-link",
     { method: "POST" }
   );
+  await adapter.request("/api/product/implementations/9040/steps/9042", {
+    method: "PATCH",
+    body: {
+      status: "in_progress",
+      owner: "Setup specialist",
+      assigneeUserId: 9002,
+      customerVisible: true,
+      dueAt: "",
+      isBlocked: false
+    }
+  });
   await adapter.request("/api/product/implementations/9040/steps/9043", {
     method: "PATCH",
     body: {

@@ -16,6 +16,21 @@
   };
   const stageGateOrder = ["kickoff", "configuration", "testing", "launch", "hypercare", "complete"];
   const approvalStageGates = stageGateOrder.slice(0, -1);
+  const demoWorkflow = [
+    { title: "Confirm project goals", description: "Agree on success measures and the project owner.", owner: "Implementation lead", stage: "Kickoff", customer_visible: true, responsible_party: "client" },
+    { title: "Gather workspace access", description: "Collect the access details needed for setup.", owner: "Setup specialist", stage: "Kickoff", customer_visible: true, responsible_party: "client" },
+    { title: "Map the current workflow", description: "Document the team's current process and handoffs.", owner: "Implementation lead", stage: "Kickoff" },
+    { title: "Configure the workspace", description: "Set up the workspace using confirmed project requirements.", owner: "Setup specialist", stage: "Configuration" },
+    { title: "Confirm domain requirements", description: "Review DNS and domain configuration requirements.", owner: "Technical lead", stage: "Configuration" },
+    { title: "Prepare sample data", description: "Prepare representative data for a safe test.", owner: "Data specialist", stage: "Configuration" },
+    { title: "Validate user roles", description: "Check access levels with the project owner.", owner: "Setup specialist", stage: "Configuration" },
+    { title: "Run an integration test", description: "Validate the configured integration in the test environment.", owner: "Technical lead", stage: "Testing" },
+    { title: "Review training materials", description: "Prepare role-specific guidance for the customer team.", owner: "Customer lead", stage: "Testing" },
+    { title: "Confirm acceptance checklist", description: "Review the agreed launch checks and owners.", owner: "Implementation lead", stage: "Testing" },
+    { title: "Schedule the launch review", description: "Agree on a time to review launch readiness.", owner: "Customer lead", stage: "Launch" },
+    { title: "Add the DNS record", description: "Acme IT adds the DNS record required for the launch configuration.", owner: "Acme IT", stage: "Launch", responsible_party: "client", blocker_reason: "The DNS record has not been added yet.", blocker_next_action: "Ask Acme IT to add the record and confirm when it is ready." },
+    { title: "Confirm go-live", description: "Complete the final review once the DNS record is available.", owner: "Implementation lead", stage: "Launch" }
+  ];
   const stageGatesToPass = (currentStage, nextStage) => {
     const currentIndex = stageGateOrder.indexOf(currentStage);
     const nextIndex = stageGateOrder.indexOf(nextStage);
@@ -51,26 +66,14 @@
       revision: 1,
       updated_at: new Date().toISOString(),
       checked: true,
-      steps: [
-        {
-          id: 9011, title: "Confirm project goals", description: "Agree on success measures and the project owner.",
-          owner: "Implementation lead", position: 1, stage: "Kickoff", due_offset_days: 0,
-          assignee_user_id: ownerId, assignee_email: "owner@demo.invalid", customer_visible: true,
-          estimated_duration_days: 1, responsible_party: "client", dependsOn: []
-        },
-        {
-          id: 9012, title: "Configure the workspace", description: "Set up the workspace using the confirmed project requirements.",
-          owner: "Setup specialist", position: 2, stage: "Configuration", due_offset_days: 3,
-          assignee_user_id: memberId, assignee_email: "teammate@demo.invalid", customer_visible: true,
-          estimated_duration_days: 2, responsible_party: "relay", dependsOn: [9011]
-        },
-        {
-          id: 9013, title: "Review launch readiness", description: "Review configuration with the customer and record open questions.",
-          owner: "Implementation lead", position: 3, stage: "Launch", due_offset_days: 7,
-          assignee_user_id: ownerId, assignee_email: "owner@demo.invalid", customer_visible: false,
-          estimated_duration_days: 1, responsible_party: "relay", dependsOn: [9012]
-        }
-      ]
+      steps: demoWorkflow.map((step, index) => ({
+        id: 9011 + index, ...step, position: index + 1, due_offset_days: index + 2,
+        assignee_user_id: index % 2 ? memberId : ownerId,
+        assignee_email: index % 2 ? "teammate@demo.invalid" : "owner@demo.invalid",
+        estimated_duration_days: 1,
+        responsible_party: step.responsible_party || "relay",
+        dependsOn: index ? [9010 + index] : []
+      }))
     }],
     templates: [{
       id: 9020, process_id: 9010, name: "Standard onboarding", revision: 2,
@@ -82,12 +85,12 @@
       { id: 9031, name: "Current website", description: "Share the website URL to use during setup.", required: false, input_type: "url", template_id: null }
     ],
     implementations: [{
-      id: 9040, template_id: 9020, customer_name: "Acme Example Co.", template_name: "Standard onboarding",
-      created_at: dateOffset(-5), has_customer_link: true, escalation_email: "", escalation_delay_days: 5,
+      id: 9040, template_id: 9020, customer_name: "Acme Logistics", template_name: "Standard onboarding",
+      created_at: dateOffset(-24), has_customer_link: true, escalation_email: "", escalation_delay_days: 5,
       base_onboarding_fee: 12000,       budget_type: "fixed_hours", budget_limit: 120,
       hard_lock_on_exceed: false, budgetBurn: { burn_pct: 50, logged_minutes: 3600, delivery_cost: 4200 },
       budgetOverrides: [], changeOrders: [{ id: 9050, status: "approved", additional_fee: 1500, task_ids: [9043] }],
-      target_launch_date: dateOffset(15), customer_owner_name: "Jordan Lee", customer_owner_email: "jordan@acme.example",
+      target_launch_date: dateOffset(5), customer_owner_name: "Jordan Lee", customer_owner_email: "jordan@acme.example",
       success_criteria: "Customer team completes a successful test and confirms the launch workflow.",
       acceptance_status: "in_progress",
       test_plan: "Run the configured workspace through the customer acceptance checklist.",
@@ -126,32 +129,25 @@
       launchStakeholders: [],
       launchRisks: [],
       customerContacts: [], customerMessages: [], customerFiles: [],
-      steps: [
-        {
-          id: 9041, title: "Confirm project goals", description: "Agree on success measures and the project owner.",
-          owner: "Implementation lead", position: 1, status: "done", updated_at: new Date().toISOString(),
-          stage: "Kickoff", assignee_user_id: ownerId, assignee_email: "owner@demo.invalid",
-          customer_visible: true,
-          due_at: dateOffset(-2), is_blocked: false, blocker_reason: "", blocker_next_action: "", waiting_on: "",
-          last_completed_at: new Date(Date.now() - 86400000).toISOString()
-        },
-        {
-          id: 9042, title: "Configure the workspace", description: "Set up the workspace using the confirmed project requirements.",
-          owner: "Setup specialist", position: 2, status: "in_progress", updated_at: new Date().toISOString(),
-          stage: "Configuration", assignee_user_id: memberId, assignee_email: "teammate@demo.invalid",
-          customer_visible: true,
-          due_at: dateOffset(2), is_blocked: false, blocker_reason: "",
-          blocker_next_action: "", waiting_on: "", dependsOn: [9041]
-        },
-        {
-          id: 9043, title: "Review launch readiness", description: "Review configuration with the customer and record open questions.",
-          owner: "Implementation lead", position: 3, status: "not_started", updated_at: new Date().toISOString(),
-          stage: "Launch", assignee_user_id: ownerId, assignee_email: "owner@demo.invalid",
-          customer_visible: false,
-          due_at: dateOffset(-1), is_blocked: true, blocker_reason: "Final approval is still pending.",
-          blocker_next_action: "The implementation lead will follow up with the customer admin.", waiting_on: "Configure the workspace", dependsOn: [9042]
-        }
-      ],
+      steps: demoWorkflow.map((step, index) => {
+        const id = 9041 + index;
+        const isBlocker = index === 11;
+        return {
+          id, title: step.title, description: step.description, owner: step.owner, position: index + 1,
+          status: index < 11 ? "done" : isBlocker ? "in_progress" : "not_started",
+          updated_at: isBlocker ? new Date(Date.now() - 6 * 86400000).toISOString() : dateOffset(-1), stage: step.stage,
+          assignee_user_id: index % 2 ? memberId : ownerId,
+          assignee_email: index % 2 ? "teammate@demo.invalid" : "owner@demo.invalid",
+          customer_visible: step.customer_visible === true,
+          due_at: dateOffset(isBlocker ? -2 : index < 11 ? -1 : 4),
+          is_blocked: isBlocker,
+          blocker_reason: isBlocker ? step.blocker_reason : "",
+          blocker_next_action: isBlocker ? step.blocker_next_action : "",
+          waiting_on: isBlocker ? "Acme IT" : index === 12 ? "Add the DNS record" : "",
+          ...(index ? { dependsOn: [9040 + index] } : {}),
+          ...(index < 11 ? { last_completed_at: dateOffset(-Math.max(1, 11 - index)) } : {})
+        };
+      }),
       requirements: [
         { id: 9030, name: "Project contact email", description: "Who should receive setup updates?", required: true, input_type: "email", value: "" },
         { id: 9031, name: "Current website", description: "Share the website URL to use during setup.", required: false, input_type: "url", value: "https://acme.example" }
@@ -452,6 +448,55 @@
     { revision: 2, name: "Standard onboarding", steps: data.templates[0].steps.map((step) => step.title), created_at: data.templates[0].updated_at },
     { revision: 1, name: "Standard onboarding draft", steps: data.templates[0].steps.slice(0, 2).map((step) => step.title), created_at: data.templates[0].created_at }
   ];
+  const brightwaveProcess = clone(data.processes[0]);
+  brightwaveProcess.id = 9060;
+  brightwaveProcess.name = "Short launch workflow";
+  brightwaveProcess.steps = brightwaveProcess.steps.slice(0, 5).map((step, index) => ({
+    ...step,
+    id: 9061 + index,
+    position: index + 1,
+    dependsOn: index ? [9060 + index] : []
+  }));
+  const brightwaveTemplate = {
+    id: 9070, process_id: brightwaveProcess.id, name: "Short launch workflow", revision: 1,
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    steps: makeTemplate(brightwaveProcess, "Short launch workflow", 9070).steps,
+    history: []
+  };
+  const brightwave = clone(data.implementations[0]);
+  brightwave.id = 9080;
+  brightwave.template_id = brightwaveTemplate.id;
+  brightwave.customer_name = "Brightwave";
+  brightwave.template_name = brightwaveTemplate.name;
+  brightwave.created_at = dateOffset(-41);
+  brightwave.has_customer_link = false;
+  brightwave.target_launch_date = dateOffset(9);
+  brightwave.steps = brightwaveProcess.steps.map((step, index) => {
+    const open = index >= 2;
+    const owner = ["Brightwave IT", "Brightwave data team", "Brightwave project lead"][index - 2];
+    return {
+      id: 9081 + index,
+      title: ["Confirm project goals", "Gather workspace access", "Configure single sign-on", "Prepare import data", "Approve launch checklist"][index],
+      description: step.description,
+      owner: open ? owner : step.owner,
+      position: index + 1,
+      status: index < 2 ? "done" : "not_started",
+      updated_at: dateOffset(open ? -9 + index : -12 + index),
+      stage: step.stage,
+      assignee_user_id: index % 2 ? memberId : ownerId,
+      assignee_email: index % 2 ? "teammate@demo.invalid" : "owner@demo.invalid",
+      customer_visible: index === 1,
+      due_at: dateOffset(open ? -3 : -8),
+      is_blocked: open,
+      blocker_reason: open ? "The required setup information has not arrived." : "",
+      blocker_next_action: open ? `Follow up with ${owner} for the next update.` : "",
+      waiting_on: open ? owner : "",
+      ...(index ? { dependsOn: [9080 + index] } : {})
+    };
+  });
+  data.processes.push(brightwaveProcess);
+  data.templates.push(brightwaveTemplate);
+  data.implementations.push(brightwave);
 
   function responseForImplementation(implementation) {
     if (!implementation) throw new Error("Implementation not found in the local demo data.");

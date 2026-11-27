@@ -93,7 +93,7 @@
 
   <div id="app-shell" class="app-shell" data-jcx-private hidden>
     <div class="local-demo-banner" id="local-demo-banner" role="status" hidden>
-      Sample workspace · fictional data only · changes stay in this browser · customer-link samples can be shared across tabs · no Relay account or backend is used
+      Sample workspace · fictional data · most edits reset on refresh · no messages are sent · no Relay account or backend is used
     </div>
     <main id="ray-demo-stage" class="ray-demo-stage" hidden>
       <a class="wordmark" href="index.html" aria-label="Relay Automation home"><img class="wordmark-logo" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="wordmark-name"><span>Relay</span><small>Automation</small></span></a>
@@ -434,6 +434,26 @@
             <button type="button" data-implementation-jump="launch-readiness-section" aria-controls="launch-readiness-section">Launch readiness</button>
             <button type="button" data-implementation-jump="collaboration-section" aria-controls="collaboration-section">Messages &amp; files</button>
           </nav>
+          <section class="sample-story-card" id="sample-story-card" aria-labelledby="sample-story-title" hidden>
+            <div class="sample-story-heading">
+              <div><span class="sample-tag">Fictional sample customer</span><h3 id="sample-story-title">Acme Logistics</h3></div>
+              <div class="sample-progress-ring" id="sample-progress-ring" role="progressbar" aria-label="Sample onboarding progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="sample-progress-value">0%</span></div>
+            </div>
+            <p class="sample-story-progress" id="sample-story-progress"></p>
+            <div class="sample-blocker-card"><span class="sample-blocker-icon" aria-hidden="true">!</span><div><strong id="sample-blocker-title"></strong><p id="sample-blocker-description"></p></div></div>
+            <details class="sample-story-details"><summary>Why is this taking time?</summary><p id="sample-story-explanation"></p></details>
+            <div class="sample-nudge">
+              <label for="sample-nudge-draft">Edit this follow-up draft before copying</label>
+              <div class="sample-nudge-tones" role="group" aria-label="Sample follow-up tone">
+                <button type="button" data-sample-tone="soft" aria-pressed="true">Soft</button>
+                <button type="button" data-sample-tone="firm" aria-pressed="false">Firm</button>
+                <button type="button" data-sample-tone="escalation" aria-pressed="false">Escalation</button>
+              </div>
+              <textarea id="sample-nudge-draft" rows="4" maxlength="1600"></textarea>
+              <div class="sample-nudge-actions"><button class="button secondary" id="copy-sample-nudge" type="button">Copy draft</button><span>Copy only. Nothing is sent.</span></div>
+              <p id="sample-nudge-status" role="status" aria-live="polite"></p>
+            </div>
+          </section>
           <section class="panel implementation-primary-section" id="implementation-work-section" tabindex="-1" aria-labelledby="implementation-work-heading">
             <div class="panel-heading"><div><h3 id="implementation-work-heading">Work plan</h3><p>Tasks, owners, and due dates for this customer.</p></div><span id="implementation-step-summary" class="badge" role="status" aria-live="polite">No tasks yet</span></div>
             <div id="implementation-step-list" class="step-list"></div>

@@ -75,40 +75,140 @@
 <body class="home-page">
   <header class="topbar"><div class="wrap nav">
     <a class="brand" href="index.html" aria-label="Relay Automation home"><img src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="brand-name"><span class="brand-relay">Relay</span><span class="brand-automation">Automation</span></span></a>
-    <div class="nav-actions"><a class="nav-login" href="product.html">Log in</a><a class="button nav-demo" href="product.html?demo=workspace">Try the sample workspace <span aria-hidden="true">→</span></a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-menu" aria-label="Open menu"><span></span><span></span><span></span></button></div>
+    <div class="nav-actions"><a class="nav-login" href="product.html">Log in</a><a class="button nav-demo" href="product.html?demo=workspace"><span class="nav-demo-wide">Try the sample workspace</span><span class="nav-demo-compact">Try sample</span><span aria-hidden="true">→</span></a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-menu" aria-label="Open menu"><span></span><span></span><span></span></button></div>
     <nav class="menu-panel" id="site-menu" aria-label="Main menu">
       <a href="index.html" aria-current="page">Home</a><a href="about.html">About</a><a href="features-services.html">Our Solutions</a><a href="pricing.html">Pricing</a><a href="contact.html">Contact</a>
     </nav>
   </div></header>
   <main>
-    <section class="hero home-hero"><div class="wrap home-hero-grid">
-      <div class="home-hero-copy">
-        <p class="eyebrow">B2B SaaS customer onboarding</p>
-        <h1>From kickoff to go-live.</h1>
-        <p class="hero-description">One workspace for implementation teams to coordinate tasks, customer requests, and launch readiness.</p>
-        <div class="hero-actions">
-          <a class="button" href="product.html?demo=workspace">Try the sample workspace <span aria-hidden="true">→</span></a>
+    <section class="hero home-hero waiting-hero">
+      <div class="wrap waiting-hero-content">
+        <p class="eyebrow">For B2B SaaS implementation teams</p>
+        <h1>Signed 24 days ago.<br>Still waiting to go live?</h1>
+        <p class="hero-description">You closed the deal. Now you’re chasing the logo, access, or the right person to finish onboarding.</p>
+        <div class="waiting-stepper">
+          <label for="stuck-customer-count">How many new customers are signed but still waiting to go live?</label>
+          <div class="stepper-control">
+            <button type="button" id="stuck-count-decrease" aria-label="Decrease customer count">−</button>
+            <input id="stuck-customer-count" type="number" min="0" max="99" step="1" value="6" inputmode="numeric">
+            <button type="button" id="stuck-count-increase" aria-label="Increase customer count">+</button>
+          </div>
         </div>
-        <p class="note">Sample data is fictional; changes stay in this browser.</p>
+        <div class="hero-actions">
+          <button class="button" id="show-estimate" type="button">Show me the estimate <span aria-hidden="true">↓</span></button>
+          <a class="hero-skip-link" href="product.html?demo=workspace">Or skip to the sample workspace</a>
+        </div>
+        <p class="waiting-hero-note">Your count carries into the estimator as a monthly cohort estimate; adjust it there. It’s a starting point, not your business data.</p>
       </div>
-      <figure class="hero-project-photo">
-        <img class="hero-art" src="assets/relay-home-hero.svg" alt="Relay onboarding workspace showing launch readiness, next actions, and customer setup progress" width="1600" height="900">
-        <img class="hero-logo" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt="" aria-hidden="true" width="48" height="48">
-      </figure>
-    </div></section>
+    </section>
 
-    <section class="section"><div class="wrap">
-      <div class="section-head"><p class="eyebrow">How Relay helps</p><h2>Three ways to keep launches moving.</h2></div>
-      <div class="home-benefit-grid">
-        <article class="home-benefit-card"><span class="home-card-number">01</span><p class="eyebrow">Standardize</p><h3>Turn your process into a repeatable workflow.</h3><p>Keep onboarding steps and ownership clear.</p></article>
-        <article class="home-benefit-card"><span class="home-card-number">02</span><p class="eyebrow">Coordinate</p><h3>Bring team and customer work together.</h3><p>Track tasks, due dates, and requests in one plan.</p></article>
-        <article class="home-benefit-card"><span class="home-card-number">03</span><p class="eyebrow">Stay on track</p><h3>See what is holding up each launch.</h3><p>Review progress and readiness across customers.</p></article>
+    <section class="section estimator-section" id="delay-estimator" aria-labelledby="estimator-title">
+      <div class="wrap estimator-layout">
+        <div class="estimator-intro">
+          <p class="eyebrow">The waiting-room receipt</p>
+          <h2 id="estimator-title">Put a number on the waiting.</h2>
+          <p>Adjust the assumptions. We’ll show contract-value timing and team time separately—because they aren’t the same kind of cost.</p>
+          <p class="estimator-trust-note">No login. Your inputs stay in this browser.</p>
+        </div>
+        <form class="estimator-card" id="delay-estimator-form">
+          <div class="estimator-fields">
+            <div class="field"><label for="customers-per-month">Customers affected per month</label><input id="customers-per-month" name="customersPerMonth" type="number" min="0" max="200" value="5" required></div>
+            <div class="field"><label for="contract-value">First-year value per customer</label><div class="range-value"><output id="contract-value-display" for="contract-value">₹1,20,000</output></div><input id="contract-value" name="annualContractValue" type="range" min="20000" max="1000000" step="10000" value="120000"><small>₹20,000 – ₹10,00,000</small></div>
+            <div class="field"><label for="actual-days">Days from signing to go-live</label><input id="actual-days" name="actualDays" type="number" min="1" max="365" value="38" required></div>
+            <div class="field"><label for="best-case-days">Best-case days (your honest estimate)</label><input id="best-case-days" name="bestCaseDays" type="number" min="1" max="365" value="14" required></div>
+            <div class="field"><label for="chase-hours">Hours a week spent following up</label><input id="chase-hours" name="chaseHoursPerWeek" type="number" min="0" max="168" step="0.5" value="6" required></div>
+            <div class="field"><label for="hourly-cost">Estimated cost per team hour</label><input id="hourly-cost" name="hourlyCost" type="number" min="0" max="100000" step="50" value="800" required></div>
+          </div>
+          <fieldset class="billing-start">
+            <legend>When does billing start?</legend>
+            <label><input type="radio" name="billingStart" value="signing"> At signing</label>
+            <label><input type="radio" name="billingStart" value="go-live" checked> At go-live</label>
+          </fieldset>
+          <div class="estimate-results" aria-live="polite">
+            <article class="estimate-result">
+              <span id="estimate-delay-label">Estimated first-year contract value shifted later</span>
+              <strong id="estimate-delay-value" tabindex="-1">₹0</strong>
+              <small>Annualized estimate · <span id="estimate-delay-days">0</span> days beyond your best case</small>
+            </article>
+            <article class="estimate-result">
+              <span>Follow-up time, annualized</span>
+              <strong><span id="estimate-labor-hours">0 hours</span></strong>
+              <small>Illustrative team-labor estimate · <span id="estimate-labor-value">₹0</span></small>
+            </article>
+          </div>
+          <p class="estimate-assumption" id="estimate-assumption"></p>
+          <details class="estimate-math">
+            <summary>How we got this</summary>
+            <ul>
+              <li>Days beyond best case = max(0, actual days − best-case days).</li>
+              <li>Value timing per customer = first-year value ÷ 365 × days beyond best case.</li>
+              <li>Annualized value timing = value timing per customer × affected customers per month × 12.</li>
+              <li>Follow-up hours = hours per week × 52; labor estimate = hours × your hourly cost.</li>
+            </ul>
+            <p>This is a planning estimate, not revenue lost, a forecast, or a guarantee. Payment terms, churn, refunds, and other costs are not estimated.</p>
+          </details>
+          <div class="relief-control">
+            <label for="days-shaved">What if onboarding finished sooner? Move the timeline by <strong><span id="days-shaved-value">10</span> days</strong>.</label>
+            <input id="days-shaved" type="range" min="0" max="24" step="1" value="10">
+            <p><strong id="relief-per-customer">₹0</strong> per customer in contract-value timing · <strong id="relief-annual-cohort">₹0</strong> across an annualized cohort.</p>
+            <small>A scenario for comparison, not a promise of savings.</small>
+          </div>
+        </form>
       </div>
-    </div></section>
+    </section>
+
+    <section class="section calm-section" aria-labelledby="calm-title">
+      <div class="wrap">
+        <div class="section-head"><p class="eyebrow">A sample Tuesday</p><h2 id="calm-title">From scattered follow-ups to one useful status.</h2><p>Move the slider to compare two fictional views of the same kind of customer wait.</p></div>
+        <div class="calm-demo" id="calm-demo" data-state="busy">
+          <div class="calm-demo-heading"><span class="sample-tag">Illustrative scenario</span><strong id="calm-state-label">Tuesday, 4:47 pm</strong></div>
+          <div class="calm-notifications" aria-hidden="true">
+            <article><span>Chat</span><p>“Did Acme get the DNS record?”</p></article>
+            <article><span>Email</span><p>“Re: setup — any update?”</p></article>
+            <article><span>Project note</span><p>“Waiting on the customer contact.”</p></article>
+          </div>
+          <div class="calm-status-card"><span class="calm-status-icon" aria-hidden="true">✓</span><div><strong id="calm-status">Sample inbox · DNS setup, a forwarded email, a customer follow-up, and a status request.</strong><p>Example only. No customer activity or reminders are being generated.</p></div></div>
+        </div>
+        <label class="calm-range-label" for="calm-range"><span>Scattered updates</span><span>One clear next step</span></label>
+        <input id="calm-range" class="calm-range" type="range" min="0" max="100" value="0" aria-label="Compare sample inbox and status views">
+      </div>
+    </section>
+
+    <section class="section nudge-section" id="nudge-writer" aria-labelledby="nudge-title">
+      <div class="wrap nudge-layout">
+        <div class="nudge-intro">
+          <p class="eyebrow">Free, no-login tool</p>
+          <h2 id="nudge-title">Write the follow-up. Keep it human.</h2>
+          <p>Choose what you’re waiting for and get three drafts you can edit before sending yourself.</p>
+        </div>
+        <form id="nudge-writer-form" class="nudge-form">
+          <div class="nudge-input-grid">
+            <div class="field"><label for="nudge-blocker">What are you waiting on?</label><select id="nudge-blocker" name="blocker"><option value="logo">Logo</option><option value="access">API or IT access</option><option value="dns">DNS record</option><option value="paperwork">Signed paperwork</option><option value="contact">The right contact</option><option value="test_data">Test data</option><option value="legal">Legal approval</option></select></div>
+            <div class="field"><label for="nudge-wait">How long has it been?</label><select id="nudge-wait" name="wait"><option value="3-days">About 3 days</option><option value="1-week">About a week</option><option value="2-weeks">More than 2 weeks</option></select></div>
+            <div class="field"><label for="nudge-relationship">What’s the context?</label><select id="nudge-relationship" name="relationship"><option value="friendly">We’re on good terms</option><option value="quiet">They’ve gone quiet</option><option value="manager">A manager is already involved</option></select></div>
+            <div class="field"><label for="nudge-company">Customer company <span class="optional">Optional</span></label><input id="nudge-company" name="company" maxlength="100" placeholder="e.g. Acme Logistics"></div>
+            <div class="field"><label for="nudge-contact">Contact name <span class="optional">Optional</span></label><input id="nudge-contact" name="contact" maxlength="100" placeholder="[Name]"></div>
+          </div>
+          <button class="button" type="submit">Write three drafts <span aria-hidden="true">→</span></button>
+          <p class="nudge-privacy-note">Drafts are created in your browser. Review and edit before sending; nothing is sent by Relay.</p>
+          <div id="nudge-messages" class="nudge-messages" tabindex="-1" aria-live="polite"></div>
+          <p class="nudge-sample-link">Want to see a blocker in context? <a href="product.html?demo=workspace">Open the fictional sample workspace</a>.</p>
+        </form>
+      </div>
+    </section>
+
+    <section class="section home-pricing-section" aria-labelledby="home-pricing-title">
+      <div class="wrap home-pricing-card">
+        <div><p class="eyebrow">A straightforward next step</p><h2 id="home-pricing-title">Try the workflow, then compare the plan.</h2><p>Starter is ₹2,999/month for up to 5 active implementations. At full capacity, that’s about ₹600 per active implementation per month. Your actual usage and payment terms determine whether it fits.</p><p class="small-print">This is a capacity comparison, not a savings or break-even claim. Prices are before applicable taxes.</p></div>
+        <div class="home-pricing-actions"><a class="button" href="product.html?demo=workspace">Try the sample workspace <span aria-hidden="true">→</span></a><a class="text-link" href="pricing.html">See all plans and features</a></div>
+      </div>
+    </section>
   </main>
   <footer class="foot"><div class="wrap foot-inner"><a class="brand" href="index.html"><img src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="brand-name"><span class="brand-relay">Relay</span><span class="brand-automation">Automation</span></span></a><div class="foot-links"><a href="about.html">About</a><a href="features-services.html">Our Solutions</a><a href="pricing.html">Pricing</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="contact.html">Contact</a></div><span class="small-print">© 2026 Relay Automation. B2B SaaS customer onboarding.</span></div></footer>
   <script src="relay-nav.js" defer></script>
   <script src="relay-motion.js" defer></script>
   <script src="relay-justonecx.js" defer></script>
+  <script src="relay-estimate.js" defer></script>
+  <script src="landing-tools.js" defer></script>
 </body>
 </html>
