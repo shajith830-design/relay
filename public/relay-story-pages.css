@@ -61,26 +61,25 @@
 @media (max-width: 520px) { .story-hero { min-height: 600px; } .story-hero-copy h1 { font-size: clamp(36px, 10vw, 48px); } .story-hero-art img { object-position: 67% center; } .story-hero-art::before { background: linear-gradient(90deg, rgb(250 249 255 / 97%), rgb(250 249 255 / 87%) 65%, rgb(250 249 255 / 52%)), linear-gradient(0deg, rgb(244 249 248 / 40%), transparent 60%); } }
 @media (prefers-reduced-motion: reduce) { .story-hero-art img { animation: none; } .page-about .home-benefit-card, .page-solutions .solution-snag, .page-solutions .solution-component-card { transition: none !important; } .motion-ready .story-hero-copy > .motion-reveal { opacity: 1; transform: none; } }
 
-/* Carry the illustrated customer journey into the middle of every landing page. */
-.story-mid-art { position: relative; isolation: isolate; overflow: hidden; }
-.story-mid-art > .wrap { position: relative; z-index: 1; }
-.story-mid-art::before { display: none; }
-.story-mid-art > .mid-story-image { position: absolute; z-index: 0; top: 50%; right: 0; display: block; width: min(54%, 760px); height: 100%; transform: translateY(-50%); object-fit: contain; object-position: right center; opacity: .76; pointer-events: none; }
-.story-mid-estimate { background-color: #f7faff; }
-.story-mid-founder { background-color: #faf8ff; }
-.story-mid-solutions { background-color: #f6fbf9; }
-.story-mid-contact { background-color: #fffaf3; }
-.story-mid-pricing { background-color: #f8f8fd; }
+/* Distinct mid-page image bands keep artwork clear of cards and copy. */
+.relay-mid-visual { overflow: hidden; padding-block: clamp(18px, 3vw, 38px); background: linear-gradient(110deg, #f7f5ff, #f2f9fb 52%, #f1faf6); }
+.relay-mid-visual .wrap { width: min(100% - 36px, 1240px); }
+.relay-mid-visual img { display: block; width: 100%; height: clamp(190px, 31vw, 390px); border-radius: 18px; object-fit: cover; object-position: center; }
+.relay-mid-about { background: linear-gradient(110deg, #f5f1ff, #f8fbff 54%, #eef8f3); }
+.relay-mid-solutions { background: linear-gradient(110deg, #edf6ff, #f7f3ff 54%, #eef9f5); }
+.relay-mid-contact { background: linear-gradient(110deg, #fff4e8, #f8f4ff 54%, #eff9f5); }
+.relay-mid-pricing { background: linear-gradient(110deg, #f1f2ff, #f7faff 54%, #edf8f3); }
+.relay-mid-pricing img { background: linear-gradient(120deg, #eef4ff, #f5f0ff 52%, #e7f7ef); object-fit: contain; }
 .pricing-page .pricing-story-hero { position: relative; isolation: isolate; overflow: hidden; background: linear-gradient(90deg, #f7f6ff 0%, rgb(247 246 255 / 96%) 38%, rgb(247 246 255 / 44%) 75%, rgb(247 246 255 / 20%)), url("assets/relay-bg-pricing.svg") center right / cover no-repeat; }
 .pricing-story-hero .pricing-hero-content { position: relative; z-index: 1; }
 .pricing-page .pricing-plans-section .plan-grid, .pricing-page .pricing-plans-section .plan-fit-panel, .pricing-page .pricing-plans-section .pricing-tax-note { position: relative; z-index: 1; }
-.foot { position: relative; isolation: isolate; overflow: hidden; background: linear-gradient(105deg, #152c42, #203951 65%, #243d50); }
+.foot { position: relative; isolation: isolate; overflow: hidden; min-height: 190px; padding-block: 40px; background: linear-gradient(105deg, #152c42, #203951 65%, #243d50); }
 .foot::before { display: none; }
-.foot > .foot-background-art { position: absolute; z-index: 0; top: 0; right: 0; width: min(72%, 960px); height: 100%; object-fit: cover; object-position: right center; opacity: .9; mask-image: linear-gradient(90deg, transparent, #000 34%); pointer-events: none; }
+.foot > .foot-background-art { position: absolute; z-index: 0; top: 0; right: 0; width: min(78%, 1100px); height: 100%; object-fit: cover; object-position: right center; opacity: .95; mask-image: linear-gradient(90deg, transparent, #000 34%); pointer-events: none; }
 .foot .foot-inner { position: relative; z-index: 1; }
 .foot .brand-relay { color: #fff; }
 .foot .brand-automation { color: #c1d5e3; }
 .foot .foot-links a { color: #d4e3ed; }
 .foot .foot-links a:hover { color: #fff; }
 .foot .small-print { color: #c1d1db; }
-@media (max-width: 680px) { .story-mid-art > .mid-story-image { width: 76%; opacity: .27; } .pricing-page .pricing-story-hero { background-position: 64% center; } .foot > .foot-background-art { width: 100%; opacity: .65; mask-image: linear-gradient(90deg, transparent, #000 24%); } }
+@media (max-width: 680px) { .relay-mid-visual img { height: 210px; border-radius: 12px; } .pricing-page .pricing-story-hero { background-position: 64% center; } .foot { min-height: 230px; padding-block: 32px; } .foot > .foot-background-art { width: 100%; opacity: .7; mask-image: linear-gradient(90deg, transparent, #000 24%); } }
