@@ -19,7 +19,6 @@
       <feBlend in="SourceGraphic" in2="effect1_dropShadow" result="shape" />
     </filter>
   </defs>
-  <rect width="1600" height="900" rx="32" fill="url(#background)" />
   <circle cx="1420" cy="92" r="205" fill="#D9EEFF" fill-opacity=".52" />
   <circle cx="118" cy="812" r="190" fill="#DCEEFF" fill-opacity=".7" />
   <path d="M92 180H1508" stroke="#DCE6F0" />

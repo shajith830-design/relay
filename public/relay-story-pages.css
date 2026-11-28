@@ -64,12 +64,8 @@
 /* Carry the illustrated customer journey into the middle of every landing page. */
 .story-mid-art { position: relative; isolation: isolate; overflow: hidden; }
 .story-mid-art > .wrap { position: relative; z-index: 1; }
-.story-mid-art::before { position: absolute; z-index: 0; top: 0; right: 0; bottom: 0; width: min(55%, 760px); background-position: center right; background-size: cover; background-repeat: no-repeat; content: ""; opacity: .3; mask-image: linear-gradient(90deg, transparent, #000 34%, #000); pointer-events: none; }
-.story-mid-estimate::before { background-image: url("assets/relay-bg-customer.svg"); }
-.story-mid-founder::before { background-image: url("assets/relay-bg-ownership.svg"); opacity: .28; }
-.story-mid-solutions::before { background-image: url("assets/relay-bg-readiness.svg"); opacity: .3; }
-.story-mid-contact::before { background-image: url("assets/relay-bg-process.svg"); opacity: .27; }
-.story-mid-pricing::before { background-image: url("assets/relay-bg-pricing.svg"); opacity: .2; }
+.story-mid-art::before { display: none; }
+.story-mid-art > .mid-story-image { position: absolute; z-index: 0; top: 50%; right: 0; display: block; width: min(54%, 760px); height: 100%; transform: translateY(-50%); object-fit: contain; object-position: right center; opacity: .76; pointer-events: none; }
 .story-mid-estimate { background-color: #f7faff; }
 .story-mid-founder { background-color: #faf8ff; }
 .story-mid-solutions { background-color: #f6fbf9; }
@@ -79,6 +75,12 @@
 .pricing-story-hero .pricing-hero-content { position: relative; z-index: 1; }
 .pricing-page .pricing-plans-section .plan-grid, .pricing-page .pricing-plans-section .plan-fit-panel, .pricing-page .pricing-plans-section .pricing-tax-note { position: relative; z-index: 1; }
 .foot { position: relative; isolation: isolate; overflow: hidden; background: linear-gradient(105deg, #152c42, #203951 65%, #243d50); }
-.foot::before { position: absolute; z-index: 0; top: 0; right: 0; bottom: 0; width: min(72%, 900px); background: url("assets/relay-footer-story.svg") center right / cover no-repeat; content: ""; opacity: .56; mask-image: linear-gradient(90deg, transparent, #000 42%); pointer-events: none; }
+.foot::before { display: none; }
+.foot > .foot-background-art { position: absolute; z-index: 0; top: 0; right: 0; width: min(72%, 960px); height: 100%; object-fit: cover; object-position: right center; opacity: .9; mask-image: linear-gradient(90deg, transparent, #000 34%); pointer-events: none; }
 .foot .foot-inner { position: relative; z-index: 1; }
-@media (max-width: 680px) { .story-mid-art::before { width: 78%; opacity: .15; } .pricing-page .pricing-story-hero { background-position: 64% center; } .foot::before { width: 100%; opacity: .28; mask-image: linear-gradient(90deg, transparent, #000 30%); } }
+.foot .brand-relay { color: #fff; }
+.foot .brand-automation { color: #c1d5e3; }
+.foot .foot-links a { color: #d4e3ed; }
+.foot .foot-links a:hover { color: #fff; }
+.foot .small-print { color: #c1d1db; }
+@media (max-width: 680px) { .story-mid-art > .mid-story-image { width: 76%; opacity: .27; } .pricing-page .pricing-story-hero { background-position: 64% center; } .foot > .foot-background-art { width: 100%; opacity: .65; mask-image: linear-gradient(90deg, transparent, #000 24%); } }

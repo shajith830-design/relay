@@ -12,7 +12,6 @@
       <feGaussianBlur stdDeviation="17" />
     </filter>
   </defs>
-  <rect width="1000" height="600" rx="28" fill="url(#bg)" />
   <circle cx="850" cy="92" r="118" fill="#D9EEFF" fill-opacity=".72" />
   <circle cx="154" cy="508" r="146" fill="#DCEEFF" fill-opacity=".7" />
   <path d="M202 305C287 305 298 232 374 232s91 146 170 146 91-120 171-120 68 47 104 47" stroke="#C1DFF8" stroke-width="12" stroke-linecap="round" />

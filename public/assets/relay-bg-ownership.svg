@@ -12,7 +12,6 @@
       <feGaussianBlur stdDeviation="18" />
     </filter>
   </defs>
-  <rect width="1000" height="600" rx="28" fill="url(#bg)" />
   <circle cx="154" cy="103" r="110" fill="#E2E9FF" />
   <circle cx="874" cy="515" r="150" fill="#DCEFFF" />
   <g filter="url(#shadow)" opacity=".13">
