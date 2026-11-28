@@ -407,7 +407,7 @@
           stageGates: true,
           clientReminders: true,
           csvExports: true,
-          slackAlerts: false,
+          slackAlerts: true,
           enterpriseIntegrations: true
         }
       },

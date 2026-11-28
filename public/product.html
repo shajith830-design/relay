@@ -92,8 +92,9 @@
   </main>
 
   <div id="app-shell" class="app-shell" data-jcx-private hidden>
-    <div class="local-demo-banner" id="local-demo-banner" role="status" hidden>
-      Sample workspace · fictional data · most edits reset on refresh · no messages are sent · no Relay account or backend is used
+    <div class="local-demo-banner" id="local-demo-banner" role="note" hidden>
+      <span><strong>Sample:</strong> fictional · local only · no email or integrations run · <a href="product.html">Have an account? Open your live workspace</a></span>
+      <button class="local-demo-reset" type="button" data-reset-sample title="Reload the original sample data and clear local preview snapshots">Reset sample</button>
     </div>
     <main id="ray-demo-stage" class="ray-demo-stage" hidden>
       <a class="wordmark" href="index.html" aria-label="Relay Automation home"><img class="wordmark-logo" src="assets/Futuristic%20RA%20Tech%20Monogram%20Logo.png" alt=""><span class="wordmark-name"><span>Relay</span><small>Automation</small></span></a>
@@ -133,7 +134,7 @@
         </div>
       </nav>
       <div class="sidebar-bottom">
-        <div class="principles-note"><strong>Implementation, made clear</strong><span>Clear steps. Useful next actions. Work together in Relay.</span></div>
+        <div class="principles-note"><strong>Keep the signal clear</strong><span>Pass each handoff with its owner and next action.</span></div>
         <button id="signout-button" class="signout" type="button">Sign out <span id="user-email"></span></button>
       </div>
     </aside>
@@ -155,12 +156,12 @@
 
       <section class="view active" id="view-overview">
         <div class="welcome-card">
-          <div><p class="eyebrow">Your next best action</p><h2>Keep every implementation moving.</h2><p>Relay points you to the next useful action. Reuse a saved template to avoid rebuilding work for each customer.</p></div>
+          <div><p class="eyebrow">Your next best action</p><h2 id="overview-welcome-title">Start with your team’s process.</h2><p id="overview-welcome-description">Map the work, check the steps, then save a reusable template for customer projects.</p></div>
           <button class="button primary" id="overview-primary-action" data-workflow-action="map-process" type="button">Create a process map</button>
         </div>
         <section class="panel getting-started" id="getting-started" aria-labelledby="getting-started-title" data-role-capability="administerWorkspace" hidden>
           <div class="panel-heading">
-            <div><p class="eyebrow">A quick start for your workspace</p><h2 id="getting-started-title">Your first implementation, step by step</h2><p>Follow the checklist at your own pace. Relay will keep your progress up to date.</p></div>
+            <div><p class="eyebrow">Your first customer path · 3 steps</p><h2 id="getting-started-title">Build a process. Reuse it. Start customer work.</h2><p>Begin with the work your team already does. You can tune settings and integrations when they become useful.</p></div>
             <button class="text-button" id="dismiss-getting-started" type="button">Hide guide</button>
           </div>
           <ol class="getting-started-list" id="getting-started-list"></ol>
@@ -424,6 +425,27 @@
         <div class="panel" id="implementation-detail" hidden>
           <div class="panel-heading"><div><h2 id="implementation-detail-title">Implementation details</h2><p id="implementation-detail-subtitle"></p></div><div class="button-row"><button class="button secondary" id="archive-implementation" type="button" hidden>Archive</button><button class="text-button danger-text" id="delete-implementation" type="button" hidden>Permanently delete</button><button class="text-button" id="close-implementation" type="button">Close</button></div></div>
           <section class="budget-burn-panel" id="implementation-budget-burn" aria-label="Project budget burn" data-plan-feature="financialProtection" data-role-capability="viewFinancials" hidden></section>
+          <section class="sample-story-card" id="sample-story-card" aria-labelledby="sample-story-title" hidden>
+            <div class="sample-story-heading">
+              <div><span class="sample-tag">Fictional sample customer</span><h3 id="sample-story-title">Acme Logistics</h3><p class="sample-story-intro">Four checkpoints. One fictional launch. No inbox archaeology required. Pick a stage to see its tasks.</p></div>
+              <div class="sample-progress-ring" id="sample-progress-ring" role="progressbar" aria-label="Sample onboarding task progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="sample-progress-value">0%</span></div>
+            </div>
+            <ol class="sample-stage-path" id="sample-stage-path" aria-label="Sample onboarding path"></ol>
+            <p class="sample-story-progress" id="sample-story-progress"></p>
+            <div class="sample-blocker-card"><span class="sample-blocker-icon" aria-hidden="true">!</span><div><strong id="sample-blocker-title"></strong><p id="sample-blocker-description"></p><button class="text-button sample-blocker-action" id="sample-blocker-action" type="button" hidden>See this task</button></div></div>
+            <details class="sample-story-details"><summary>Why is this taking time?</summary><p id="sample-story-explanation"></p></details>
+            <div class="sample-nudge">
+              <label for="sample-nudge-draft">Try a follow-up draft. Edit it before copying.</label>
+              <div class="sample-nudge-tones" role="group" aria-label="Sample follow-up tone">
+                <button type="button" data-sample-tone="soft" aria-pressed="true">Friendly</button>
+                <button type="button" data-sample-tone="firm" aria-pressed="false">Direct</button>
+                <button type="button" data-sample-tone="escalation" aria-pressed="false">Escalation</button>
+              </div>
+              <textarea id="sample-nudge-draft" rows="4" maxlength="1600"></textarea>
+              <div class="sample-nudge-actions"><button class="button secondary" id="copy-sample-nudge" type="button">Copy draft</button><span>Copy only. Nothing is sent.</span></div>
+              <p id="sample-nudge-status" role="status" aria-live="polite"></p>
+            </div>
+          </section>
           <nav id="implementation-section-nav" class="implementation-section-nav" aria-label="Implementation sections">
             <button type="button" data-implementation-jump="implementation-work-section" aria-controls="implementation-work-section">Work plan</button>
             <button type="button" data-implementation-jump="implementation-information-section" aria-controls="implementation-information-section">Customer information</button>
@@ -434,26 +456,6 @@
             <button type="button" data-implementation-jump="launch-readiness-section" aria-controls="launch-readiness-section">Launch readiness</button>
             <button type="button" data-implementation-jump="collaboration-section" aria-controls="collaboration-section">Messages &amp; files</button>
           </nav>
-          <section class="sample-story-card" id="sample-story-card" aria-labelledby="sample-story-title" hidden>
-            <div class="sample-story-heading">
-              <div><span class="sample-tag">Fictional sample customer</span><h3 id="sample-story-title">Acme Logistics</h3></div>
-              <div class="sample-progress-ring" id="sample-progress-ring" role="progressbar" aria-label="Sample onboarding progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="sample-progress-value">0%</span></div>
-            </div>
-            <p class="sample-story-progress" id="sample-story-progress"></p>
-            <div class="sample-blocker-card"><span class="sample-blocker-icon" aria-hidden="true">!</span><div><strong id="sample-blocker-title"></strong><p id="sample-blocker-description"></p></div></div>
-            <details class="sample-story-details"><summary>Why is this taking time?</summary><p id="sample-story-explanation"></p></details>
-            <div class="sample-nudge">
-              <label for="sample-nudge-draft">Edit this follow-up draft before copying</label>
-              <div class="sample-nudge-tones" role="group" aria-label="Sample follow-up tone">
-                <button type="button" data-sample-tone="soft" aria-pressed="true">Soft</button>
-                <button type="button" data-sample-tone="firm" aria-pressed="false">Firm</button>
-                <button type="button" data-sample-tone="escalation" aria-pressed="false">Escalation</button>
-              </div>
-              <textarea id="sample-nudge-draft" rows="4" maxlength="1600"></textarea>
-              <div class="sample-nudge-actions"><button class="button secondary" id="copy-sample-nudge" type="button">Copy draft</button><span>Copy only. Nothing is sent.</span></div>
-              <p id="sample-nudge-status" role="status" aria-live="polite"></p>
-            </div>
-          </section>
           <section class="panel implementation-primary-section" id="implementation-work-section" tabindex="-1" aria-labelledby="implementation-work-heading">
             <div class="panel-heading"><div><h3 id="implementation-work-heading">Work plan</h3><p>Tasks, owners, and due dates for this customer.</p></div><span id="implementation-step-summary" class="badge" role="status" aria-live="polite">No tasks yet</span></div>
             <div id="implementation-step-list" class="step-list"></div>
@@ -883,7 +885,8 @@
           </section>
           <section id="slack-alert-panel" class="integration-handoff" data-plan-feature="slackAlerts" data-role-capability="administerWorkspace" hidden aria-labelledby="slack-alert-title">
             <h3 id="slack-alert-title">Configure Slack workspace alerts</h3>
-            <p>Relay sends selected implementation and budget alerts to this Slack channel. The incoming webhook is encrypted before it is saved. Customer credentials are never included in Slack messages.</p>
+            <p id="slack-preview-note" class="empty-state" hidden>Preview only: these controls show the Custom plan option. Slack is not connected here; nothing is saved or sent.</p>
+            <p id="slack-alert-description">Relay sends selected implementation and budget alerts to this Slack channel. The incoming webhook is encrypted before it is saved. Customer credentials are never included in Slack messages.</p>
             <p id="slack-webhook-state" class="muted" role="status" aria-live="polite"></p>
             <form id="slack-alert-form" class="inline-form vertical">
               <div class="field"><label for="slack-webhook-url">Slack incoming webhook URL</label><input id="slack-webhook-url" type="url" autocomplete="off" placeholder="https://hooks.slack.com/services/…" required></div>

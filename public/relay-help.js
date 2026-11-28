@@ -94,7 +94,7 @@ function relayHelpReply(message) {
     return "Plan changes and cancellation are handled by contacting Relay; there is no self-service billing or cancellation control in the workspace. Check the Pricing page for plan details. Your confirmed billing, renewal, cancellation terms, and any taxes should be provided before payment.";
   }
   if (/(?:custom|bespoke).{0,30}(?:plan|price|pricing|limit)|(?:plan|price|pricing|limit).{0,30}(?:custom|bespoke)/.test(question)) {
-    return "Relay Custom includes Growth features, unlimited templates, time tracking, budgets, burn alerts, margin reporting, Salesforce SKU onboarding, Jira/Linear task sync, and dedicated setup with a custom SLA. Salesforce and engineering integrations require connected provider accounts and workspace setup. Team-member and active-implementation limits are agreed in advance. Contact Relay for written pricing and terms.";
+    return "Relay Custom includes Growth features, unlimited templates, time tracking, budgets, burn alerts, margin reporting, Salesforce SKU onboarding, and Jira/Linear task sync. Salesforce and engineering integrations require connected provider accounts and workspace setup. Team-member and active-implementation limits, setup scope, and any support commitments are agreed in writing before activation. Contact Relay for pricing and terms.";
   }
   if (/(invoice|receipt|billing document|tax invoice|bill me|billing details)/.test(question)) {
     return "Custom tracks budget caps, task time, burn alerts, portfolio margin, and manual invoice status/reference. Relay does not generate invoices, accept payments, connect to an accounting system, or reconcile revenue.";

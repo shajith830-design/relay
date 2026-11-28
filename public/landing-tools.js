@@ -86,8 +86,8 @@
     const monthlyCustomers = estimateForm.elements.namedItem("customersPerMonth");
     monthlyCustomers.value = String(customers);
     monthlyCustomers.dispatchEvent(new Event("input", { bubbles: true }));
-    document.getElementById("delay-estimator").scrollIntoView({ behavior: "smooth", block: "start" });
-    document.getElementById("estimate-delay-value").focus({ preventScroll: true });
+    document.getElementById("delay-estimator-form").scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("customers-per-month").focus({ preventScroll: true });
   });
   count.addEventListener("input", () => count.setCustomValidity(""));
 
@@ -105,6 +105,43 @@
   };
   calmRange.addEventListener("input", updateCalm);
   updateCalm();
+
+  const circuitPreview = document.querySelector(".circuit-preview");
+  if (circuitPreview) {
+    const circuitMessage = document.getElementById("circuit-preview-message");
+    const circuitToggle = document.getElementById("circuit-preview-toggle");
+    const stepMessages = {
+      closed: "The deal is marked closed in this fictional path. The signal is through; now the implementation handoff can begin.",
+      request: "The access details have been requested. Next, the team needs a clear owner to keep this handoff moving.",
+      handoff: "This fictional access request has no named owner. Relay lets the team assign a task owner and record the next step. One loose connection; no screwdriver needed.",
+      launch: "Launch review is next in this example. It depends on the earlier setup work being completed and checked."
+    };
+    circuitPreview.addEventListener("click", (event) => {
+      const stepButton = event.target.closest("[data-circuit-step]");
+      if (stepButton) {
+        circuitPreview.querySelectorAll("[data-circuit-step]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button === stepButton));
+        });
+        circuitMessage.textContent = stepMessages[stepButton.dataset.circuitStep];
+      }
+      if (event.target.closest("#circuit-preview-toggle")) {
+        const connected = circuitPreview.dataset.connection !== "connected";
+        circuitPreview.dataset.connection = connected ? "connected" : "open";
+        const handoffButton = circuitPreview.querySelector('[data-circuit-step="handoff"]');
+        handoffButton.querySelector("strong").textContent = connected ? "Owner assigned" : "Owner missing";
+        handoffButton.querySelector("small").textContent = connected ? "Connected" : "Open connection";
+        handoffButton.querySelector(".circuit-node").textContent = connected ? "3" : "!";
+        circuitMessage.textContent = connected
+          ? "Preview connected: Priya owns the access check, with launch review next. This is a sample illustration; no workspace data changed."
+          : stepMessages.handoff;
+        circuitToggle.textContent = connected ? "Remove sample owner" : "Assign a sample owner";
+        handoffButton.setAttribute("aria-pressed", "true");
+        circuitPreview.querySelectorAll("[data-circuit-step]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button === handoffButton));
+        });
+      }
+    });
+  }
 
   const nudgeForm = document.getElementById("nudge-writer-form");
   const nudgeOutput = document.getElementById("nudge-messages");

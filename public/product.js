@@ -800,31 +800,27 @@ function getNextWorkflowAction() {
 function renderGettingStarted() {
   const guide = document.getElementById("getting-started");
   if (!guide) return;
+  const processWithSteps = state.data.processes.some((process) => process.steps_count > 0);
+  const processChecked = state.data.processes.some((process) => process.checked);
+  const next = getNextWorkflowAction();
   const steps = [
     {
-      title: "Map a process and add at least one step",
-      description: "Start with the work your team already does for a new customer.",
-      complete: state.data.processes.some((process) => process.steps_count > 0),
-      action: "map-process",
-      actionLabel: state.data.processes.length ? "Open a process map" : "Create a process map"
+      title: "Build and check a process",
+      description: "Capture a few real steps, give them owners, then run the check before reuse.",
+      complete: processChecked,
+      action: next.action === "check-process" ? "check-process" : "map-process",
+      actionLabel: next.action === "check-process" ? "Check a process" : processWithSteps ? "Continue your process map" : "Create a process map"
     },
     {
-      title: "Check that process",
-      description: "The check points out missing instructions, roles, and workflow issues before reuse.",
-      complete: state.data.processes.some((process) => process.checked),
-      action: "check-process",
-      actionLabel: "Check a process"
-    },
-    {
-      title: "Create a reusable template",
-      description: "A template is a checked snapshot that becomes the starting point for customer work.",
+      title: "Save a reusable template",
+      description: "A template is a checked snapshot of your process and the starting point for customer work.",
       complete: state.data.templates.length > 0,
       action: "save-template",
       actionLabel: "Create a template"
     },
     {
-      title: "Start an implementation",
-      description: "Choose the template and enter a customer company to create its work plan.",
+      title: "Start a customer implementation",
+      description: "Choose your template and enter a customer company to create its work plan.",
       complete: state.data.implementations.length > 0,
       action: "start-implementation",
       actionLabel: "Start an implementation"
@@ -845,7 +841,7 @@ function renderGettingStarted() {
   }).join("");
   const status = document.getElementById("getting-started-status");
   status.textContent = nextIndex < 0
-    ? "You’ve completed the first implementation path. You can dismiss this guide or keep it as a reference."
+    ? "First customer path complete. Keep this guide for reference, or hide it and come back any time."
     : `${steps.filter((step) => step.complete).length} of ${steps.length} steps complete.`;
 }
 
@@ -993,6 +989,19 @@ function renderOverview() {
   const primaryAction = document.getElementById("overview-primary-action");
   primaryAction.textContent = next.label;
   primaryAction.dataset.workflowAction = next.action;
+  const welcomeCopy = {
+    "map-process": ["Start with how your team works.", "Map a few real onboarding steps, give them owners, and check the process before turning it into a reusable template."],
+    "check-process": ["Your process has steps. Give it a check.", "Review missing instructions or roles before you save this workflow as a template."],
+    "save-template": ["Your process is checked. Make it reusable.", "Save a template, then use it as the starting point for a customer implementation."],
+    "start-implementation": [implementations.length ? "Ready for another customer plan?" : "Your first customer plan starts here.", "Choose a saved template and enter the customer company to create its work plan."],
+    "view-implementations": ["Pick up the customer work.", "Open an implementation to review its tasks, owners, and next steps."]
+  }[next.action];
+  document.getElementById("overview-welcome-title").textContent = welcomeCopy[0];
+  document.getElementById("overview-welcome-description").textContent = welcomeCopy[1];
+  const firstRun = !implementations.length && !state.onboardingDismissed
+    && state.data.capabilities?.administerWorkspace === true;
+  document.getElementById("overview-metrics").hidden = firstRun;
+  document.getElementById("overview-implementations").closest(".panel").hidden = firstRun;
   const activeCount = state.data.usage?.activeImplementations ?? implementations.length;
   const features = state.data.plan?.features || {};
   const needsAttention = implementations.filter((item) => item.missing_inputs > 0 || item.unowned_steps > 0
@@ -1015,7 +1024,7 @@ function renderOverview() {
       "map-process": ["Start with your team's process", "Map the steps your team follows so Relay can check the workflow and turn it into a reusable template."],
       "check-process": ["Check your process", "Run a workflow check before creating a template."],
       "save-template": ["Create a reusable template", "A template gives each customer a consistent starting point."],
-        "start-implementation": ["Start your first implementation", "Choose a template and enter the customer company to create a customer-specific work plan."],
+      "start-implementation": ["Start your first implementation", "Choose a template and enter the customer company to create a customer-specific work plan. Every tidy circuit starts with one clear path."],
         "view-implementations": ["Your implementation work", "Open an implementation to review its tasks and communicate with the customer."]
     }[next.action];
     emptyState.innerHTML = `<strong>${escapeHtml(copy[0])}</strong><p>${escapeHtml(copy[1])}</p>`;
@@ -1031,7 +1040,7 @@ function renderPortfolio() {
         <strong>${member.open_tasks}</strong>
         <span>${escapeHtml(member.email)} · open tasks · ${member.overdue_tasks} overdue</span>
       </article>`).join("")
-    : '<p class="empty-state">No team workload to show yet.</p>';
+    : '<p class="empty-state">No team workload to show yet. Assign tasks on an implementation to see who owns the next connection.</p>';
   const implementations = state.data.implementations || [];
   document.getElementById("portfolio-implementations").innerHTML = implementations.length
     ? `<table class="data-table"><thead><tr><th>Customer</th><th>Progress</th><th>Health</th><th>Estimated finish</th></tr></thead><tbody>
@@ -1045,7 +1054,7 @@ function renderPortfolio() {
           <td>${percent}% (${completed}/${total})</td><td><span class="badge ${health === "On track" ? "ready" : "attention"}">${health}</span></td>
           <td>${escapeHtml(item.projected_completion || "Not enough completed tasks")}</td></tr>`;
       }).join("")}</tbody></table>`
-    : '<p class="empty-state">Start an implementation to see portfolio health.</p>';
+    : '<p class="empty-state">Start an implementation to see portfolio health. The dashboard needs a little current before it can show a signal.</p>';
 }
 
 function renderNotificationSettings() {
@@ -1144,15 +1153,19 @@ function renderIntegrations() {
   const slack = integrations.find((item) => item.provider === "slack");
   const slackConnected = slack?.has_slack_webhook === true;
   const slackPanel = document.getElementById("slack-alert-panel");
-  slackPanel.hidden = isWorkspaceDemo || !state.data.plan?.features?.slackAlerts
+  slackPanel.hidden = !state.data.plan?.features?.slackAlerts
     || !state.data.capabilities?.administerWorkspace;
-  document.getElementById("slack-webhook-state").textContent = slackConnected
+  document.getElementById("slack-preview-note").hidden = !isWorkspaceDemo;
+  document.getElementById("slack-alert-description").hidden = isWorkspaceDemo;
+  document.getElementById("slack-webhook-state").textContent = isWorkspaceDemo
+    ? "Preview only: Slack is not connected; no webhook is saved and no alert can be sent."
+    : slackConnected
     ? "A webhook is saved. Its URL is encrypted and cannot be viewed again."
     : "No webhook is configured.";
   document.getElementById("slack-test-alert").disabled = !slackConnected;
   document.getElementById("slack-disconnect").disabled = !slackConnected;
   for (const control of document.getElementById("slack-alert-form").elements) {
-    control.disabled = !state.data.capabilities?.administerWorkspace;
+    control.disabled = isWorkspaceDemo || !state.data.capabilities?.administerWorkspace;
   }
   document.getElementById("slack-test-alert").disabled ||= !slackConnected;
   document.getElementById("slack-disconnect").disabled ||= !slackConnected;
@@ -1490,8 +1503,8 @@ function renderImplementationTable(implementations, compact = false) {
   if (!implementations.length) {
     const next = getNextWorkflowAction();
     return `<div class="empty-state"><strong>No customer implementations yet</strong><p>${state.data.templates.length
-      ? "Start from a saved template to create the first customer-specific work plan."
-      : "Follow the next setup step to prepare a reusable starting point before customer work."}</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
+      ? "Start from a saved template to create the first customer-specific work plan. Every tidy circuit starts with one clear path."
+      : "Follow the next setup step to prepare a reusable starting point before customer work. No wiring diagram required."}</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
   }
   const ownerLabels = (item) => {
     const assignedIds = (item.assigned_member_ids || "").split(",").filter(Boolean);
@@ -1786,7 +1799,7 @@ async function loadProcess(processId) {
           <button class="text-button" type="button" data-delete-step="${step.id}">Delete</button>
         </div>
       </article>`).join("")
-    : `<div class="empty-state"><strong>This process map has no steps yet</strong><p>Add one task your team completes for a new customer, with clear instructions and a responsible role. One step is enough to start; you can add more later.</p><button class="button secondary" type="button" data-workflow-action="focus-step">Add the first step</button></div>`;
+    : `<div class="empty-state"><strong>This process map has no steps yet</strong><p>Add one task your team completes for a new customer, with clear instructions and a responsible role. One step is enough to start; no full wiring diagram required.</p><button class="button secondary" type="button" data-workflow-action="focus-step">Add the first step</button></div>`;
   const templateScope = document.getElementById("requirement-template");
   const selectedScope = templateScope.value;
   templateScope.innerHTML = '<option value="">Every implementation</option>' + state.data.templates
@@ -1804,7 +1817,7 @@ function renderTemplates() {
     .map((template) => `<option value="${template.id}">${escapeHtml(template.name)}</option>`).join("");
   if (!state.data.templates.length) {
     const next = getNextWorkflowAction();
-    container.innerHTML = `<div class="empty-state"><strong>No templates yet</strong><p>A checked process becomes a reusable starting point for each new customer implementation.</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
+    container.innerHTML = `<div class="empty-state"><strong>No templates yet</strong><p>Check a process, then save it as the wiring diagram you can reuse for each new customer implementation.</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
     return;
   }
   container.innerHTML = state.data.templates.map((template) => {
@@ -1981,6 +1994,26 @@ async function openImplementation(implementationId) {
     document.getElementById("sample-story-title").textContent = implementation.customer_name;
     document.getElementById("sample-story-progress").textContent =
       `${completed} of ${total} tasks done. ${blockers.length} ${blockers.length === 1 ? "blocker remains" : "blockers remain"} open.`;
+    const sampleStages = [
+      { key: "kickoff", label: "Plan" },
+      { key: "configuration", label: "Connect" },
+      { key: "testing", label: "Check" },
+      { key: "launch", label: "Launch" }
+    ];
+    const currentStage = sampleStages.find(({ key }) =>
+      implementation.steps.some((step) => String(step.stage || "").toLowerCase() === key && step.status !== "done"))?.key;
+    document.getElementById("sample-stage-path").innerHTML = sampleStages.map((stage, index) => {
+      const tasks = implementation.steps.filter((step) => String(step.stage || "").toLowerCase() === stage.key);
+      const done = tasks.length > 0 && tasks.every((step) => step.status === "done");
+      const current = stage.key === currentStage;
+      const stateLabel = done ? "Done" : current ? "In progress" : tasks.length ? "Up next" : "No sample tasks";
+      return `<li class="sample-stage ${done ? "is-complete" : current ? "is-current" : "is-upcoming"}">
+        <button type="button" data-sample-stage="${stage.key}" ${tasks.length ? "" : "disabled"} ${current ? 'aria-current="step"' : ""}>
+          <span class="sample-stage-node" aria-hidden="true">${done ? "✓" : index + 1}</span>
+          <span><strong>${stage.label}</strong><small>${stateLabel}</small></span>
+        </button>
+      </li>`;
+    }).join("");
     const blockerOwner = blocker?.is_blocked
       ? blocker.owner || blocker.waiting_on || "the next owner"
       : blocker?.waiting_on || blocker?.owner || "the next owner";
@@ -1996,6 +2029,10 @@ async function openImplementation(implementationId) {
     document.getElementById("sample-story-explanation").textContent = blocker
       ? `The sample task is assigned to ${blockerOwner}. This status is fictional local data; no reminder was scheduled and no customer activity was recorded.`
       : "This sample view is fictional local data. No reminder was scheduled and no customer activity was recorded.";
+    const blockerAction = document.getElementById("sample-blocker-action");
+    blockerAction.hidden = !blocker;
+    if (blocker) blockerAction.dataset.sampleTask = String(blocker.id);
+    else delete blockerAction.dataset.sampleTask;
 
     const item = blocker
       ? blocker.title.toLowerCase().replace(/^(?:add|configure|prepare|approve)\s+/i, "").replace(/\bdns\b/gi, "DNS")
@@ -2017,7 +2054,8 @@ async function openImplementation(implementationId) {
         document.getElementById("sample-nudge-status").textContent = "";
       };
     }
-    draft.value = messages.soft;
+    const selectedTone = sampleStory.querySelector('[data-sample-tone][aria-pressed="true"]')?.dataset.sampleTone || "soft";
+    draft.value = messages[selectedTone];
     document.getElementById("copy-sample-nudge").onclick = async () => {
       try {
         await navigator.clipboard.writeText(draft.value);
@@ -2179,7 +2217,7 @@ async function openImplementation(implementationId) {
       const engineeringIssues = Array.isArray(step.engineering_issues) ? step.engineering_issues : [];
       const engineeringProviders = state.data.engineeringProviders || [];
       return `
-      <article class="step-card">
+      <article class="step-card" id="${isWorkspaceDemo ? `sample-task-${step.id}` : `implementation-task-${step.id}`}" tabindex="-1">
         <span class="step-number">${index + 1}</span>
         <div class="task-main"><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.description)}</p>
           <small>${escapeHtml(step.stage)} · Role: ${escapeHtml(step.owner || "Not assigned")} · Due ${escapeHtml(step.due_at || "not scheduled")}</small>
@@ -2763,6 +2801,7 @@ document.getElementById("linear-disconnect").addEventListener("click", async (ev
 });
 document.getElementById("slack-alert-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (isWorkspaceDemo) return;
   const form = event.currentTarget;
   const status = document.getElementById("slack-alert-status");
   const button = form.querySelector('button[type="submit"]');
@@ -2783,6 +2822,7 @@ document.getElementById("slack-alert-form").addEventListener("submit", async (ev
   }
 });
 document.getElementById("slack-test-alert").addEventListener("click", async (event) => {
+  if (isWorkspaceDemo) return;
   const button = event.currentTarget;
   const status = document.getElementById("slack-alert-status");
   button.disabled = true;
@@ -2798,6 +2838,7 @@ document.getElementById("slack-test-alert").addEventListener("click", async (eve
   }
 });
 document.getElementById("slack-disconnect").addEventListener("click", async (event) => {
+  if (isWorkspaceDemo) return;
   if (!window.confirm("Disconnect Slack alerts for this workspace?")) return;
   const button = event.currentTarget;
   const status = document.getElementById("slack-alert-status");
@@ -2906,7 +2947,7 @@ document.getElementById("dismiss-getting-started").addEventListener("click", asy
   try {
     const result = await api("/api/product/onboarding", { method: "PATCH", body: { dismissed: true } });
     state.onboardingDismissed = result.dismissed;
-    renderGettingStarted();
+    renderOverview();
   } catch (error) {
     status.textContent = error.message;
   }
@@ -2916,7 +2957,7 @@ document.getElementById("show-getting-started").addEventListener("click", async 
   try {
     const result = await api("/api/product/onboarding", { method: "PATCH", body: { dismissed: false } });
     state.onboardingDismissed = result.dismissed;
-    renderGettingStarted();
+    renderOverview();
   } catch (error) {
     status.textContent = error.message;
   }
@@ -3651,6 +3692,30 @@ document.getElementById("implementation-section-nav").addEventListener("click", 
   target.scrollIntoView({ behavior: "smooth", block: "start" });
   if (target.matches("details")) target.querySelector("summary")?.focus({ preventScroll: true });
   else target.focus({ preventScroll: true });
+});
+document.getElementById("sample-story-card").addEventListener("click", (event) => {
+  if (!isWorkspaceDemo) return;
+  const stageButton = event.target.closest("[data-sample-stage]");
+  const taskButton = event.target.closest("[data-sample-task]");
+  const stage = stageButton?.dataset.sampleStage;
+  const currentImplementation = state.data.implementations.find((item) =>
+    String(item.id) === String(state.selectedImplementationId));
+  const stageTasks = stage ? currentImplementation?.steps.filter((step) =>
+    String(step.stage || "").toLowerCase() === stage) || [] : [];
+  const taskId = taskButton?.dataset.sampleTask
+    || stageTasks.find((step) => step.status !== "done")?.id
+    || stageTasks.at(-1)?.id;
+  if (!taskId) return;
+  const target = document.getElementById(`sample-task-${taskId}`);
+  if (!target) return;
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.focus({ preventScroll: true });
+});
+document.addEventListener("click", (event) => {
+  if (!isWorkspaceDemo || !event.target.closest("[data-reset-sample]")) return;
+  window.localStorage.removeItem("relay-workspace-demo-portals");
+  window.localStorage.removeItem(`${TASK_TIMER_STORAGE_KEY}:9000:9001`);
+  window.location.reload();
 });
 document.getElementById("implementation-step-list").addEventListener("click", async (event) => {
   const timeAction = event.target.closest("[data-time-start], [data-time-stop], [data-time-preset], [data-time-log-custom]");
