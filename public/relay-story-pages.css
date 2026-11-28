@@ -23,6 +23,34 @@
 .page-contact .contact-signal-picker { background: linear-gradient(145deg, #f8f5ff 0%, #fff 57%, #f0fbf7 100%); }
 .page-contact .contact-signal-picker button { min-height: 72px; background: rgb(255 255 255 / 83%); }
 .page-contact .form-card { border-radius: 22px; }
+/* The Home hero is an onboarding snapshot first; the relay trace is a quiet connector detail. */
+.home-page .hero-switchboard { overflow: visible; border: 1px solid #e0e7f0; border-radius: 22px; padding: clamp(18px, 2.5vw, 25px); background: radial-gradient(circle at 98% 3%, rgb(255 211 155 / 38%), transparent 24%), linear-gradient(145deg, #fff 0%, #fbfaff 57%, #f2fbf7 100%); color: #244055; box-shadow: 0 30px 75px -45px rgb(48 66 102 / 38%), 0 3px 10px rgb(31 61 79 / 5%); }
+.home-page .hero-switchboard::before { inset: 0; border-radius: inherit; background-image: linear-gradient(90deg, transparent 49.7%, rgb(123 102 191 / 7%) 50%, transparent 50.3%); background-size: 54px 54px; mask-image: linear-gradient(135deg, transparent 15%, #000 100%); }
+.home-page .hero-switchboard::after { border-radius: inherit; background: radial-gradient(240px circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgb(123 102 191 / 9%), transparent 72%); }
+.home-page .switchboard-heading h2 { color: #243e54; }
+.home-page .switchboard-heading .eyebrow, .home-page .switchboard-caption, .home-page .switchboard-footnote { color: #738696; }
+.home-page .switchboard-status { border-color: #f2dcac; background: #fff7e6; color: #976a26; }
+.home-page .hero-signal-path { gap: 7px; }
+.home-page .hero-signal-path li { border: 1px solid #e9edf3; border-radius: 12px; background: rgb(255 255 255 / 88%); box-shadow: 0 4px 14px rgb(46 66 97 / 4%); }
+.home-page .hero-signal-path li::before { height: 2px; background: #e3e8f0; }
+.home-page .hero-signal-path li.complete { border-color: #d8eee6; background: #f7fcf9; }
+.home-page .hero-signal-path li.complete::before { background: linear-gradient(90deg, #77c7ac, #a2d5c5); }
+.home-page .hero-signal-path button { color: #304b5f; }
+.home-page .hero-signal-path button small { color: #8293a0; }
+.home-page .hero-signal-path .hero-signal-node { border-color: #dbe3ec; background: #f7f9fc; color: #6c7f91; box-shadow: 0 0 0 4px #fff; }
+.home-page .hero-signal-path button[aria-pressed="true"] .hero-signal-node { border-color: #816fd0; background: #f0edff; color: #6551bb; box-shadow: 0 0 0 4px #fff, 0 0 0 6px rgb(129 111 208 / 12%); }
+.home-page .switchboard-detail { border-color: #e6eaf0; background: rgb(255 255 255 / 74%); }
+.home-page .switchboard-detail p { color: #526b7b; }
+.home-page .switchboard-toggle { border-color: #ded8f6; background: #f3f0ff; color: #5f50a9; }
+.home-page .switchboard-toggle:hover { background: #e9e3ff; }
+.home-page .switchboard-toggle::before { display: none; }
+.home-page .hero-signal-path li::after { display: none; }
+.home-page .switchboard-status::before { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #e3a747; content: ""; vertical-align: 1px; }
+.home-page .hero-switchboard[data-connection="closed"] .switchboard-status { border-color: #cfe9dd; background: #edf8f2; color: #36785f; }
+.home-page .hero-switchboard[data-connection="closed"] .switchboard-status::before { background: #54b68f; box-shadow: 0 0 0 3px rgb(84 182 143 / 15%); }
+.home-page .hero-switchboard[data-connection="closed"] .hero-signal-path li::before { background: linear-gradient(90deg, #77c7ac, #a2d5c5); box-shadow: none; }
+.home-page .hero-switchboard[data-connection="closed"] .hero-signal-path button[aria-pressed="true"] .hero-signal-node { border-color: #58b48c; background: #e7f6ee; color: #36785f; box-shadow: 0 0 0 4px #fff, 0 0 0 6px rgb(84 182 143 / 12%); }
+.home-page .hero-switchboard[data-connection="closed"] .switchboard-toggle { border-color: #b8e2cc; background: #e8f7ee; color: #316d52; }
 .motion-ready .story-hero-copy > .motion-reveal { opacity: 0; transform: translateY(16px); transition: opacity .62s ease, transform .62s cubic-bezier(.2,.75,.25,1); transition-delay: var(--reveal-delay, 0ms); }
 .motion-ready .story-hero-copy > .motion-reveal.is-visible { opacity: 1; transform: translateY(0); }
 .motion-ready .story-hero-art.motion-reveal { opacity: 0; transform: translateX(18px) scale(.98); transition: opacity .8s ease .12s, transform .8s cubic-bezier(.2,.75,.25,1) .12s; }
