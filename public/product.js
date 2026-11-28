@@ -943,11 +943,12 @@ function implementationStatus(implementation) {
 }
 
 function implementationNeedsAttention(implementation, filter = "yes") {
+  const features = state.data.plan?.features || {};
   const attention = {
-    blocked: implementation.blocked_steps > 0,
+    blocked: Boolean(features.blockers && implementation.blocked_steps > 0),
     overdue: implementation.overdue_steps > 0,
     quiet: implementation.quiet_customer,
-    waiting: implementation.waiting_steps > 0,
+    waiting: Boolean(features.dependencies && implementation.waiting_steps > 0),
     missing: implementation.missing_inputs > 0,
     unassigned: implementation.unowned_steps > 0
   };
@@ -1008,6 +1009,7 @@ function renderOverview() {
   const needsAttention = implementations.filter((item) => item.missing_inputs > 0 || item.unowned_steps > 0
     || item.overdue_steps > 0 || item.quiet_customer || (features.blockers && item.blocked_steps > 0)
     || (features.dependencies && item.waiting_steps > 0)).length;
+  renderWorkspaceCircuitBoard(implementations, activeCount, needsAttention);
   document.getElementById("overview-metrics").innerHTML = [
     ["Active implementations", activeCount, "Customer journeys in progress"],
     ["Templates", templates.length, "Approved workflows ready to reuse"],
@@ -1032,6 +1034,40 @@ function renderOverview() {
   }
   renderGettingStarted();
   applyPlanGates();
+}
+
+function renderWorkspaceCircuitBoard(implementations, activeCount, needsAttention) {
+  const path = document.getElementById("workspace-signal-path");
+  if (!path) return;
+  const totals = implementations.reduce((summary, item) => ({
+    tasks: summary.tasks + (Number(item.total_steps) || 0),
+    done: summary.done + (Number(item.completed_steps) || 0),
+    unassigned: summary.unassigned + (Number(item.unowned_steps) || 0)
+  }), { tasks: 0, done: 0, unassigned: 0 });
+  const taskPercent = totals.tasks ? Math.round((totals.done / totals.tasks) * 100) : 0;
+  const checkpoints = [
+    { label: "Customer plans", value: String(activeCount), detail: "active in this workspace", filter: "all", state: activeCount ? "connected" : "idle" },
+    { label: "Task progress", value: totals.tasks ? `${totals.done}/${totals.tasks}` : "—", detail: totals.tasks ? "tasks complete" : "no tasks recorded yet", filter: "all", state: totals.done === totals.tasks && totals.tasks ? "connected" : "current", progress: taskPercent },
+    { label: "Unassigned", value: String(totals.unassigned), detail: totals.unassigned === 1 ? "task needs an owner" : "tasks need an owner", filter: "unassigned", state: totals.unassigned ? "attention" : "connected" },
+    { label: "Needs attention", value: String(needsAttention), detail: needsAttention === 1 ? "implementation flagged" : "implementations flagged", filter: "yes", state: needsAttention ? "attention" : "connected" }
+  ];
+  path.innerHTML = checkpoints.map((checkpoint, index) => `<li class="workspace-signal-step ${checkpoint.state}">
+    <button type="button" data-circuit-filter="${checkpoint.filter}" aria-label="Open implementations: ${escapeHtml(checkpoint.label)}, ${escapeHtml(checkpoint.value)} ${escapeHtml(checkpoint.detail)}">
+      ${index === 1
+        ? '<span class="workspace-signal-light workspace-progress-light" aria-hidden="true"><svg viewBox="0 0 40 40"><circle class="workspace-progress-track" cx="20" cy="20" r="16"></circle><circle class="workspace-progress-value" cx="20" cy="20" r="16" style="stroke-dashoffset: ' + (100 - checkpoint.progress) + ';"></circle></svg><span>' + checkpoint.progress + '%</span></span>'
+        : '<span class="workspace-signal-light" aria-hidden="true">' + (checkpoint.state === "connected" ? "✓" : checkpoint.state === "attention" ? "!" : index + 1) + '</span>'}
+      <span class="workspace-signal-copy"><strong>${escapeHtml(checkpoint.value)}</strong><span>${escapeHtml(checkpoint.label)}</span><small>${escapeHtml(checkpoint.detail)}</small></span>
+      <span class="workspace-signal-open" aria-hidden="true">↗</span>
+    </button>
+  </li>`).join("");
+  const status = document.getElementById("workspace-circuit-status");
+  status.textContent = needsAttention
+    ? `${needsAttention} ${needsAttention === 1 ? "implementation needs" : "implementations need"} a look`
+    : "No tracked flags to check";
+  status.dataset.level = needsAttention ? "attention" : "clear";
+  document.getElementById("workspace-circuit-footnote").textContent = isWorkspaceDemo
+    ? "Fictional sample records · clicking a checkpoint opens the matching sample list."
+    : "Based on the workspace records currently loaded · click a checkpoint to open its implementation list.";
 }
 
 function renderPortfolio() {
@@ -2939,6 +2975,24 @@ function clearImplementationFilters() {
   document.getElementById("implementation-attention-filter").value = "all";
   renderImplementations();
 }
+
+document.getElementById("workspace-signal-path").addEventListener("click", (event) => {
+  const checkpoint = event.target.closest("[data-circuit-filter]");
+  if (!checkpoint || !setView("implementations")) return;
+  clearImplementationFilters();
+  const filter = checkpoint.dataset.circuitFilter;
+  if (filter !== "all") {
+    state.implementationFilters.attention = filter;
+    document.getElementById("implementation-attention-filter").value = filter;
+    renderImplementations();
+  }
+  const summary = document.getElementById("implementation-filter-summary");
+  summary.scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    block: "center"
+  });
+  summary.focus({ preventScroll: true });
+});
 
 document.getElementById("implementation-list").addEventListener("click", (event) => {
   if (event.target.closest("[data-clear-implementation-filters]")) clearImplementationFilters();

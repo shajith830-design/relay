@@ -159,6 +159,14 @@
           <div><p class="eyebrow">Your next best action</p><h2 id="overview-welcome-title">Start with your team’s process.</h2><p id="overview-welcome-description">Map the work, check the steps, then save a reusable template for customer projects.</p></div>
           <button class="button primary" id="overview-primary-action" data-workflow-action="map-process" type="button">Create a process map</button>
         </div>
+        <section class="panel workspace-circuit-panel" aria-labelledby="workspace-circuit-title">
+          <div class="workspace-circuit-heading">
+            <div><p class="eyebrow">Relay control board</p><h2 id="workspace-circuit-title">Your workspace signal path</h2><p id="workspace-circuit-description">A quick read of implementation activity, task progress, and open handoffs.</p></div>
+            <span class="workspace-circuit-status" id="workspace-circuit-status" role="status" aria-live="polite"></span>
+          </div>
+          <ol class="workspace-signal-path" id="workspace-signal-path" aria-label="Workspace activity signal path"></ol>
+          <p class="workspace-circuit-footnote" id="workspace-circuit-footnote"></p>
+        </section>
         <section class="panel getting-started" id="getting-started" aria-labelledby="getting-started-title" data-role-capability="administerWorkspace" hidden>
           <div class="panel-heading">
             <div><p class="eyebrow">Your first customer path · 3 steps</p><h2 id="getting-started-title">Build a process. Reuse it. Start customer work.</h2><p>Begin with the work your team already does. You can tune settings and integrations when they become useful.</p></div>
@@ -415,7 +423,7 @@
             <div class="field"><label for="implementation-attention-filter">Needs attention</label><select id="implementation-attention-filter"><option value="all">All implementations</option><option value="yes">Any attention needed</option><option value="blocked" data-growth-only="blockers">Blocked</option><option value="overdue">Overdue</option><option value="quiet">Waiting on customer 3+ days</option><option value="waiting" data-growth-only="dependencies">Waiting on prerequisites</option><option value="missing">Missing information</option><option value="unassigned">Unassigned tasks</option></select></div>
             <button class="button secondary" id="clear-implementation-filters" type="button">Clear filters</button>
           </div>
-          <p id="implementation-filter-summary" class="filter-summary" role="status" aria-live="polite"></p>
+          <p id="implementation-filter-summary" class="filter-summary" role="status" aria-live="polite" tabindex="-1"></p>
           <div id="implementation-list" class="table-wrap"></div>
         </div>
         <div class="panel" id="archived-implementations-panel" hidden>

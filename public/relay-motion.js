@@ -51,7 +51,7 @@
   window.addEventListener("scroll", updateNav, { passive: true });
   updateNav();
 
-  document.querySelectorAll(".hero, .page-hero, .dashboard-heading, .auth-screen, .welcome-card").forEach((target) => {
+  document.querySelectorAll(".hero, .page-hero, .dashboard-heading, .auth-screen, .welcome-card, .hero-switchboard, .relay-physics-demo, .plan-fit-panel").forEach((target) => {
     target.addEventListener("pointermove", (event) => {
       const bounds = target.getBoundingClientRect();
       const x = ((event.clientX - bounds.left) / bounds.width) * 100;
@@ -67,7 +67,7 @@
 
   const pointerBound = new WeakSet();
   const bindPointerEffects = () => {
-    document.querySelectorAll(".card, .offer, .form-card, .preview, .summary-card, .panel, .welcome-card, .metric, .auth-card, .template-card, .step-card, .plan-card").forEach((target) => {
+  document.querySelectorAll(".card, .offer, .form-card, .preview, .summary-card, .panel, .welcome-card, .metric, .auth-card, .template-card, .step-card, .plan-card, .hero-switchboard, .relay-physics-demo, .plan-fit-panel, .contact-signal-picker").forEach((target) => {
       if (pointerBound.has(target)) return;
       pointerBound.add(target);
       target.addEventListener("pointermove", (event) => {
@@ -119,6 +119,10 @@
     ".template-card",
     ".step-card",
     ".plan-card",
+    ".hero-switchboard",
+    ".relay-mechanism-layout > *",
+    ".plan-fit-panel",
+    ".contact-signal-picker",
     ".plan-comparison tbody tr",
     ".section-intro",
     ".customer-privacy",

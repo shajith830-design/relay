@@ -81,14 +81,22 @@
   <main>
     <section class="page-hero"><div class="wrap"><p class="eyebrow">Contact Relay</p><h1>Let’s clear up your onboarding handoffs.</h1><p>Tell us where the signal gets stuck—customer setup, missing information, or launch readiness. We’ll talk through your workflow and whether Relay fits.</p></div></section>
     <section class="section"><div class="wrap form-layout">
-      <div><p class="eyebrow">Talk with our team</p><h2>Where does the handoff get stuck?</h2><p class="muted">Share a little about your team and onboarding process. We’ll discuss whether Relay is a good fit—no need to bring a wiring diagram.</p><p class="small-print">Please don’t include passwords or confidential customer data.</p></div>
+      <div><p class="eyebrow">Talk with our team</p><h2>Where does the handoff get stuck?</h2><p class="muted">Share a little about your team and onboarding process. We’ll discuss whether Relay is a good fit—no need to bring a wiring diagram.</p>
+        <div class="contact-signal-picker" aria-labelledby="contact-signal-title">
+          <p class="eyebrow" id="contact-signal-title">Pick a starting point</p>
+          <button type="button" data-contact-prompt="We lose track of who owns the next step during customer onboarding."><span aria-hidden="true">01</span> The owner is unclear</button>
+          <button type="button" data-contact-prompt="Customer setup information arrives through different messages, and it is hard to see what is still missing."><span aria-hidden="true">02</span> Setup information goes missing</button>
+          <button type="button" data-contact-prompt="It is difficult to see which onboarding steps are complete and what is still needed before launch."><span aria-hidden="true">03</span> Launch status is hard to trace</button>
+          <p class="contact-signal-status" id="contact-signal-status" role="status" aria-live="polite">Choose one to add an editable starting prompt to the message.</p>
+        </div>
+        <p class="small-print">Please don’t include passwords or confidential customer data.</p></div>
       <form class="form-card" id="inquiry-form" data-inquiry-type="Sales inquiry">
         <div class="form-grid">
           <div class="field-group"><label for="name">Your name</label><input class="field" id="name" name="name" autocomplete="name" maxlength="120" required></div>
           <div class="field-group"><label for="company">Company</label><input class="field" id="company" name="company" autocomplete="organization" maxlength="160" required></div>
           <div class="field-group"><label for="email">Work email</label><input class="field" id="email" name="email" type="email" autocomplete="email" maxlength="254" required></div>
           <div class="field-group"><label for="phone">Phone (international format)</label><input class="field" id="phone" name="phone" type="tel" autocomplete="tel" placeholder="+15551234567" pattern="\+[1-9]\d{7,14}" title="Enter a phone number in international format, such as +15551234567." required></div>
-          <div class="field-group full"><label for="details">What would you like to discuss with Relay?</label><textarea class="field" id="details" name="details" maxlength="1500" required></textarea></div>
+          <div class="field-group full"><label for="details">What would you like to discuss with Relay?</label><textarea class="field" id="details" name="details" maxlength="1500" required></textarea><small class="field-hint">The prompt picker adds a draft. Edit it to fit your situation; it is not sent until you submit this form.</small></div>
         </div>
         <button class="button" type="submit">Send inquiry <span aria-hidden="true">→</span></button>
         <p class="small-print">We’ll use your contact details to respond to your inquiry.</p>
@@ -126,5 +134,6 @@
   <script src="relay-nav.js" defer></script>
   <script src="relay-motion.js" defer></script>
   <script src="relay-justonecx.js" defer></script>
+  <script src="relay-interactions.js" defer></script>
 </body>
 </html>

@@ -40,7 +40,7 @@
     </div></section>
     <section class="section pricing-plans-section" id="plans"><div class="wrap">
       <div class="plan-grid" aria-label="Relay subscription plans">
-        <article class="plan-card">
+        <article class="plan-card" id="starter-plan">
           <p class="eyebrow">A focused start</p><h2>Starter</h2>
           <p class="plan-price">₹2,999<span>/ month</span></p>
           <p class="plan-capacity">Up to 3 members · 5 active implementations · 3 templates</p>
@@ -48,7 +48,7 @@
           <ul class="plan-highlights"><li>Reusable onboarding workflows</li><li>Customer portal and shared tasks</li><li>Readiness overview and CSV exports</li></ul>
           <a class="button light" href="contact.html">Choose Starter</a>
         </article>
-        <article class="plan-card plan-card-featured">
+        <article class="plan-card plan-card-featured" id="growth-plan">
           <p class="plan-badge">Most popular</p><p class="eyebrow">Room to grow</p><h2>Growth</h2>
           <p class="plan-price">₹3,999<span>/ month</span></p>
           <p class="plan-capacity">Up to 10 members · 20 active implementations · unlimited templates</p>
@@ -56,7 +56,7 @@
           <ul class="plan-highlights"><li>Everything in Starter</li><li>Portfolio, workload, and blocker tracking</li><li>HubSpot handoff and Slack alerts</li></ul>
           <a class="button" href="contact.html">Choose Growth</a>
         </article>
-        <article class="plan-card">
+        <article class="plan-card" id="custom-plan">
           <p class="eyebrow">Configured for your scale</p><h2>Custom</h2>
           <p class="plan-price plan-price-custom">Let’s talk</p>
           <p class="plan-capacity">Member and active-implementation capacity tailored to your team</p>
@@ -65,6 +65,25 @@
           <a class="button light" href="contact.html">Discuss Custom</a>
         </article>
       </div>
+      <section class="plan-fit-panel" aria-labelledby="plan-fit-title">
+        <div class="plan-fit-intro"><p class="eyebrow">The local plan switchboard</p><h2 id="plan-fit-title">Flip a few switches. See which plan matches.</h2><p>Try your team size and the features you need. This quick check runs in your browser; it doesn’t save or send your answers.</p></div>
+        <div class="plan-fit-controls">
+          <label class="plan-fit-number" for="fit-members"><span>Team members</span><input id="fit-members" type="number" min="1" value="3" inputmode="numeric"></label>
+          <label class="plan-fit-number" for="fit-implementations"><span>Active implementations</span><input id="fit-implementations" type="number" min="1" value="5" inputmode="numeric"></label>
+          <label class="plan-fit-number" for="fit-templates"><span>Reusable templates</span><input id="fit-templates" type="number" min="1" value="3" inputmode="numeric"></label>
+          <fieldset class="plan-fit-options">
+            <legend>Which feature set do you need?</legend>
+            <label><input type="checkbox" id="fit-growth-features"> HubSpot handoff, Slack alerts, blocker and scope controls</label>
+            <label><input type="checkbox" id="fit-custom-features"> Financial controls, Salesforce/Jira/Linear, or validated file uploads</label>
+          </fieldset>
+        </div>
+        <div class="plan-fit-result" id="plan-fit-result" data-plan="starter" aria-live="polite">
+          <span class="plan-fit-result-label">Possible fit from these selections</span>
+          <div class="plan-fit-result-main"><div><p class="eyebrow">Your plan circuit points to</p><h3 id="plan-fit-name">Starter</h3></div><a class="button light" id="plan-fit-link" href="#starter-plan">See Starter</a></div>
+          <p id="plan-fit-reason">Starter lists capacity for up to 3 members, 5 active implementations, and 3 templates.</p>
+        </div>
+        <p class="plan-fit-footnote">This is a quick comparison against the published feature table, not a quote. Custom capacity and commercial terms are agreed in writing.</p>
+      </section>
       <p class="pricing-tax-note">Starter and Growth prices are monthly and before applicable taxes. Custom pricing is agreed with your team.</p>
     </div></section>
     <section class="section pricing-details-section"><div class="wrap">
@@ -107,5 +126,6 @@
   <script src="relay-nav.js" defer></script>
   <script src="relay-motion.js" defer></script>
   <script src="relay-justonecx.js" defer></script>
+  <script src="relay-interactions.js" defer></script>
 </body>
 </html>

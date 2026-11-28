@@ -99,6 +99,8 @@
     calmDemo.dataset.state = calm ? "calm" : "busy";
     calmRange.setAttribute("aria-valuetext", calm ? "Sample status view" : "Sample inbox view");
     document.getElementById("calm-state-label").textContent = calm ? "A clearer next step" : "Tuesday, 4:47 pm";
+    document.getElementById("calm-circuit-owner-title").textContent = calm ? "Maya assigned" : "Owner missing";
+    document.getElementById("calm-circuit-owner-state").textContent = calm ? "Signal connected" : "Open connection";
     calmStatus.textContent = calm
       ? "Sample status · Acme Logistics is 85% ready. Waiting on one DNS record from Acme IT."
       : "Sample inbox · DNS setup, a forwarded email, a customer follow-up, and a status request.";
