@@ -14,6 +14,24 @@
         ? "Coil energized · magnetic field moves the armature · normally-open load contact closed · lamp on."
         : "Coil off · load contact open · lamp off.";
     });
+
+    const relayLessons = {
+      coil: "Coil: current in the control winding creates a magnetic field.",
+      field: "Magnetic field: it pulls the armature; this simplified drawing shows the control and load circuits separately.",
+      armature: "Armature: the moving mechanical piece changes the relay contact position.",
+      contact: "Contact: energizing this simplified normally-open relay closes the load path and lights the lamp."
+    };
+    const lessonStatus = document.getElementById("relay-sequence-status");
+    relayDemo.querySelectorAll("[data-relay-explain]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const part = button.dataset.relayExplain;
+        relayDemo.dataset.focus = part;
+        relayDemo.querySelectorAll("[data-relay-explain]").forEach((lesson) => {
+          lesson.setAttribute("aria-pressed", String(lesson === button));
+        });
+        lessonStatus.textContent = relayLessons[part];
+      });
+    });
   }
 
   const contactPromptStatus = document.getElementById("contact-signal-status");
@@ -22,20 +40,36 @@
       button.addEventListener("click", () => {
         const details = document.getElementById("details");
         const prompt = button.dataset.contactPrompt;
+        const picker = button.closest(".contact-signal-picker");
+        const form = document.getElementById("inquiry-form");
         if (details.value.includes(prompt)) {
-          contactPromptStatus.textContent = "That prompt is already in your draft. No duplicate connection added.";
+          picker.querySelectorAll("[data-contact-prompt]").forEach((port) => {
+            const selected = port === button;
+            port.setAttribute("aria-pressed", String(selected));
+            port.classList.toggle("is-selected", selected);
+          });
+          picker.dataset.routed = "true";
+          form.dataset.signalLine = button.dataset.contactLine || "selected";
+          contactPromptStatus.textContent = "That lead is already in the draft. No duplicate signal added.";
           details.focus();
           return;
         }
         const draft = [details.value.trim(), prompt].filter(Boolean).join("\n\n");
         if (draft.length > Number(details.maxLength)) {
-          contactPromptStatus.textContent = "Make room in your draft first; this prompt would exceed the message length limit.";
+          contactPromptStatus.textContent = "The message terminal is full. Make room in the draft before routing this line.";
           details.focus();
           return;
         }
+        picker.querySelectorAll("[data-contact-prompt]").forEach((port) => {
+          const selected = port === button;
+          port.setAttribute("aria-pressed", String(selected));
+          port.classList.toggle("is-selected", selected);
+        });
+        picker.dataset.routed = "true";
+        form.dataset.signalLine = button.dataset.contactLine || "selected";
         details.value = draft;
         details.dispatchEvent(new Event("input", { bubbles: true }));
-        contactPromptStatus.textContent = "Draft prompt added. Edit it to fit your situation; nothing has been sent.";
+        contactPromptStatus.textContent = "Signal routed to the message draft. Edit it to fit; nothing is sent until you submit.";
         details.focus();
       });
     });

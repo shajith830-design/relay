@@ -1,0 +1,85 @@
+.electric-overline-mark { display: inline-grid; width: 20px; height: 20px; place-items: center; border: 1px solid color-mix(in srgb, currentColor 28%, transparent); border-radius: 6px 6px 6px 2px; font-size: 15px; vertical-align: -3px; }
+.page-about .page-hero, .page-solutions .page-hero, .page-contact .page-hero { background-image: linear-gradient(120deg, #eff8fb, #fff 55%, #f0f8fa); }
+.page-about .page-hero::before, .page-solutions .page-hero::before, .page-contact .page-hero::before { top: 0; right: 0; width: min(40vw, 430px); height: 100%; aspect-ratio: auto; border: 0; border-radius: 0; background-image: linear-gradient(90deg, transparent 49.5%, rgb(19 126 151 / 8%) 50%, transparent 50.5%), linear-gradient(transparent 49.5%, rgb(19 126 151 / 7%) 50%, transparent 50.5%); background-size: 34px 34px; box-shadow: none; mask-image: linear-gradient(90deg, transparent, #000); }
+.page-contact .page-hero::before { background-size: 26px 26px; }
+.page-about .page-hero .eyebrow, .page-solutions .page-hero .eyebrow, .page-contact .page-hero .eyebrow { color: #127c98; font: 850 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+
+/* Home: visible current travels only when the sample contact is closed. */
+.home-page .hero-switchboard[data-connection="closed"] .hero-signal-path li:not(:last-child)::after { position: absolute; z-index: 2; top: 14px; left: 8%; width: 6px; height: 6px; border: 1px solid #d3ffec; border-radius: 50%; background: #7ef0b9; box-shadow: 0 0 9px #52edaa, 0 0 0 3px rgb(126 240 185 / 13%); content: ""; pointer-events: none; animation: home-current-run 1.7s ease-in-out infinite; }
+.home-page .hero-switchboard[data-connection="closed"] .hero-signal-path li:nth-child(2)::after { animation-delay: .4s; }
+.home-page .hero-switchboard[data-connection="closed"] .hero-signal-path li:nth-child(3)::after { animation-delay: .8s; }
+@keyframes home-current-run { 0% { left: 8%; opacity: 0; } 14% { opacity: 1; } 86% { opacity: 1; } 100% { left: 88%; opacity: 0; } }
+.home-page .switchboard-status { text-transform: uppercase; letter-spacing: .08em; }
+.home-page .switchboard-toggle::before { content: "CONTACT SWITCH"; margin-right: 4px; font-size: 8px; font-weight: 850; letter-spacing: .08em; }
+.home-page .relay-tour-switches [role="tab"] { border-radius: 7px 12px 12px 12px; }
+.home-page .relay-tour-switch-icon { position: relative; }
+.home-page .relay-tour-switch-icon::after { position: absolute; right: -3px; bottom: -3px; width: 7px; height: 7px; border: 1px solid #fff; border-radius: 50%; background: #54bc9a; content: ""; }
+.home-page .calm-circuit-caption::before { content: "SCHEMATIC · "; color: #1683a2; font-weight: 850; letter-spacing: .06em; }
+
+/* About: click a component label to pick it out in the simplified relay drawing. */
+.relay-field-arcs { position: absolute; inset: -10px -8px; pointer-events: none; }
+.relay-field-arcs i { position: absolute; top: 50%; left: 50%; width: 28px; height: 57px; transform: translate(-50%, -50%); border: 1px solid rgb(83 198 217 / 20%); border-radius: 50%; opacity: .3; transition: opacity .25s, border-color .25s, box-shadow .25s; }
+.relay-field-arcs i:nth-child(2) { width: 40px; height: 66px; }
+.relay-field-arcs i:nth-child(3) { width: 54px; height: 74px; }
+.relay-physics-demo[data-energized="true"] .relay-field-arcs i { border-color: rgb(114 232 199 / 58%); box-shadow: 0 0 16px rgb(72 207 190 / 20%); opacity: .85; animation: relay-field-bloom .85s ease-in-out infinite alternate; }
+@keyframes relay-field-bloom { from { transform: translate(-50%, -50%) scale(.94); } to { transform: translate(-50%, -50%) scale(1.06); } }
+.relay-physics-demo[data-focus="coil"] .relay-coil, .relay-physics-demo[data-focus="field"] .relay-field-arcs, .relay-physics-demo[data-focus="armature"] .relay-armature, .relay-physics-demo[data-focus="contact"] .relay-contact { filter: drop-shadow(0 0 8px #6de8c9); }
+.relay-physics-demo[data-focus="coil"] .relay-coil, .relay-physics-demo[data-focus="contact"] .relay-contact { outline: 1px solid rgb(114 232 199 / 70%); outline-offset: 4px; }
+.relay-physics-demo[data-focus="field"] .relay-field-arcs i { border-color: #66dbd0; opacity: .95; }
+.relay-physics-demo[data-focus="armature"] .relay-armature { box-shadow: 0 0 14px rgb(109 232 201 / 85%); }
+.relay-operation-sequence { display: grid; gap: 5px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 15px; border: 1px solid rgb(135 190 202 / 20%); border-radius: 11px; padding: 7px; background: rgb(4 26 37 / 43%); }
+.relay-operation-sequence button { display: grid; min-width: 0; justify-items: start; gap: 3px; border: 1px solid transparent; border-radius: 7px; padding: 7px 6px; background: transparent; color: #aecbd2; cursor: pointer; text-align: left; transition: border-color .2s, background .2s, color .2s, transform .2s; }
+.relay-operation-sequence button:hover { transform: translateY(-2px); color: #e9fbfb; }
+.relay-operation-sequence button[aria-pressed="true"] { border-color: rgb(112 221 205 / 34%); background: rgb(60 158 164 / 18%); color: #e6ffff; }
+.relay-operation-sequence button:focus-visible { outline: 2px solid #82e6d8; outline-offset: 2px; }
+.relay-operation-sequence button > span { color: #62cdbc; font: 800 8px ui-monospace, monospace; }
+.relay-operation-sequence button strong { overflow: hidden; max-width: 100%; font-size: 9px; text-overflow: ellipsis; }
+.relay-operation-sequence button small { color: #87aeb9; font-size: 7px; }
+.relay-sequence-status { min-height: 30px; margin: 9px 0 0; color: #a6cbd1; font-size: 9px; line-height: 1.5; }
+
+/* Solutions: component labels make the software mapping clear at a glance. */
+.page-solutions .solution-snag summary { position: relative; }
+.page-solutions .solution-snag summary::before { position: absolute; top: 50%; left: 10px; width: 9px; height: 9px; transform: translateY(-50%); border: 2px solid #77b9c6; border-radius: 50%; background: #edf9fa; box-shadow: 0 0 0 3px #fff; content: ""; }
+.page-solutions .solution-snag[open] summary::before { border-color: #36af8a; background: #65d5a4; box-shadow: 0 0 0 3px #e8faf3, 0 0 10px rgb(54 175 138 / 35%); }
+.page-solutions .solution-node { border-radius: 7px 50% 50% 50%; }
+.solution-component-card { overflow: hidden; }
+.solution-component-tag { display: block; min-height: 16px; margin: 14px 0 8px; color: #14809b; font: 850 8px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .045em; }
+.solution-component-card .count { position: absolute; top: 22px; right: 20px; }
+.solution-component-card::before { position: absolute; top: 0; left: 0; width: 3px; height: 100%; transform: scaleY(.18); transform-origin: top; background: linear-gradient(#31a6bc, #72d8aa); content: ""; transition: transform .3s; }
+.solution-component-card:hover::before { transform: scaleY(1); }
+
+/* Contact: patch-bay buttons route only editable text to the form. */
+.page-contact .page-hero { background: linear-gradient(115deg, #eff8fb, #fff 53%, #eff7f8); }
+.page-contact .page-hero .eyebrow { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 850; letter-spacing: .07em; }
+.page-contact .contact-signal-picker { position: relative; overflow: visible; gap: 9px; border-color: #bbd3dd; border-radius: 12px; padding: 17px 15px 14px 20px; background: linear-gradient(150deg, #eff7fa, #fff 65%); box-shadow: inset 4px 0 #123d50, 0 18px 40px -38px rgb(16 42 67 / 55%); }
+.page-contact .contact-signal-picker::before { position: absolute; top: -10px; left: 21px; padding: 2px 6px; background: #eff7fa; color: #2c7187; content: "PATCH BAY · 03 INPUTS"; font: 850 7px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+.page-contact .contact-signal-picker > .eyebrow { margin: 2px 0 4px; color: #187d94; font: 850 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .07em; }
+.page-contact .contact-signal-picker button { position: relative; z-index: 1; min-height: 60px; gap: 10px; grid-template-columns: 30px minmax(0, 1fr) 18px; border-color: #dae8ed; border-radius: 8px; padding: 8px 9px; font-size: 10px; }
+.page-contact .contact-signal-picker button::before { position: absolute; top: 50%; right: -17px; width: 17px; height: 2px; transform: scaleX(0); transform-origin: left; background: #56c6b1; box-shadow: 0 0 7px rgb(86 198 177 / 50%); content: ""; transition: transform .25s; }
+.page-contact .contact-signal-picker button:hover { transform: translateX(2px); border-color: #72b9c4; }
+.page-contact .contact-signal-picker button[aria-pressed="true"] { border-color: #56bda4; background: #f3fcf8; box-shadow: 0 0 0 3px rgb(86 189 164 / 11%); }
+.page-contact .contact-signal-picker button[aria-pressed="true"]::before { transform: scaleX(1); }
+.page-contact .contact-signal-picker button > .contact-patch-port { display: grid; width: 27px; height: 27px; place-items: center; border: 1px solid #9fbdc8; border-radius: 50%; padding: 0; background: #e9f3f6; }
+.contact-patch-port i { width: 10px; height: 10px; border: 2px solid #789ca9; border-radius: 50%; background: #173e4f; box-shadow: inset 0 0 0 2px #c8dbe1; }
+.page-contact .contact-signal-picker button[aria-pressed="true"] .contact-patch-port { border-color: #5fbea5; background: #e6f7f0; }
+.page-contact .contact-signal-picker button[aria-pressed="true"] .contact-patch-port i { border-color: #8ae6c1; background: #39ae88; box-shadow: 0 0 10px rgb(57 174 136 / 53%); }
+.page-contact .contact-signal-picker button > .contact-patch-copy { display: grid; width: auto; height: auto; justify-items: start; gap: 3px; border: 0; border-radius: 0; padding: 0; background: transparent; color: inherit; text-align: left; }
+.contact-patch-copy small { color: #728995; font: 850 7px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .045em; }
+.contact-patch-copy strong { color: #2a4656; font-size: 10px; }
+.contact-patch-copy em { color: #9a7844; font: 850 7px ui-monospace, SFMono-Regular, Menlo, monospace; font-style: normal; letter-spacing: .04em; }
+.contact-signal-picker button[aria-pressed="true"] .contact-patch-copy em { color: #188263; }
+.page-contact .contact-signal-picker button > .contact-patch-arrow { display: grid; width: auto; height: auto; place-items: center; border: 0; border-radius: 0; padding: 0; background: transparent; color: #8ba5af; font-size: 16px; transition: color .2s, transform .2s; }
+.page-contact .contact-signal-picker button[aria-pressed="true"] .contact-patch-arrow { transform: translate(2px, 2px); color: #159979; }
+.page-contact .contact-signal-picker[data-routed="true"] .contact-signal-status { color: #247b69; }
+.page-contact .form-card { transition: border-color .3s, box-shadow .3s; }
+.page-contact .form-card[data-signal-line] { border-color: #75cbb1; box-shadow: 0 0 0 4px rgb(86 189 164 / 9%), 0 24px 58px -48px rgb(20 125 104 / 45%); }
+.page-contact .form-card[data-signal-line]::before { display: block; margin: -8px 0 15px; border-bottom: 1px solid #e2eee9; padding: 0 0 9px; color: #26866d; content: "SIGNAL RECEIVED · EDITABLE DRAFT ONLY"; font: 850 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .07em; }
+@media (max-width: 760px) { .page-contact .contact-signal-picker button::before { right: auto; bottom: -10px; left: 22px; top: auto; width: 2px; height: 10px; transform: scaleY(0); transform-origin: top; } .page-contact .contact-signal-picker button[aria-pressed="true"]::before { transform: scaleY(1); } }
+@media (max-width: 520px) { .relay-operation-sequence { gap: 3px; padding: 5px; } .relay-operation-sequence button { padding-inline: 4px; } .relay-operation-sequence button strong { font-size: 8px; } .relay-operation-sequence button small { font-size: 6px; } .page-contact .contact-signal-picker { padding-inline: 12px; } .page-contact .contact-signal-picker button { grid-template-columns: 28px minmax(0, 1fr) 14px; } }
+@media (max-width: 520px) { .home-page .hero-switchboard[data-connection="closed"] .hero-signal-path li::after { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .home-page .hero-switchboard[data-connection="closed"] .hero-signal-path li::after { animation: none; }
+  .relay-physics-demo[data-energized="true"] .relay-field-arcs i { animation: none; }
+  .relay-operation-sequence button, .contact-signal-picker button, .contact-signal-picker button::before, .contact-patch-arrow { transition: none !important; }
+  .relay-operation-sequence button:hover, .contact-signal-picker button:hover { transform: none; }
+}

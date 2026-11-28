@@ -21,6 +21,7 @@
   <meta name="twitter:image" content="https://relayautomation.tech/assets/relay-home-video-poster.png">
   <meta name="twitter:image:alt" content="Relay illustration showing the journey from signed customer agreement through setup and launch to go-live">
   <link rel="stylesheet" href="relay.css">
+  <link rel="stylesheet" href="relay-electrical-pages.css">
 </head>
 <body class="page-about">
   <header class="topbar"><div class="wrap nav">
@@ -31,13 +32,13 @@
     </nav>
   </div></header>
   <main>
-    <section class="page-hero"><div class="wrap"><p class="eyebrow">About Relay Automation</p><h1>We make customer onboarding easier to manage.</h1><p>Relay takes its name from the electrical component that passes a signal along. Our workspace carries that idea into onboarding: clear handoffs, named owners, and visible next steps for B2B SaaS teams.</p><div class="hero-actions"><a class="button" href="product.html?demo=workspace">Try the sample workspace <span aria-hidden="true">→</span></a></div></div></section>
+    <section class="page-hero"><div class="wrap"><p class="eyebrow"><span class="electric-overline-mark" aria-hidden="true">⌁</span> WHY THE NAME RELAY?</p><h1>A small electrical idea. A clearer path for onboarding.</h1><p>An electromechanical relay uses a signal in one circuit to switch contacts in another. Relay borrows that handoff idea for B2B SaaS onboarding: make the owner, next step, and open connection visible.</p><div class="hero-actions"><a class="button" href="product.html?demo=workspace">Try the sample workspace <span aria-hidden="true">→</span></a></div></div></section>
     <section class="section relay-mechanism-section" aria-labelledby="relay-mechanism-title">
       <div class="wrap relay-mechanism-layout">
         <div class="relay-mechanism-copy">
-          <p class="eyebrow">The component behind the name</p>
-          <h2 id="relay-mechanism-title">A relay switches one circuit with a signal from another.</h2>
-          <p>A control current energizes the coil. Its magnetic field moves an armature, which changes the contacts in a separate load circuit. This simplified example shows a normally-open contact.</p>
+          <p class="eyebrow">CONTROL SIDE → CONTACT SIDE</p>
+          <h2 id="relay-mechanism-title">A coil moves a contact. A signal crosses a gap.</h2>
+          <p>Current through the control coil creates a magnetic field. The field moves an armature, changing contacts in a separate load circuit. This simplified illustration shows a normally-open contact.</p>
           <p class="relay-small-note">Real relays vary in design and contact arrangement. This illustration is a learning aid, not wiring guidance.</p>
           <button class="button" id="relay-coil-toggle" type="button" aria-pressed="false">Energize the coil <span aria-hidden="true">⏻</span></button>
           <p class="relay-demo-status" id="relay-demo-status" role="status" aria-live="polite">Coil off · load contact open · lamp off.</p>
@@ -48,7 +49,7 @@
             <span class="relay-circuit-label">CONTROL CIRCUIT</span>
             <span class="relay-source"><span class="relay-source-plus">+</span><span class="relay-source-line"></span><span class="relay-source-minus">−</span><small>Control</small></span>
             <span class="relay-wire relay-wire-a" aria-hidden="true"></span>
-            <span class="relay-coil"><span class="relay-coil-loops" aria-hidden="true">))))))</span><small>Coil</small></span>
+            <span class="relay-coil"><span class="relay-coil-loops" aria-hidden="true">))))))</span><span class="relay-field-arcs" aria-hidden="true"><i></i><i></i><i></i></span><small>Coil</small></span>
             <span class="relay-wire relay-wire-b" aria-hidden="true"></span>
             <span class="relay-control-switch"><span></span></span>
           </div>
@@ -62,15 +63,22 @@
             <span class="relay-lamp"><span aria-hidden="true">✦</span><small>Lamp</small></span>
           </div>
           <p class="relay-diagram-caption">Two separate circuits. One small switch with a magnetic job.</p>
+          <div class="relay-operation-sequence" role="group" aria-label="Explore the relay mechanism">
+            <button type="button" data-relay-explain="coil" aria-pressed="true"><span>01</span><strong>Coil</strong><small>Current in</small></button>
+            <button type="button" data-relay-explain="field" aria-pressed="false"><span>02</span><strong>Field</strong><small>Magnetism</small></button>
+            <button type="button" data-relay-explain="armature" aria-pressed="false"><span>03</span><strong>Armature</strong><small>Moves</small></button>
+            <button type="button" data-relay-explain="contact" aria-pressed="false"><span>04</span><strong>Contact</strong><small>Switches load</small></button>
+          </div>
+          <p class="relay-sequence-status" id="relay-sequence-status" role="status" aria-live="polite">Coil: current in the control winding creates a magnetic field.</p>
         </div>
       </div>
     </section>
     <section class="section"><div class="wrap">
       <div class="section-head"><p class="eyebrow">One clear workflow</p><h2>From process to customer launch.</h2></div>
       <div class="home-benefit-grid">
-        <article class="home-benefit-card"><p class="eyebrow">Plan</p><h3>Build a repeatable process.</h3><p>Set up steps, owners, and reusable templates.</p></article>
-        <article class="home-benefit-card"><p class="eyebrow">Coordinate</p><h3>Keep customer work moving.</h3><p>Manage tasks and information requests together.</p></article>
-        <article class="home-benefit-card"><p class="eyebrow">Review</p><h3>See launch progress.</h3><p>Check readiness across your implementations.</p></article>
+        <article class="home-benefit-card"><p class="eyebrow">01 · COIL → PROCESS</p><h3>Build a repeatable process.</h3><p>Set up steps, owners, and reusable templates. Think control signal; the workflow still runs on people.</p></article>
+        <article class="home-benefit-card"><p class="eyebrow">02 · CONTACTS → HANDOFF</p><h3>Keep customer work moving.</h3><p>Manage tasks and information requests together. Give the next connection a name.</p></article>
+        <article class="home-benefit-card"><p class="eyebrow">03 · STATUS LED → REVIEW</p><h3>See launch progress.</h3><p>Check readiness across your implementations. The indicator shows recorded data, not a hardware sensor.</p></article>
       </div>
     </div></section>
     <section class="section tint"><div class="wrap content-grid">
