@@ -106,39 +106,45 @@
   calmRange.addEventListener("input", updateCalm);
   updateCalm();
 
-  const circuitPreview = document.querySelector(".circuit-preview");
-  if (circuitPreview) {
-    const circuitMessage = document.getElementById("circuit-preview-message");
-    const circuitToggle = document.getElementById("circuit-preview-toggle");
-    const stepMessages = {
-      closed: "The deal is marked closed in this fictional path. The signal is through; now the implementation handoff can begin.",
-      request: "The access details have been requested. Next, the team needs a clear owner to keep this handoff moving.",
-      handoff: "This fictional access request has no named owner. Relay lets the team assign a task owner and record the next step. One loose connection; no screwdriver needed.",
-      launch: "Launch review is next in this example. It depends on the earlier setup work being completed and checked."
+  const heroSwitchboard = document.getElementById("hero-switchboard");
+  if (heroSwitchboard) {
+    const switchboardDetails = {
+      deal: "The sample deal is signed. Signal received; now the implementation handoff can start.",
+      request: "Setup information has been requested. The next connection is a named person to keep it moving.",
+      owner: "The access request has no named owner. A loose connection, not a mystery novel.",
+      launch: "Launch review is next in this fictional path. It depends on the earlier setup work being completed and checked."
     };
-    circuitPreview.addEventListener("click", (event) => {
-      const stepButton = event.target.closest("[data-circuit-step]");
-      if (stepButton) {
-        circuitPreview.querySelectorAll("[data-circuit-step]").forEach((button) => {
-          button.setAttribute("aria-pressed", String(button === stepButton));
+    const detail = document.getElementById("hero-switchboard-detail");
+    const toggle = document.getElementById("hero-switchboard-toggle");
+    const status = document.getElementById("hero-switchboard-status");
+    heroSwitchboard.addEventListener("click", (event) => {
+      const step = event.target.closest("[data-hero-signal]");
+      if (step) {
+        heroSwitchboard.querySelectorAll("[data-hero-signal]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button === step));
         });
-        circuitMessage.textContent = stepMessages[stepButton.dataset.circuitStep];
+        detail.textContent = heroSwitchboard.dataset.connection === "closed" && step.dataset.heroSignal === "owner"
+          ? "Maya owns this sample access check. The handoff has an owner; no real workspace data was changed."
+          : switchboardDetails[step.dataset.heroSignal];
       }
-      if (event.target.closest("#circuit-preview-toggle")) {
-        const connected = circuitPreview.dataset.connection !== "connected";
-        circuitPreview.dataset.connection = connected ? "connected" : "open";
-        const handoffButton = circuitPreview.querySelector('[data-circuit-step="handoff"]');
-        handoffButton.querySelector("strong").textContent = connected ? "Owner assigned" : "Owner missing";
-        handoffButton.querySelector("small").textContent = connected ? "Connected" : "Open connection";
-        handoffButton.querySelector(".circuit-node").textContent = connected ? "3" : "!";
-        circuitMessage.textContent = connected
-          ? "Preview connected: Priya owns the access check, with launch review next. This is a sample illustration; no workspace data changed."
-          : stepMessages.handoff;
-        circuitToggle.textContent = connected ? "Remove sample owner" : "Assign a sample owner";
-        handoffButton.setAttribute("aria-pressed", "true");
-        circuitPreview.querySelectorAll("[data-circuit-step]").forEach((button) => {
-          button.setAttribute("aria-pressed", String(button === handoffButton));
+      if (event.target.closest("#hero-switchboard-toggle")) {
+        const connected = heroSwitchboard.dataset.connection !== "closed";
+        heroSwitchboard.dataset.connection = connected ? "closed" : "open";
+        const ownerStep = heroSwitchboard.querySelector('[data-hero-signal="owner"]');
+        ownerStep.querySelector("strong").textContent = connected ? "Maya assigned" : "Owner missing";
+        ownerStep.querySelector("small").textContent = connected ? "Signal connected" : "Open connection";
+        ownerStep.querySelector(".hero-signal-node").textContent = connected ? "03" : "!";
+        ownerStep.setAttribute("aria-pressed", "true");
+        heroSwitchboard.querySelectorAll("[data-hero-signal]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button === ownerStep));
         });
+        status.textContent = connected ? "Circuit closed" : "Open circuit";
+        detail.textContent = connected
+          ? "Connected for this preview: Maya owns the access check, with launch review next. The tiny switch has done its entire job."
+          : switchboardDetails.owner;
+        toggle.innerHTML = connected
+          ? 'Remove sample owner <span aria-hidden="true">⏻</span>'
+          : 'Assign a sample owner <span aria-hidden="true">⏻</span>';
       }
     });
   }

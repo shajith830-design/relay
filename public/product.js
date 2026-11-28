@@ -806,14 +806,14 @@ function renderGettingStarted() {
   const steps = [
     {
       title: "Build and check a process",
-      description: "Capture a few real steps, give them owners, then run the check before reuse.",
+      description: "Map a few real steps, give each one an owner, then run the check. No full-building wiring diagram required.",
       complete: processChecked,
       action: next.action === "check-process" ? "check-process" : "map-process",
       actionLabel: next.action === "check-process" ? "Check a process" : processWithSteps ? "Continue your process map" : "Create a process map"
     },
     {
       title: "Save a reusable template",
-      description: "A template is a checked snapshot of your process and the starting point for customer work.",
+      description: "Save the checked process as a reusable starting point—your team's wiring diagram for customer work.",
       complete: state.data.templates.length > 0,
       action: "save-template",
       actionLabel: "Create a template"
@@ -834,15 +834,16 @@ function renderGettingStarted() {
     return `<li class="getting-started-step ${step.complete ? "complete" : waiting ? "waiting" : "current"}">
       <span class="getting-started-check" aria-hidden="true">${step.complete ? "✓" : index + 1}</span>
       <div class="getting-started-copy"><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.description)}</p>
-        ${index === nextIndex ? `<small>Next: ${escapeHtml(step.actionLabel)}. Use the main action above to continue.</small>` : waiting ? '<small>Complete the previous step to continue.</small>' : ""}
+        ${index === nextIndex ? `<small>Next: ${escapeHtml(step.actionLabel)}.</small>` : waiting ? '<small>Complete the previous step to continue.</small>' : ""}
+        <button class="text-button getting-started-action" type="button" data-workflow-action="${escapeHtml(step.action)}">${step.complete ? "Review step" : waiting ? "Preview this step" : "Continue this step"} <span aria-hidden="true">→</span></button>
       </div>
       <span class="getting-started-state">${step.complete ? "Complete" : waiting ? "Next" : "Up next"}</span>
     </li>`;
   }).join("");
   const status = document.getElementById("getting-started-status");
   status.textContent = nextIndex < 0
-    ? "First customer path complete. Keep this guide for reference, or hide it and come back any time."
-    : `${steps.filter((step) => step.complete).length} of ${steps.length} steps complete.`;
+    ? "First customer path connected. Keep this guide for reference, or hide it and come back any time."
+    : `${steps.filter((step) => step.complete).length} of ${steps.length} steps complete. One switch at a time; no need to rewire the building.`;
 }
 
 function setMobileNavigationOpen(isOpen) {
@@ -990,9 +991,9 @@ function renderOverview() {
   primaryAction.textContent = next.label;
   primaryAction.dataset.workflowAction = next.action;
   const welcomeCopy = {
-    "map-process": ["Start with how your team works.", "Map a few real onboarding steps, give them owners, and check the process before turning it into a reusable template."],
-    "check-process": ["Your process has steps. Give it a check.", "Review missing instructions or roles before you save this workflow as a template."],
-    "save-template": ["Your process is checked. Make it reusable.", "Save a template, then use it as the starting point for a customer implementation."],
+      "map-process": ["Start with how your team works.", "Map a few real onboarding steps, give them owners, and check the process before turning it into a reusable template. No building-wide rewiring required."],
+      "check-process": ["Your process has steps. Give it a check.", "Check the path for missing instructions or owners before you save it as a template. Better to find the loose connection here."],
+      "save-template": ["Your process is checked. Make it reusable.", "Save a template—your team's wiring diagram for each new customer implementation."],
     "start-implementation": [implementations.length ? "Ready for another customer plan?" : "Your first customer plan starts here.", "Choose a saved template and enter the customer company to create its work plan."],
     "view-implementations": ["Pick up the customer work.", "Open an implementation to review its tasks, owners, and next steps."]
   }[next.action];
@@ -1502,9 +1503,9 @@ function updateProcessActionButtons() {
 function renderImplementationTable(implementations, compact = false) {
   if (!implementations.length) {
     const next = getNextWorkflowAction();
-    return `<div class="empty-state"><strong>No customer implementations yet</strong><p>${state.data.templates.length
+    return `<div class="empty-state"><strong>No customer circuits are live yet</strong><p>${state.data.templates.length
       ? "Start from a saved template to create the first customer-specific work plan. Every tidy circuit starts with one clear path."
-      : "Follow the next setup step to prepare a reusable starting point before customer work. No wiring diagram required."}</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
+      : "Follow the next setup step to prepare a reusable starting point before customer work. No wiring diagram required—and no electrician's toolkit needed."}</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
   }
   const ownerLabels = (item) => {
     const assignedIds = (item.assigned_member_ids || "").split(",").filter(Boolean);
@@ -1817,7 +1818,7 @@ function renderTemplates() {
     .map((template) => `<option value="${template.id}">${escapeHtml(template.name)}</option>`).join("");
   if (!state.data.templates.length) {
     const next = getNextWorkflowAction();
-    container.innerHTML = `<div class="empty-state"><strong>No templates yet</strong><p>Check a process, then save it as the wiring diagram you can reuse for each new customer implementation.</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
+    container.innerHTML = `<div class="empty-state"><strong>No templates on the shelf yet</strong><p>Check a process, then save it as the wiring diagram you can reuse for each new customer implementation.</p><button class="button secondary" type="button" data-workflow-action="${next.action}">${escapeHtml(next.label)}</button></div>`;
     return;
   }
   container.innerHTML = state.data.templates.map((template) => {

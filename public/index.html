@@ -82,15 +82,29 @@
   </div></header>
   <main>
     <section class="hero home-hero waiting-hero">
-      <div class="wrap waiting-hero-content">
-        <p class="eyebrow">Illustrative scenario · for B2B SaaS implementation teams</p>
-        <h1>A customer signed weeks ago.<br>Still waiting to go live?</h1>
-        <p class="hero-description">You closed the deal. Now you’re chasing the logo, access, or the right person to finish onboarding. Relay keeps the next step and its owner in view.</p>
-        <div class="hero-actions">
-          <a class="button" href="#quick-tour">Take the 60-second tour <span aria-hidden="true">↓</span></a>
-          <a class="hero-skip-link" href="product.html?demo=workspace">Open the sample workspace</a>
+      <div class="wrap waiting-hero-layout">
+        <div class="waiting-hero-content">
+          <p class="eyebrow">Illustrative scenario · for B2B SaaS implementation teams</p>
+          <h1>A customer signed weeks ago.<br>Still waiting to go live?</h1>
+          <p class="hero-description">You closed the deal. Now you’re chasing the logo, access, or the right person to finish onboarding. Relay keeps the next step and its owner in view.</p>
+          <div class="hero-actions">
+            <a class="button" href="#quick-tour">Take the 60-second tour <span aria-hidden="true">↓</span></a>
+            <a class="hero-skip-link" href="product.html?demo=workspace">Open the sample workspace</a>
+          </div>
+          <p class="waiting-hero-note"><a class="text-link" href="#delay-estimator">Prefer to estimate the wait?</a> Jump to the optional calculator.</p>
         </div>
-        <p class="waiting-hero-note"><a class="text-link" href="#delay-estimator">Prefer to estimate the wait?</a> Jump to the optional calculator.</p>
+        <aside class="hero-switchboard" id="hero-switchboard" data-connection="open" aria-labelledby="hero-switchboard-title">
+          <div class="switchboard-heading"><div><p class="eyebrow">Relay signal board</p><h2 id="hero-switchboard-title">One handoff needs a connection.</h2></div><span class="switchboard-status" id="hero-switchboard-status" role="status" aria-live="polite">Open circuit</span></div>
+          <p class="switchboard-caption"><span class="sample-tag">Fictional preview</span> Follow a sample customer from signed to launch-ready.</p>
+          <ol class="hero-signal-path" aria-label="Fictional customer onboarding signal path">
+            <li><button type="button" data-hero-signal="deal" aria-pressed="false"><span class="hero-signal-node" aria-hidden="true">01</span><span><strong>Deal signed</strong><small>Signal received</small></span></button></li>
+            <li><button type="button" data-hero-signal="request" aria-pressed="false"><span class="hero-signal-node" aria-hidden="true">02</span><span><strong>Setup requested</strong><small>Access needed</small></span></button></li>
+            <li><button type="button" data-hero-signal="owner" aria-pressed="true"><span class="hero-signal-node" aria-hidden="true">!</span><span><strong>Owner missing</strong><small>Open connection</small></span></button></li>
+            <li><button type="button" data-hero-signal="launch" aria-pressed="false"><span class="hero-signal-node" aria-hidden="true">04</span><span><strong>Launch review</strong><small>Next checkpoint</small></span></button></li>
+          </ol>
+          <div class="switchboard-detail"><p id="hero-switchboard-detail" role="status" aria-live="polite">The access request has no named owner. A loose connection, not a mystery novel.</p><button class="switchboard-toggle" id="hero-switchboard-toggle" type="button">Assign a sample owner <span aria-hidden="true">⏻</span></button></div>
+          <p class="switchboard-footnote">Preview only. This switch changes no real workspace or customer data.</p>
+        </aside>
       </div>
     </section>
 
@@ -173,24 +187,6 @@
         </div>
         <label class="calm-range-label" for="calm-range"><span>Scattered updates</span><span>One clear next step</span></label>
         <input id="calm-range" class="calm-range" type="range" min="0" max="100" value="0" aria-label="Compare sample inbox and status views">
-        <section class="circuit-preview" aria-labelledby="circuit-preview-title" data-connection="open">
-          <div class="circuit-preview-copy">
-            <p class="eyebrow">Trace the handoff · fictional</p>
-            <h3 id="circuit-preview-title">Can you spot the open connection?</h3>
-            <p>Choose a checkpoint to see what’s moving and where this sample handoff needs an owner.</p>
-          </div>
-          <ol class="circuit-path" aria-label="Fictional onboarding path">
-            <li><button type="button" data-circuit-step="closed" aria-pressed="false"><span class="circuit-node" aria-hidden="true">1</span><strong>Deal closed</strong><small>Signal received</small></button></li>
-            <li><button type="button" data-circuit-step="request" aria-pressed="false"><span class="circuit-node" aria-hidden="true">2</span><strong>Access requested</strong><small>Details needed</small></button></li>
-            <li><button type="button" data-circuit-step="handoff" aria-pressed="true"><span class="circuit-node" aria-hidden="true">!</span><strong>Owner missing</strong><small>Open connection</small></button></li>
-            <li><button type="button" data-circuit-step="launch" aria-pressed="false"><span class="circuit-node" aria-hidden="true">4</span><strong>Launch review</strong><small>Up next</small></button></li>
-          </ol>
-          <div class="circuit-preview-result" aria-live="polite">
-            <p id="circuit-preview-message">This fictional access request has no named owner. Relay lets the team assign a task owner and record the next step. One loose connection; no screwdriver needed.</p>
-            <button class="button secondary" id="circuit-preview-toggle" type="button">Assign a sample owner</button>
-          </div>
-          <p class="circuit-preview-note">Interactive example only. This changes the preview, not a Relay workspace or customer record.</p>
-        </section>
         <div class="quick-tour-next"><p><strong>That’s the tour.</strong> Relay’s workspace brings tasks, owners, and launch progress together. The sample workspace lets you explore more fictional data.</p><a class="button" href="product.html?demo=workspace">Explore the sample workspace <span aria-hidden="true">→</span></a></div>
       </div>
     </section>
