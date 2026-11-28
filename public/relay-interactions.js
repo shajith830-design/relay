@@ -50,13 +50,13 @@
           });
           picker.dataset.routed = "true";
           form.dataset.signalLine = button.dataset.contactLine || "selected";
-          contactPromptStatus.textContent = "That lead is already in the draft. No duplicate signal added.";
+          contactPromptStatus.textContent = "That prompt is already in your draft. No duplicate added.";
           details.focus();
           return;
         }
         const draft = [details.value.trim(), prompt].filter(Boolean).join("\n\n");
         if (draft.length > Number(details.maxLength)) {
-          contactPromptStatus.textContent = "The message terminal is full. Make room in the draft before routing this line.";
+          contactPromptStatus.textContent = "This would exceed the message length limit. Make room in the draft before adding it.";
           details.focus();
           return;
         }
@@ -69,7 +69,7 @@
         form.dataset.signalLine = button.dataset.contactLine || "selected";
         details.value = draft;
         details.dispatchEvent(new Event("input", { bubbles: true }));
-        contactPromptStatus.textContent = "Signal routed to the message draft. Edit it to fit; nothing is sent until you submit.";
+        contactPromptStatus.textContent = "Added to your message draft. Edit it to fit; nothing is sent until you submit.";
         details.focus();
       });
     });

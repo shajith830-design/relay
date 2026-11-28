@@ -1,6 +1,6 @@
 .electric-overline-mark { display: inline-grid; width: 20px; height: 20px; place-items: center; border: 1px solid color-mix(in srgb, currentColor 28%, transparent); border-radius: 6px 6px 6px 2px; font-size: 15px; vertical-align: -3px; }
-.page-about .page-hero, .page-solutions .page-hero, .page-contact .page-hero { background-image: linear-gradient(120deg, #eff8fb, #fff 55%, #f0f8fa); }
-.page-about .page-hero::before, .page-solutions .page-hero::before, .page-contact .page-hero::before { top: 0; right: 0; width: min(40vw, 430px); height: 100%; aspect-ratio: auto; border: 0; border-radius: 0; background-image: linear-gradient(90deg, transparent 49.5%, rgb(19 126 151 / 8%) 50%, transparent 50.5%), linear-gradient(transparent 49.5%, rgb(19 126 151 / 7%) 50%, transparent 50.5%); background-size: 34px 34px; box-shadow: none; mask-image: linear-gradient(90deg, transparent, #000); }
+.page-about .page-hero, .page-solutions .page-hero, .page-contact .page-hero { background-image: radial-gradient(ellipse at 82% 20%, rgb(250 207 165 / 28%), transparent 31%), radial-gradient(ellipse at 68% 105%, rgb(177 210 248 / 35%), transparent 40%), linear-gradient(120deg, #f8f5ff, #fff 55%, #f0f9f7); }
+.page-about .page-hero::before, .page-solutions .page-hero::before, .page-contact .page-hero::before { top: 0; right: 0; width: min(40vw, 430px); height: 100%; aspect-ratio: auto; border: 0; border-radius: 0; background-image: radial-gradient(circle at 20% 50%, rgb(24 125 148 / 9%) 0 2px, transparent 3px), linear-gradient(90deg, transparent 49.5%, rgb(19 126 151 / 6%) 50%, transparent 50.5%), linear-gradient(transparent 49.5%, rgb(19 126 151 / 5%) 50%, transparent 50.5%); background-size: 44px 44px, 44px 44px, 44px 44px; box-shadow: none; mask-image: linear-gradient(90deg, transparent, #000); }
 .page-contact .page-hero::before { background-size: 26px 26px; }
 .page-about .page-hero .eyebrow, .page-solutions .page-hero .eyebrow, .page-contact .page-hero .eyebrow { color: #127c98; font: 850 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
 
@@ -49,7 +49,7 @@
 .solution-component-card:hover::before { transform: scaleY(1); }
 
 /* Contact: patch-bay buttons route only editable text to the form. */
-.page-contact .page-hero { background: linear-gradient(115deg, #eff8fb, #fff 53%, #eff7f8); }
+.page-contact .page-hero { background: radial-gradient(ellipse at 82% 20%, rgb(250 207 165 / 28%), transparent 31%), radial-gradient(ellipse at 68% 105%, rgb(177 210 248 / 35%), transparent 40%), linear-gradient(115deg, #f8f5ff, #fff 53%, #f0f9f7); }
 .page-contact .page-hero .eyebrow { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 850; letter-spacing: .07em; }
 .page-contact .contact-signal-picker { position: relative; overflow: visible; gap: 9px; border-color: #bbd3dd; border-radius: 12px; padding: 17px 15px 14px 20px; background: linear-gradient(150deg, #eff7fa, #fff 65%); box-shadow: inset 4px 0 #123d50, 0 18px 40px -38px rgb(16 42 67 / 55%); }
 .page-contact .contact-signal-picker::before { position: absolute; top: -10px; left: 21px; padding: 2px 6px; background: #eff7fa; color: #2c7187; content: "PATCH BAY · 03 INPUTS"; font: 850 7px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
@@ -83,3 +83,10 @@
   .relay-operation-sequence button, .contact-signal-picker button, .contact-signal-picker button::before, .contact-patch-arrow { transition: none !important; }
   .relay-operation-sequence button:hover, .contact-signal-picker button:hover { transform: none; }
 }
+
+/* Soft, colorful ambient motion keeps the relay motif in the background. */
+.home-page .hero-switchboard { background: radial-gradient(ellipse at 90% 5%, rgb(224 164 255 / 17%), transparent 32%), radial-gradient(ellipse at 4% 100%, rgb(100 225 204 / 13%), transparent 36%), linear-gradient(145deg, #102e3b, #173e4b 64%, #12313d); }
+.page-about .relay-mechanism-section, .page-solutions .component-lab-section { background-image: radial-gradient(ellipse at 5% 20%, rgb(234 221 255 / 45%), transparent 35%), radial-gradient(ellipse at 96% 80%, rgb(202 239 228 / 42%), transparent 38%); }
+.page-solutions .component-board { box-shadow: 0 25px 70px -44px rgb(47 83 135 / 38%), 0 0 0 1px rgb(255 255 255 / 72%); }
+.page-contact .form-card { box-shadow: 0 25px 70px -46px rgb(47 83 135 / 32%), 0 0 0 1px rgb(255 255 255 / 70%); }
+@media (prefers-reduced-motion: reduce) { .home-page .hero-switchboard, .page-solutions .component-board, .page-contact .form-card { scroll-behavior: auto; } }

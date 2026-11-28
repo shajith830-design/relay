@@ -100,7 +100,7 @@
     calmRange.setAttribute("aria-valuetext", calm ? "Sample status view" : "Sample inbox view");
     document.getElementById("calm-state-label").textContent = calm ? "A clearer next step" : "Tuesday, 4:47 pm";
     document.getElementById("calm-circuit-owner-title").textContent = calm ? "Maya assigned" : "Owner missing";
-    document.getElementById("calm-circuit-owner-state").textContent = calm ? "Signal connected" : "Open connection";
+    document.getElementById("calm-circuit-owner-state").textContent = calm ? "Owner assigned" : "Owner needed";
     calmStatus.textContent = calm
       ? "Sample status · Acme Logistics is 85% ready. Waiting on one DNS record from Acme IT."
       : "Sample inbox · DNS setup, a forwarded email, a customer follow-up, and a status request.";
@@ -113,7 +113,7 @@
     const switchboardDetails = {
       deal: "The sample deal is signed. Signal received; now the implementation handoff can start.",
       request: "Setup information has been requested. The next connection is a named person to keep it moving.",
-      owner: "The access request has no named owner. A loose connection, not a mystery novel.",
+      owner: "The access request has no named owner yet. A clear handoff can save everyone a few follow-up messages.",
       launch: "Launch review is next in this fictional path. It depends on the earlier setup work being completed and checked."
     };
     const detail = document.getElementById("hero-switchboard-detail");
@@ -134,13 +134,13 @@
         heroSwitchboard.dataset.connection = connected ? "closed" : "open";
         const ownerStep = heroSwitchboard.querySelector('[data-hero-signal="owner"]');
         ownerStep.querySelector("strong").textContent = connected ? "Maya assigned" : "Owner missing";
-        ownerStep.querySelector("small").textContent = connected ? "Signal connected" : "Open connection";
+        ownerStep.querySelector("small").textContent = connected ? "Owner assigned" : "Owner needed";
         ownerStep.querySelector(".hero-signal-node").textContent = connected ? "03" : "!";
         ownerStep.setAttribute("aria-pressed", "true");
         heroSwitchboard.querySelectorAll("[data-hero-signal]").forEach((button) => {
           button.setAttribute("aria-pressed", String(button === ownerStep));
         });
-        status.textContent = connected ? "Circuit closed" : "Open circuit";
+        status.textContent = connected ? "Handoff assigned" : "Needs an owner";
         detail.textContent = connected
           ? "Connected for this preview: Maya owns the access check, with launch review next. The tiny switch has done its entire job."
           : switchboardDetails.owner;

@@ -70,6 +70,7 @@
   </script>
   <link rel="stylesheet" href="relay.css">
   <link rel="stylesheet" href="relay-electrical-pages.css">
+  <link rel="stylesheet" href="relay-story-pages.css">
 </head>
 <body class="page-contact">
   <header class="topbar"><div class="wrap nav">
@@ -80,14 +81,14 @@
     </nav>
   </div></header>
   <main>
-    <section class="page-hero"><div class="wrap"><p class="eyebrow"><span class="electric-overline-mark" aria-hidden="true">⌁</span> SEND A SIGNAL · CONTACT RELAY</p><h1>Route your question to the right terminal.</h1><p>Tell us which connection is giving your onboarding trouble. We’ll read the signal and talk through whether Relay fits—no oscilloscope required.</p></div></section>
+    <section class="page-hero story-hero"><div class="wrap story-hero-grid"><div class="story-hero-copy"><p class="eyebrow"><span class="electric-overline-mark" aria-hidden="true">⌁</span> CONTACT RELAY</p><h1>Let’s make your onboarding handoffs clearer.</h1><p>Tell us what your team is trying to improve. We’ll talk through your process and whether Relay may be a fit. No wiring diagram required.</p></div><figure class="story-hero-art"><img src="assets/relay-contact-story.svg" alt="A friendly inquiry form with customer onboarding topics and a clear message area"><figcaption>Bring a question. We’ll take it from there.</figcaption></figure></div></section>
     <section class="section"><div class="wrap form-layout">
-      <div><p class="eyebrow">PATCH PANEL · CHOOSE A LINE</p><h2>Where is the connection open?</h2><p class="muted">Pick the symptom that sounds familiar. We’ll route an editable prompt into your message; it stays a draft until you submit.</p>
+      <div><p class="eyebrow">START WITH WHAT’S ON YOUR MIND</p><h2>What would you like to talk about?</h2><p class="muted">Choose a starting point to add an editable prompt to your message. It stays a draft until you submit.</p>
         <div class="contact-signal-picker" aria-labelledby="contact-signal-title">
-          <p class="eyebrow" id="contact-signal-title">INPUT PORTS · NO VOLTAGE REQUIRED</p>
-          <button type="button" data-contact-prompt="We lose track of who owns the next step during customer onboarding." data-contact-line="handoff" aria-pressed="false"><span class="contact-patch-port" aria-hidden="true"><i></i></span><span class="contact-patch-copy"><small>LINE 01 · HANDOFF</small><strong>Loose lead: owner unclear</strong><em>OPEN CONTACT</em></span><span class="contact-patch-arrow" aria-hidden="true">↘</span></button>
-          <button type="button" data-contact-prompt="Customer setup information arrives through different messages, and it is hard to see what is still missing." data-contact-line="setup" aria-pressed="false"><span class="contact-patch-port" aria-hidden="true"><i></i></span><span class="contact-patch-copy"><small>LINE 02 · CUSTOMER INPUT</small><strong>Signal lost: setup info missing</strong><em>CHECK INPUT</em></span><span class="contact-patch-arrow" aria-hidden="true">↘</span></button>
-          <button type="button" data-contact-prompt="It is difficult to see which onboarding steps are complete and what is still needed before launch." data-contact-line="readiness" aria-pressed="false"><span class="contact-patch-port" aria-hidden="true"><i></i></span><span class="contact-patch-copy"><small>LINE 03 · READINESS</small><strong>Status lamp: hard to read</strong><em>REVIEW CHECKS</em></span><span class="contact-patch-arrow" aria-hidden="true">↘</span></button>
+          <p class="eyebrow" id="contact-signal-title">PICK A STARTING POINT</p>
+          <button type="button" data-contact-prompt="We lose track of who owns the next step during customer onboarding." data-contact-line="handoff" aria-pressed="false"><span class="contact-patch-port" aria-hidden="true"><i></i></span><span class="contact-patch-copy"><small>TEAM COORDINATION</small><strong>Ownership and handoffs</strong><em>WHO DOES WHAT?</em></span><span class="contact-patch-arrow" aria-hidden="true">↘</span></button>
+          <button type="button" data-contact-prompt="Customer setup information arrives through different messages, and it is hard to see what is still missing." data-contact-line="setup" aria-pressed="false"><span class="contact-patch-port" aria-hidden="true"><i></i></span><span class="contact-patch-copy"><small>CUSTOMER SETUP</small><strong>Requests and missing details</strong><em>WHAT’S STILL NEEDED?</em></span><span class="contact-patch-arrow" aria-hidden="true">↘</span></button>
+          <button type="button" data-contact-prompt="It is difficult to see which onboarding steps are complete and what is still needed before launch." data-contact-line="readiness" aria-pressed="false"><span class="contact-patch-port" aria-hidden="true"><i></i></span><span class="contact-patch-copy"><small>LAUNCH READINESS</small><strong>Progress and next steps</strong><em>WHAT’S LEFT TO DO?</em></span><span class="contact-patch-arrow" aria-hidden="true">↘</span></button>
           <p class="contact-signal-status" id="contact-signal-status" role="status" aria-live="polite">Choose a port to draft a message. Nothing is sent until you press Send.</p>
         </div>
         <p class="small-print">Please don’t include passwords or confidential customer data.</p></div>
