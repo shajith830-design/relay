@@ -38,7 +38,7 @@
 .relay-tour-brand { display: flex; align-items: center; gap: 9px; color: #163750; font-size: 13px; font-weight: 850; }
 .relay-tour-brand > span:last-child { display: grid; gap: 1px; }
 .relay-tour-brand small { color: #8a9ba8; font-size: 7px; font-weight: 800; letter-spacing: .14em; }
-.relay-tour-mark { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 9px 9px 9px 3px; background: linear-gradient(145deg, #0e7490, #0284c7); color: #fff; font-size: 13px; box-shadow: 0 4px 10px rgb(2 132 199 / 20%); }
+.relay-tour-mark { display: block; width: 36px; height: 36px; flex: 0 0 auto; border: 1px solid rgb(255 255 255 / 85%); border-radius: 10px 10px 10px 3px; background: #061025; object-fit: cover; box-shadow: 0 4px 10px rgb(2 132 199 / 18%); }
 .relay-tour-preview-label { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #dbeaf0; border-radius: 99px; padding: 6px 9px; background: #f7fbfd; color: #627989; font-size: 9px; font-weight: 750; }
 .relay-tour-preview-label i, .tour-screen-current i, .tour-state-chip i { width: 6px; height: 6px; border-radius: 50%; background: #49b686; box-shadow: 0 0 7px rgb(73 182 134 / 36%); }
 .relay-tour-preview-label i { animation: relay-tour-current 2.8s ease-in-out infinite; }
