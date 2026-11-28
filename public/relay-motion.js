@@ -121,7 +121,6 @@
     ".plan-card",
     ".hero-switchboard",
     ".story-hero-copy > *",
-    ".story-hero-art",
     ".solution-snag",
     ".solution-component-card",
     ".faq-item",
