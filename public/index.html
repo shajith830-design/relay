@@ -71,6 +71,7 @@
     }
   </script>
   <link rel="stylesheet" href="relay.css">
+  <link rel="stylesheet" href="relay-tour.css">
 </head>
 <body class="home-page">
   <header class="topbar"><div class="wrap nav">
@@ -88,7 +89,7 @@
           <h1>A customer signed weeks ago.<br>Still waiting to go live?</h1>
           <p class="hero-description">You closed the deal. Now you’re chasing the logo, access, or the right person to finish onboarding. Relay keeps the next step and its owner in view.</p>
           <div class="hero-actions">
-            <a class="button" href="#quick-tour">Take the 60-second tour <span aria-hidden="true">↓</span></a>
+            <a class="button" href="#relay-product-tour">See the 60-second tour <span aria-hidden="true">↓</span></a>
             <a class="hero-skip-link" href="product.html?demo=workspace">Open the sample workspace</a>
           </div>
           <p class="waiting-hero-note"><a class="text-link" href="#delay-estimator">Prefer to estimate the wait?</a> Jump to the optional calculator.</p>
@@ -105,6 +106,33 @@
           <div class="switchboard-detail"><p id="hero-switchboard-detail" role="status" aria-live="polite">The access request has no named owner. A loose connection, not a mystery novel.</p><button class="switchboard-toggle" id="hero-switchboard-toggle" type="button">Assign a sample owner <span aria-hidden="true">⏻</span></button></div>
           <p class="switchboard-footnote">Preview only. This switch changes no real workspace or customer data.</p>
         </aside>
+      </div>
+    </section>
+
+    <section class="section relay-product-tour-section" id="relay-product-tour" aria-labelledby="relay-product-tour-title">
+      <div class="wrap">
+        <div class="section-head relay-product-tour-heading">
+          <p class="eyebrow">A peek inside Relay · illustrative interface</p>
+          <h2 id="relay-product-tour-title">From loose wires to a readable customer plan.</h2>
+          <p>Pick a checkpoint. See the kind of work the workspace brings together—without sitting through a long demo.</p>
+        </div>
+        <div class="relay-product-tour" data-relay-product-tour>
+          <div class="relay-tour-switches" role="tablist" aria-label="Explore Relay workspace examples">
+            <button type="button" role="tab" id="relay-tour-tab-process" aria-controls="relay-tour-panel" aria-selected="true" tabindex="0" data-tour-view="process"><span class="relay-tour-switch-icon" aria-hidden="true">⌘</span><span><strong>Map the process</strong><small>Process maps</small></span><span class="relay-tour-led" aria-hidden="true"></span></button>
+            <button type="button" role="tab" id="relay-tour-tab-template" aria-controls="relay-tour-panel" aria-selected="false" tabindex="-1" data-tour-view="template"><span class="relay-tour-switch-icon" aria-hidden="true">▤</span><span><strong>Reuse the plan</strong><small>Templates</small></span><span class="relay-tour-led" aria-hidden="true"></span></button>
+            <button type="button" role="tab" id="relay-tour-tab-customer" aria-controls="relay-tour-panel" aria-selected="false" tabindex="-1" data-tour-view="customer"><span class="relay-tour-switch-icon" aria-hidden="true">⇄</span><span><strong>Coordinate the work</strong><small>Customer plans</small></span><span class="relay-tour-led" aria-hidden="true"></span></button>
+            <button type="button" role="tab" id="relay-tour-tab-readiness" aria-controls="relay-tour-panel" aria-selected="false" tabindex="-1" data-tour-view="readiness"><span class="relay-tour-switch-icon" aria-hidden="true">◉</span><span><strong>Review readiness</strong><small>Launch checks</small></span><span class="relay-tour-led" aria-hidden="true"></span></button>
+          </div>
+          <div class="relay-tour-display" id="relay-tour-panel" role="tabpanel" aria-labelledby="relay-tour-tab-process" tabindex="0">
+            <div class="relay-tour-topbar"><div class="relay-tour-brand"><span class="relay-tour-mark" aria-hidden="true">R</span><span>Relay <small>WORKSPACE PREVIEW</small></span></div><span class="relay-tour-preview-label"><i aria-hidden="true"></i> Fictional interface · not live data</span></div>
+            <div class="relay-tour-app">
+              <aside class="relay-tour-sidebar" aria-label="Illustrative workspace navigation"><span class="relay-tour-side-label">WORKSPACE</span><span class="relay-tour-side-item is-active"><i aria-hidden="true">◫</i> Overview</span><span class="relay-tour-side-item"><i aria-hidden="true">▤</i> Process maps</span><span class="relay-tour-side-item"><i aria-hidden="true">◷</i> Implementations</span><span class="relay-tour-side-item"><i aria-hidden="true">◎</i> Readiness</span><div class="relay-tour-side-component"><span aria-hidden="true">⌁</span><small>One signal at a time.<br>No electrician’s belt needed.</small></div></aside>
+              <div class="relay-tour-screen" id="relay-tour-screen" aria-live="polite"></div>
+            </div>
+            <div class="relay-tour-bottom"><p><span class="relay-tour-bulb" aria-hidden="true">✦</span><span><strong id="relay-tour-tip-title">Start with the steps your team already follows.</strong><small id="relay-tour-tip-copy">A process map can capture tasks, owners, instructions, and prerequisites.</small></span></p><a class="button" href="product.html?demo=workspace">Explore the sample workspace <span aria-hidden="true">→</span></a></div>
+          </div>
+          <div class="relay-tour-live-link"><span>Have a Relay account?</span><a href="product.html">Open your live workspace <span aria-hidden="true">↗</span></a><span class="relay-tour-link-divider" aria-hidden="true"></span><span>Preview records are fictional and local to the sample experience.</span></div>
+        </div>
       </div>
     </section>
 
@@ -236,5 +264,6 @@
   <script src="relay-justonecx.js" defer></script>
   <script src="relay-estimate.js" defer></script>
   <script src="landing-tools.js" defer></script>
+  <script src="relay-product-tour.js" defer></script>
 </body>
 </html>
