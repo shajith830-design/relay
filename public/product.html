@@ -161,9 +161,10 @@
         </div>
         <section class="panel workspace-circuit-panel" aria-labelledby="workspace-circuit-title">
           <div class="workspace-circuit-heading">
-            <div><p class="eyebrow">Relay control board</p><h2 id="workspace-circuit-title">Your workspace signal path</h2><p id="workspace-circuit-description">A quick read of implementation activity, task progress, and open handoffs.</p></div>
+            <div><p class="eyebrow">Workspace switchboard</p><h2 id="workspace-circuit-title">Follow the work current</h2><p id="workspace-circuit-description">A quick read of implementation activity, task progress, and open handoffs. Component labels are a visual metaphor; the values come from workspace records.</p></div>
             <span class="workspace-circuit-status" id="workspace-circuit-status" role="status" aria-live="polite"></span>
           </div>
+          <div class="workspace-circuit-key" aria-label="Electrical component visual metaphor"><span><i class="workspace-key-relay" aria-hidden="true"><svg viewBox="0 0 28 16"><path d="M1 8h4m18 0h4M5 8V2h3v12H5V8m3-6h3v12H8m3-12h3v12h-3m3-12h3v12h-3m3-6h3m0 0 5-5m-5 5h5"/></svg></i><strong>Relay</strong> · visible handoff</span><span><i class="workspace-key-led" aria-hidden="true"></i><strong>Indicator</strong> · recorded status</span><small>METAPHOR ONLY · NO HARDWARE SIGNAL</small></div>
           <ol class="workspace-signal-path" id="workspace-signal-path" aria-label="Workspace activity signal path"></ol>
           <p class="workspace-circuit-footnote" id="workspace-circuit-footnote"></p>
         </section>

@@ -36,12 +36,12 @@
     },
     customer: {
       nav: "Implementations",
-      title: "Acme Logistics · onboarding",
+      title: "Northstar Kitchens · onboarding",
       eyebrow: "CUSTOMER PLAN · FICTIONAL SAMPLE",
       badge: "Waiting on customer",
       tip: "Give both sides a clear place for their next task.",
       detail: "Assign team and customer tasks, request setup information, and track progress in one implementation.",
-      scene: `<div class="tour-scene-title"><div><span class="tour-scene-kicker">Implementation <b>· fictional sample</b></span><h3>Acme Logistics</h3><p>Customer onboarding · target date is illustrative</p></div><span class="tour-state-chip amber"><i></i> In progress</span></div>
+      scene: `<div class="tour-scene-title"><div><span class="tour-scene-kicker">Implementation <b>· fictional sample</b></span><h3>Northstar Kitchens</h3><p>Customer onboarding · target date is illustrative</p></div><span class="tour-state-chip amber"><i></i> In progress</span></div>
         <div class="tour-implementation-summary"><div class="tour-progress-ring" role="img" aria-label="Illustrative sample implementation, 3 of 5 tasks completed"><svg viewBox="0 0 54 54" aria-hidden="true"><circle cx="27" cy="27" r="22"></circle><circle class="tour-progress-arc" cx="27" cy="27" r="22"></circle></svg><strong>3<small>/5</small></strong></div><div><strong>3 of 5 tasks complete</strong><span>Example progress · not a live customer</span></div><span class="tour-preview-action" aria-hidden="true">Open plan <span>↗</span></span></div>
         <div class="tour-task-list"><div><span class="tour-task-check complete">✓</span><span><strong>Kickoff and success criteria</strong><small>Relay team · complete</small></span><span class="tour-task-state">Done</span></div><div><span class="tour-task-check waiting">↗</span><span><strong>Share DNS record</strong><small>Acme IT · requested</small></span><span class="tour-task-state waiting-text">Waiting</span></div><div><span class="tour-task-check">03</span><span><strong>Review connection test</strong><small>Relay team · next step</small></span><span class="tour-task-state">Next</span></div></div>
         <div class="tour-screen-foot"><span><i class="tour-diode" aria-hidden="true"></i> A blocked step can stay visible without becoming a mystery.</span><span>Fictional sample</span></div>`

@@ -139,6 +139,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .workspace-circuit-heading p:not(.eyebrow) { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .workspace-circuit-status { flex: 0 0 auto; border: 1px solid color-mix(in srgb, #d97706 35%, var(--line)); border-radius: 99px; padding: 6px 9px; background: color-mix(in srgb, #fef3c7 46%, var(--surface)); color: #9a5c05; font-size: 9px; font-weight: 800; }
 .workspace-circuit-status[data-level="clear"] { border-color: color-mix(in srgb, #16a34a 30%, var(--line)); background: color-mix(in srgb, #dcfce7 45%, var(--surface)); color: #16713a; }
+.workspace-circuit-key { position: relative; z-index: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 15px; border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent); padding: 0 0 10px; color: var(--muted); font-size: 9px; }
+.workspace-circuit-key > span { display: inline-flex; align-items: center; gap: 5px; }
+.workspace-circuit-key strong { color: var(--ink-subtle); font-size: 8px; }
+.workspace-key-relay { display: grid; width: 22px; height: 17px; place-items: center; }
+.workspace-key-relay svg { width: 22px; height: 15px; fill: none; stroke: #1492a4; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+.workspace-key-led { width: 8px; height: 8px; border: 1px solid #239f79; border-radius: 50%; background: #6cd4a2; box-shadow: 0 0 8px color-mix(in srgb, #1ca875 40%, transparent); }
+.workspace-circuit-key small { margin-left: auto; color: var(--muted); font-size: 7px; font-weight: 800; letter-spacing: .06em; }
 .workspace-signal-path { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 18px 0 0; padding: 0; list-style: none; }
 .workspace-signal-step { position: relative; min-width: 0; }
 .workspace-signal-step::before { position: absolute; top: 21px; right: 0; left: 0; height: 2px; background: var(--relay-trace); content: ""; transition: background .3s; }
@@ -920,6 +927,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 @media (max-width: 560px) {
   .workspace-circuit-heading { flex-direction: column; }
+  .workspace-circuit-key { gap: 8px 12px; }
+  .workspace-circuit-key small { width: 100%; margin-left: 27px; }
   .workspace-signal-path { grid-template-columns: 1fr 1fr; }
   .workspace-signal-step button { gap: 0 7px; grid-template-columns: 34px minmax(0, 1fr) 10px; padding-inline: 2px; }
   .workspace-signal-light { width: 29px; height: 29px; }

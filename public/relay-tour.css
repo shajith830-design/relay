@@ -30,7 +30,7 @@
 .relay-tour-switches [aria-selected="true"] .relay-tour-switch-icon { border-color: #c6e4ee; background: #eaf8fb; color: #08799a; }
 .relay-tour-switches [role="tab"] > span:nth-child(2) { display: grid; min-width: 0; gap: 4px; }
 .relay-tour-switches strong { overflow: hidden; color: inherit; font-size: 11px; text-overflow: ellipsis; }
-.relay-tour-switches small { overflow: hidden; color: #7b8a98; font-size: 9px; text-overflow: ellipsis; }
+.relay-tour-switches small { overflow: hidden; color: #7b8a98; font-size: 8px; font-weight: 800; letter-spacing: .035em; text-overflow: ellipsis; }
 .relay-tour-led { width: 7px; height: 7px; border: 1px solid #c8d5dd; border-radius: 50%; background: #edf2f5; }
 .relay-tour-switches [aria-selected="true"] .relay-tour-led { border-color: #39a981; background: #50c58e; box-shadow: 0 0 0 3px rgb(80 197 142 / 13%), 0 0 10px rgb(80 197 142 / 25%); }
 .relay-tour-display { overflow: hidden; border: 1px solid #d9e3eb; border-radius: 15px; background: #fff; }
@@ -171,7 +171,6 @@
 .relay-tour-live-link a { color: #16799b; font-weight: 800; text-decoration: none; }
 .relay-tour-live-link a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .relay-tour-link-divider { width: 3px; height: 3px; border-radius: 50%; background: #bdc8ce; }
-.solution-product-tour { background: linear-gradient(180deg, #f5f9fc, #fff); }
 @media (max-width: 760px) {
   .relay-tour-switches [role="tab"] { min-height: 60px; gap: 0 7px; grid-template-columns: 29px minmax(0, 1fr) 7px; padding-inline: 7px; }
   .relay-tour-switch-icon { width: 28px; height: 28px; }

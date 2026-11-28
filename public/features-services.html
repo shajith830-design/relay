@@ -21,7 +21,7 @@
   <meta name="twitter:image" content="https://relayautomation.tech/assets/relay-home-video-poster.png">
   <meta name="twitter:image:alt" content="Relay illustration showing the journey from signed customer agreement through setup and launch to go-live">
   <link rel="stylesheet" href="relay.css">
-  <link rel="stylesheet" href="relay-tour.css">
+  <link rel="stylesheet" href="relay-circuit-lab.css">
 </head>
 <body class="page-solutions">
   <header class="topbar"><div class="wrap nav">
@@ -33,25 +33,43 @@
   </div></header>
   <main>
     <section class="page-hero"><div class="wrap"><p class="eyebrow">Our Solutions</p><h1>Keep every handoff connected.</h1><p>Plan the work, coordinate with customers, and see what is ready to go live—all in Relay. Each task has a place in the process, an owner, and a next step.</p><div class="hero-actions"><a class="button" href="product.html?demo=workspace">Try the sample workspace <span aria-hidden="true">→</span></a></div></div></section>
-    <section class="section relay-product-tour-section solution-product-tour" aria-labelledby="solutions-product-tour-title">
+    <section class="section component-lab-section" id="component-lab" aria-labelledby="component-lab-title">
       <div class="wrap">
-        <div class="section-head relay-product-tour-heading"><p class="eyebrow">See the workspace, briefly</p><h2 id="solutions-product-tour-title">A visual tour with no calendar invite.</h2><p>Explore four real workflow areas through a clearly labeled illustrative interface. Then open the fictional sample if you want to click around.</p></div>
-        <div class="relay-product-tour" data-relay-product-tour>
-          <div class="relay-tour-switches" role="tablist" aria-label="Explore Relay workspace examples">
-            <button type="button" role="tab" id="solutions-tour-tab-process" aria-controls="solutions-tour-panel" aria-selected="true" tabindex="0" data-tour-view="process"><span class="relay-tour-switch-icon" aria-hidden="true">⌘</span><span><strong>Map the process</strong><small>Process maps</small></span><span class="relay-tour-led" aria-hidden="true"></span></button>
-            <button type="button" role="tab" id="solutions-tour-tab-template" aria-controls="solutions-tour-panel" aria-selected="false" tabindex="-1" data-tour-view="template"><span class="relay-tour-switch-icon" aria-hidden="true">▤</span><span><strong>Reuse the plan</strong><small>Templates</small></span><span class="relay-tour-led" aria-hidden="true"></span></button>
-            <button type="button" role="tab" id="solutions-tour-tab-customer" aria-controls="solutions-tour-panel" aria-selected="false" tabindex="-1" data-tour-view="customer"><span class="relay-tour-switch-icon" aria-hidden="true">⇄</span><span><strong>Coordinate the work</strong><small>Customer plans</small></span><span class="relay-tour-led" aria-hidden="true"></span></button>
-            <button type="button" role="tab" id="solutions-tour-tab-readiness" aria-controls="solutions-tour-panel" aria-selected="false" tabindex="-1" data-tour-view="readiness"><span class="relay-tour-switch-icon" aria-hidden="true">◉</span><span><strong>Review readiness</strong><small>Launch checks</small></span><span class="relay-tour-led" aria-hidden="true"></span></button>
-          </div>
-          <div class="relay-tour-display" id="solutions-tour-panel" role="tabpanel" aria-labelledby="solutions-tour-tab-process" tabindex="0">
-            <div class="relay-tour-topbar"><div class="relay-tour-brand"><span class="relay-tour-mark" aria-hidden="true">R</span><span>Relay <small>WORKSPACE PREVIEW</small></span></div><span class="relay-tour-preview-label"><i aria-hidden="true"></i> Fictional interface · not live data</span></div>
-            <div class="relay-tour-app">
-              <aside class="relay-tour-sidebar" aria-label="Illustrative workspace navigation"><span class="relay-tour-side-label">WORKSPACE</span><span class="relay-tour-side-item is-active"><i aria-hidden="true">◫</i> Overview</span><span class="relay-tour-side-item"><i aria-hidden="true">▤</i> Process maps</span><span class="relay-tour-side-item"><i aria-hidden="true">◷</i> Implementations</span><span class="relay-tour-side-item"><i aria-hidden="true">◎</i> Readiness</span><div class="relay-tour-side-component"><span aria-hidden="true">⌁</span><small>One signal at a time.<br>No electrician’s belt needed.</small></div></aside>
-              <div class="relay-tour-screen" id="solutions-tour-screen" aria-live="polite"></div>
+        <div class="section-head component-lab-heading"><p class="eyebrow">Relay, from the circuit up</p><h2 id="component-lab-title">The hardware is real. The workflow link is a metaphor.</h2><p>Pick a component for the quick electrical fact and its software-side inspiration. No wires required; the only thing being switched here is the explanation.</p></div>
+        <div class="component-lab" data-component-lab data-part="relay">
+          <div class="component-board">
+            <div class="component-board-top"><span><i aria-hidden="true"></i> COMPONENT LIBRARY</span><span>FACTS, NOT A WIRING DIAGRAM</span></div>
+            <div class="component-board-trace" aria-hidden="true"><svg viewBox="0 0 700 74" preserveAspectRatio="none"><path class="component-trace-base" d="M26 38H674"/><path class="component-trace-current" d="M26 38H674"/></svg></div>
+            <div class="component-selectors" role="tablist" aria-label="Electrical component reference">
+              <button type="button" role="tab" id="component-tab-relay" aria-controls="component-explainer" aria-selected="true" tabindex="0" data-component-part="relay">
+                <span class="component-icon" aria-hidden="true"><svg viewBox="0 0 48 42"><path d="M2 21h5m34 0h5M7 21v-9h4v18H7v-9m4-9h3v18h-3m3-18h3v18h-3m3-18h3v18h-3m3-18h3v18h-3m3-18h3v18h-3m3-9h3m0 0 7-8m-7 8h7"/><circle cx="38" cy="21" r="1.6"/></svg></span>
+                <strong>Relay</strong><small>Coil + contacts</small><span class="component-led" aria-hidden="true"></span>
+              </button>
+              <button type="button" role="tab" id="component-tab-switch" aria-controls="component-explainer" aria-selected="false" tabindex="-1" data-component-part="switch">
+                <span class="component-icon" aria-hidden="true"><svg viewBox="0 0 48 42"><path d="M2 25h12m20 0h12M14 25l14-13m5 13h1"/><circle cx="14" cy="25" r="2.5"/><circle cx="34" cy="25" r="2.5"/></svg></span>
+                <strong>Switch</strong><small>Open / close</small><span class="component-led" aria-hidden="true"></span>
+              </button>
+              <button type="button" role="tab" id="component-tab-led" aria-controls="component-explainer" aria-selected="false" tabindex="-1" data-component-part="led">
+                <span class="component-icon" aria-hidden="true"><svg viewBox="0 0 48 42"><path d="M2 22h10m24 0h10m-24-9-9 9 9 9h8l7-9-7-9zm10-8 5-5m-1 12 6-2"/><path d="m31 5 2 1-1 2m4 8 2 1-1 2"/></svg></span>
+                <strong>LED</strong><small>Visible output</small><span class="component-led" aria-hidden="true"></span>
+              </button>
+              <button type="button" role="tab" id="component-tab-fuse" aria-controls="component-explainer" aria-selected="false" tabindex="-1" data-component-part="fuse">
+                <span class="component-icon" aria-hidden="true"><svg viewBox="0 0 48 42"><path d="M2 21h10m24 0h10m-34-8h24v16H12z"/><path d="m18 21 4-4 4 8 4-8 4 4"/></svg></span>
+                <strong>Fuse</strong><small>Overcurrent guard</small><span class="component-led" aria-hidden="true"></span>
+              </button>
             </div>
-            <div class="relay-tour-bottom"><p><span class="relay-tour-bulb" aria-hidden="true">✦</span><span><strong id="solutions-tour-tip-title">Start with the steps your team already follows.</strong><small id="solutions-tour-tip-copy">A process map can capture tasks, owners, instructions, and prerequisites.</small></span></p><a class="button" href="product.html?demo=workspace">Explore the sample workspace <span aria-hidden="true">→</span></a></div>
+            <p class="component-board-status" id="component-board-status" role="status" aria-live="polite">Relay selected · a coil moves contacts between circuits.</p>
+            <div class="component-board-joke"><span aria-hidden="true">⌁</span> A metaphor can carry the current. It cannot carry a voltage.</div>
           </div>
-          <div class="relay-tour-live-link"><span>Have a Relay account?</span><a href="product.html">Open your live workspace <span aria-hidden="true">↗</span></a><span class="relay-tour-link-divider" aria-hidden="true"></span><span>Preview records are fictional and local to the sample experience.</span></div>
+          <article class="component-explainer" id="component-explainer" role="tabpanel" aria-labelledby="component-tab-relay" tabindex="0">
+            <p class="eyebrow" id="component-explainer-kicker">COMPONENT 01 · ELECTROMECHANICAL</p>
+            <h3 id="component-explainer-title">Relay</h3>
+            <p class="component-fact-label">The electrical fact</p>
+            <p id="component-explainer-fact" class="component-explainer-copy">Current through a coil creates a magnetic field that moves an armature and changes contacts. A relay can use one circuit to switch another; designs differ.</p>
+            <div class="component-workflow-translation"><p class="component-fact-label">The software inspiration</p><p id="component-explainer-translation">Relay gives a handoff a visible next step and an owner. The app passes no current and moves no electrical contact.</p></div>
+            <p class="component-boundary"><strong>Bench rule:</strong> This is a software-brand analogy, not an electrical design, safety check, or wiring instruction.</p>
+            <a class="button component-lab-cta" href="product.html?demo=workspace">See the sample workflow <span aria-hidden="true">→</span></a>
+          </article>
         </div>
       </div>
     </section>
@@ -72,23 +90,6 @@
         </details>
       </div>
     </div></section>
-    <section class="section solution-circuit-section" aria-labelledby="solution-circuit-title">
-      <div class="wrap">
-        <div class="section-head"><p class="eyebrow">Take the signal path</p><h2 id="solution-circuit-title">Four checkpoints. One customer route.</h2><p>Tap a stage to see how Relay supports the handoff. No breadboard, spare wire, or sign-in required.</p></div>
-        <div class="solution-circuit" id="solution-circuit" data-step="0">
-          <div class="solution-circuit-head"><span class="sample-tag">Product walkthrough</span><span id="solution-circuit-status" role="status" aria-live="polite">Checkpoint 1 of 4</span></div>
-          <ol class="solution-signal-path" aria-label="Relay onboarding workflow">
-            <li><button type="button" data-solution-step="0" aria-pressed="true"><span aria-hidden="true">01</span><strong>Map</strong><small>Process</small></button></li>
-            <li><button type="button" data-solution-step="1" aria-pressed="false"><span aria-hidden="true">02</span><strong>Reuse</strong><small>Template</small></button></li>
-            <li><button type="button" data-solution-step="2" aria-pressed="false"><span aria-hidden="true">03</span><strong>Coordinate</strong><small>Customer plan</small></button></li>
-            <li><button type="button" data-solution-step="3" aria-pressed="false"><span aria-hidden="true">04</span><strong>Review</strong><small>Readiness</small></button></li>
-          </ol>
-          <div class="solution-circuit-meter" role="progressbar" aria-label="Walkthrough checkpoint" aria-valuemin="1" aria-valuemax="4" aria-valuenow="1"><span id="solution-circuit-meter-fill"></span></div>
-          <div class="solution-circuit-detail" aria-live="polite"><div><p class="eyebrow" id="solution-circuit-kicker">Checkpoint 1 · Define the route</p><h3 id="solution-circuit-heading">Map the process your team already follows.</h3><p id="solution-circuit-copy">Add the real tasks, owners, and prerequisites. Relay’s process check can flag missing instructions or roles before you save the workflow as a template.</p></div><div class="solution-circuit-controls"><button class="button light" id="solution-circuit-back" type="button" disabled>← Back</button><button class="button" id="solution-circuit-next" type="button">Next checkpoint →</button></div></div>
-          <p class="solution-circuit-footnote">Relay keeps the plan visible; your team and customer still complete the work. This walkthrough is an illustration, not customer activity.</p>
-        </div>
-      </div>
-    </section>
     <section class="section solution-capabilities"><div class="wrap">
       <div class="section-head"><p class="eyebrow">The wider workflow</p><h2>One place for the work behind every launch.</h2></div>
       <div class="cards">
@@ -105,7 +106,6 @@
   <script src="relay-nav.js" defer></script>
   <script src="relay-motion.js" defer></script>
   <script src="relay-justonecx.js" defer></script>
-  <script src="relay-interactions.js" defer></script>
-  <script src="relay-product-tour.js" defer></script>
+  <script src="relay-circuit-lab.js" defer></script>
 </body>
 </html>

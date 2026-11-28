@@ -806,21 +806,21 @@ function renderGettingStarted() {
   const steps = [
     {
       title: "Build and check a process",
-      description: "Map a few real steps, give each one an owner, then run the check. No full-building wiring diagram required.",
+      description: "Connect a few real steps: give each one an owner, instructions, and what needs to happen first. Start small; no control room required.",
       complete: processChecked,
       action: next.action === "check-process" ? "check-process" : "map-process",
       actionLabel: next.action === "check-process" ? "Check a process" : processWithSteps ? "Continue your process map" : "Create a process map"
     },
     {
       title: "Save a reusable template",
-      description: "Save the checked process as a reusable starting point—your team's wiring diagram for customer work.",
+      description: "Save the checked process as a reusable starting point. Future plans get their own copy, so later edits do not rewire work already underway.",
       complete: state.data.templates.length > 0,
       action: "save-template",
       actionLabel: "Create a template"
     },
     {
       title: "Start a customer implementation",
-      description: "Choose your template and enter a customer company to create its work plan.",
+      description: "Choose a template and enter a customer company to create a named path for the team's and customer's tasks.",
       complete: state.data.implementations.length > 0,
       action: "start-implementation",
       actionLabel: "Start an implementation"
@@ -843,7 +843,7 @@ function renderGettingStarted() {
   const status = document.getElementById("getting-started-status");
   status.textContent = nextIndex < 0
     ? "First customer path connected. Keep this guide for reference, or hide it and come back any time."
-    : `${steps.filter((step) => step.complete).length} of ${steps.length} steps complete. One switch at a time; no need to rewire the building.`;
+    : `${steps.filter((step) => step.complete).length} of ${steps.length} steps complete. Nice and steady: no need to rewire the whole building today.`;
 }
 
 function setMobileNavigationOpen(isOpen) {
@@ -1062,12 +1062,12 @@ function renderWorkspaceCircuitBoard(implementations, activeCount, needsAttentio
   </li>`).join("");
   const status = document.getElementById("workspace-circuit-status");
   status.textContent = needsAttention
-    ? `${needsAttention} ${needsAttention === 1 ? "implementation needs" : "implementations need"} a look`
-    : "No tracked flags to check";
+    ? `${needsAttention} ${needsAttention === 1 ? "implementation" : "implementations"} flagged · check the connection`
+    : "No tracked flags · signal steady";
   status.dataset.level = needsAttention ? "attention" : "clear";
   document.getElementById("workspace-circuit-footnote").textContent = isWorkspaceDemo
-    ? "Fictional sample records · clicking a checkpoint opens the matching sample list."
-    : "Based on the workspace records currently loaded · click a checkpoint to open its implementation list.";
+    ? "The circuit is a visual metaphor. Values use fictional local sample records; click a node to open its sample list."
+    : "The circuit is a visual metaphor. Values use loaded workspace records; click a node to open its implementation list.";
 }
 
 function renderPortfolio() {

@@ -41,61 +41,6 @@
     });
   }
 
-  const solutionCircuit = document.getElementById("solution-circuit");
-  if (solutionCircuit) {
-    const walkthrough = [
-      {
-        kicker: "Checkpoint 1 · Define the route",
-        heading: "Map the process your team already follows.",
-        copy: "Add the real tasks, owners, and prerequisites. Relay’s process check can flag missing instructions or roles before you save the workflow as a template."
-      },
-      {
-        kicker: "Checkpoint 2 · Reuse the plan",
-        heading: "Save the checked process as a template.",
-        copy: "A template is a reusable snapshot for future customer work. Later process edits do not rewrite existing implementations."
-      },
-      {
-        kicker: "Checkpoint 3 · Coordinate the handoff",
-        heading: "Start a customer plan from that template.",
-        copy: "The implementation gives the team one place to assign tasks, track due dates, and request the setup information that customer needs to provide."
-      },
-      {
-        kicker: "Checkpoint 4 · Review readiness",
-        heading: "See what is done and what still needs attention.",
-        copy: "Review recorded progress, open tasks, missing information, and launch checks. Relay helps organize the review; it does not configure customer software or certify a safe launch."
-      }
-    ];
-    const back = document.getElementById("solution-circuit-back");
-    const next = document.getElementById("solution-circuit-next");
-    const meter = solutionCircuit.querySelector('[role="progressbar"]');
-    function showWalkthroughStep(index) {
-      const stepIndex = Math.max(0, Math.min(walkthrough.length - 1, index));
-      const step = walkthrough[stepIndex];
-      solutionCircuit.dataset.step = String(stepIndex);
-      solutionCircuit.querySelectorAll("[data-solution-step]").forEach((button) => {
-        button.setAttribute("aria-pressed", String(Number(button.dataset.solutionStep) === stepIndex));
-      });
-      document.getElementById("solution-circuit-status").textContent = `Checkpoint ${stepIndex + 1} of ${walkthrough.length}`;
-      document.getElementById("solution-circuit-kicker").textContent = step.kicker;
-      document.getElementById("solution-circuit-heading").textContent = step.heading;
-      document.getElementById("solution-circuit-copy").textContent = step.copy;
-      meter.setAttribute("aria-valuenow", String(stepIndex + 1));
-      document.getElementById("solution-circuit-meter-fill").style.width = `${((stepIndex + 1) / walkthrough.length) * 100}%`;
-      back.disabled = stepIndex === 0;
-      next.textContent = stepIndex === walkthrough.length - 1 ? "Start again ↺" : "Next checkpoint →";
-      next.dataset.step = String(stepIndex);
-    }
-    solutionCircuit.addEventListener("click", (event) => {
-      const stepButton = event.target.closest("[data-solution-step]");
-      if (stepButton) showWalkthroughStep(Number(stepButton.dataset.solutionStep));
-      if (event.target.closest("#solution-circuit-back")) showWalkthroughStep(Number(solutionCircuit.dataset.step) - 1);
-      if (event.target.closest("#solution-circuit-next")) {
-        const currentStep = Number(solutionCircuit.dataset.step);
-        showWalkthroughStep(currentStep === walkthrough.length - 1 ? 0 : currentStep + 1);
-      }
-    });
-  }
-
   const fitResult = document.getElementById("plan-fit-result");
   if (!fitResult) return;
 
